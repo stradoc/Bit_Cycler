@@ -10,6 +10,8 @@ const SCHEDULE_INTERVAL_MS = 25;
 export class Conductor {
   readonly ctx: AudioContext;
   readonly bpm: number;
+  /** Player calibration (seconds). Positive = the player hears audio later than reported. */
+  offset = 0;
   private startTime = 0;
   private nextBeat = 0;
   private timer: ReturnType<typeof setInterval> | undefined;
@@ -32,10 +34,20 @@ export class Conductor {
     this.timer = undefined;
   }
 
-  /** Fractional beat the player is hearing right now (corrected for output latency). */
+  /** Fractional beat the player is hearing right now. */
   currentBeat(): number {
-    const heardTime = this.ctx.currentTime - (this.ctx.outputLatency || 0);
-    return beatAtTime(heardTime, this.startTime, this.bpm);
+    return beatAtTime(this.heardTime() - this.offset, this.startTime, this.bpm);
+  }
+
+  /** Audio-clock time of the sound leaving the speakers right now. */
+  heardTime(): number {
+    // getOutputTimestamp() maps the sample currently at the output device to
+    // performance.now(); extrapolate from it to this exact moment.
+    const ts = this.ctx.getOutputTimestamp?.();
+    if (ts?.contextTime && ts.performanceTime) {
+      return ts.contextTime + (performance.now() - ts.performanceTime) / 1000;
+    }
+    return this.ctx.currentTime - (this.ctx.outputLatency || 0);
   }
 
   private schedule(): void {

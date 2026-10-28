@@ -77,6 +77,8 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 - [ ] Synthesized music whose tempo follows the clock speed
 - [ ] Sound effects for hits, stalls, flushes, page faults
 - [ ] Sprites and UI art
+- [x] Terminal look with four eras (green CRT → modern terminal), previewable with keys 1–4
+- [ ] Drive the era from the player's CPU word size instead of the preview keys
 
 ### Education
 - [ ] Short tutorial the first time each mechanic appears
