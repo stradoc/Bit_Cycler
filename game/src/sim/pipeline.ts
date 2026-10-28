@@ -137,6 +137,24 @@ export class Pipeline {
     return worst;
   }
 
+  /**
+   * The next `count` instructions fetch will bring in, assuming no branch is
+   * taken. Their seq numbers are the ones they'll get when fetched.
+   */
+  upcoming(count: number): Slot[] {
+    const program = this.cpu.program.instructions;
+    const slots: Slot[] = [];
+    for (let i = 0; i < count && this.fetchPc + i < program.length; i++) {
+      slots.push({ seq: this.nextSeq + i, pc: this.fetchPc + i, instr: program[this.fetchPc + i] });
+    }
+    return slots;
+  }
+
+  /** Which stage holds the instruction with this seq, if any. */
+  stageOf(seq: number): Stage | undefined {
+    return STAGES.find((stage) => this.stages[stage]?.seq === seq);
+  }
+
   /** The correct choice this cycle (used by autoplay and tests). */
   bestAction(): 'issue' | 'stall' {
     return this.hazard() ? 'stall' : 'issue';

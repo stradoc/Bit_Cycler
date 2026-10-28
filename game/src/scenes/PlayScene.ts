@@ -74,7 +74,8 @@ export class PlayScene extends Phaser.Scene {
 
   /** scene.restart() reuses this instance, so reset per-run state here. */
   init(data?: { practice?: boolean }): void {
-    this.practice = data?.practice === true;
+    // ?practice in the URL starts in practice mode (dev shortcut).
+    this.practice = data?.practice ?? new URLSearchParams(location.search).has('practice');
     this.chartOffset = 0;
     this.explainedOps = new Set();
     this.conductor = undefined;

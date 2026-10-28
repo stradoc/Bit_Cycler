@@ -91,19 +91,21 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 - [x] Briefing system: paged concept cards (picture, ≤ 3 short lines, an analogy, then "how it plays")
 - [x] Practice mode: notes wait at the hit line, first-time callouts explain each instruction, wrong keys explain instead of stalling
 - [x] Tier 1 lesson: what a CPU does, the clock, functional units, registers vs memory, how it plays, scoring
-- [ ] Tier 2 lesson: pipelining (laundry analogy), data hazards, stalls
+- [x] Tier 2 lesson: pipelining (laundry analogy), data hazards, stalls (+ tier 2 practice)
 - [ ] Tier 3 lessons: forwarding, branch prediction
 - [ ] Storage lessons: RAM / page faults, HDD
 - [ ] Track hazard-decision accuracy (learning objective 1) and show it after each contract
 
 ### Tier 2–3 play screen (design: player is the control unit)
-- [ ] Pipeline strip above the hit line (IF ID EX MEM WB), advancing each beat; in-flight destination registers glow
-- [ ] "Pipeline fill" feel: clock never changes; music adds one layer per occupied stage; a flush strikes out in-flight notes, leaves a gap of bubbles and drops layers, then refills; live throughput (instructions completed per cycle) meter
-- [ ] STALL key (Space) inserts a bubble; stall rules follow the textbook 5-stage pipeline (distance 1 → 2 stalls, distance 2 → 1)
-- [ ] Routing into a hazard shows the stale value read (red) next to the correct one, then flushes
+- [x] Pipeline strip (IF ID EX MEM WB) advancing each beat; registers still being computed marked with their stage (placed in the right panel)
+- [x] "Pipeline fill" feel: clock never changes; music adds one layer per occupied stage; a flush strikes out notes and drops layers, then refills; live throughput meter
+- [x] STALL key (Space) inserts a bubble; stall rules follow the textbook 5-stage pipeline (distance 1 → 2 stalls, distance 2 → 1)
+- [x] Routing into a hazard shows the stale value read next to the correct one, then flushes
 - [ ] Forwarding upgrade: ALU→ALU needs 0 stalls, load-use needs 1
 - [ ] Branch prediction keys: J = predict not taken, K = predict taken; mispredict strikes out wrong-path notes
-- [ ] Results compare single-cycle vs pipelined CPU time (CPI up, period down, faster overall)
+- [x] Results compare single-cycle vs pipelined CPU time (CPI up, period down, faster overall)
+- [x] Tier switch on the title screen (`T`) until the shop exists
+- [ ] Playtest tier 2 in a real browser: timing, music mix, readability of the strip
 - [ ] Run logic accepts several presses per beat (ready for superscalar chords later)
 
 **Done when:** a new player can go from tier 1 to tier 3 and buy an HDD in one ~30-minute session, the CPI numbers are verified by tests, and the game runs from a plain static server.

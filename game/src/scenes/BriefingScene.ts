@@ -16,7 +16,9 @@ export class BriefingScene extends Phaser.Scene {
   }
 
   init(data?: { lessonId?: string }): void {
-    this.lesson = LESSONS[data?.lessonId ?? TIER1_LESSON.id] ?? TIER1_LESSON;
+    // ?lesson=tier2 in the URL opens a lesson directly (dev shortcut).
+    const id = data?.lessonId ?? new URLSearchParams(location.search).get('lesson') ?? TIER1_LESSON.id;
+    this.lesson = LESSONS[id] ?? TIER1_LESSON;
     this.page = 0;
   }
 
@@ -46,7 +48,7 @@ export class BriefingScene extends Phaser.Scene {
     }
     const seen = new Set(getSettings().seenLessons).add(this.lesson.id);
     updateSettings({ seenLessons: [...seen] });
-    this.scene.start('play', { practice: true });
+    this.scene.start(this.lesson.scene, { practice: true });
   }
 
   private turn(delta: number): void {

@@ -98,6 +98,15 @@ test('issuing into a hazard reports the stale value and flushes, but the program
   assert.ok(p.cycle >= 8, 'never faster than stalling correctly');
 });
 
+test('upcoming() predicts the next fetches with the seq numbers they will get', () => {
+  const p = pipeline('addi x1, x0, 1\naddi x2, x0, 2\naddi x3, x0, 3\naddi x4, x0, 4', false);
+  const predicted = p.upcoming(5);
+  assert.deepEqual(predicted.map((s) => [s.seq, s.pc]), [[1, 1], [2, 2], [3, 3]]); // pc 0 is already in IF
+  p.step('issue');
+  assert.deepEqual([p.stages.IF?.seq, p.stages.IF?.pc], [1, 1]); // matches the prediction
+  assert.equal(p.stageOf(0), 'ID');
+});
+
 test('an unnecessary stall wastes a cycle', () => {
   const p = pipeline('addi x1, x0, 1\naddi x2, x0, 2', false);
   p.step('issue');

@@ -1,4 +1,5 @@
 import { Conductor } from '../audio/conductor.js';
+import { TIERS, tierByNumber } from '../data/tiers.js';
 import { keyOf, onKeyDown } from '../input/keys.js';
 import { getSettings, updateSettings } from '../settings.js';
 import { cssColor, ERAS, TerminalLook } from '../visual/terminal.js';
@@ -77,9 +78,14 @@ export class TitleScene extends Phaser.Scene {
                 case 'Enter':
                     return this.start();
                 case 'B':
-                    return this.scene.start('briefing', { lessonId: 'tier1' });
+                    return this.scene.start('briefing', { lessonId: this.tier().lessonId });
                 case 'P':
-                    return this.scene.start('play', { practice: true });
+                    return this.scene.start(this.tier().scene, { practice: true });
+                case 'T': {
+                    const next = TIERS[(TIERS.indexOf(this.tier()) + 1) % TIERS.length];
+                    updateSettings({ tier: next.number });
+                    return this.renderText();
+                }
                 case 'C':
                     return this.toggleCalibration();
                 case 'R':
@@ -99,12 +105,16 @@ export class TitleScene extends Phaser.Scene {
             }
         });
     }
-    /** First time: the briefing teaches the concept before anything is played. */
+    tier() {
+        return tierByNumber(getSettings().tier);
+    }
+    /** First time on a tier: the briefing teaches the concept before anything is played. */
     start() {
-        if (getSettings().seenLessons.includes('tier1'))
-            this.scene.start('play');
+        const tier = this.tier();
+        if (getSettings().seenLessons.includes(tier.lessonId))
+            this.scene.start(tier.scene);
         else
-            this.scene.start('briefing', { lessonId: 'tier1' });
+            this.scene.start('briefing', { lessonId: tier.lessonId });
     }
     restyle() {
         const { fg, dim } = this.look.era;
@@ -118,7 +128,8 @@ export class TitleScene extends Phaser.Scene {
         const settings = getSettings();
         const cursor = this.cursorOn ? '█' : ' ';
         this.prompt.setText(`PRESS ENTER TO START${cursor}`);
-        this.options.setText(`[B] BRIEFING   [P] PRACTICE   [C] CALIBRATE\n[R] RELAXED: ${settings.relaxed ? 'ON' : 'OFF'}   [1-4] ERA: ${this.look.era.name}`);
+        this.options.setText(`[T] TIER ${this.tier().number}: ${this.tier().name}   [B] BRIEFING   [P] PRACTICE\n` +
+            `[C] CALIBRATE   [R] RELAXED: ${settings.relaxed ? 'ON' : 'OFF'}   [1-4] ERA: ${this.look.era.name}`);
         if (!this.calibration) {
             this.readout.setText('');
             return;

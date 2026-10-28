@@ -14,6 +14,8 @@ export class Conductor {
   /** Player calibration (seconds). Positive = the player hears audio later than reported. */
   offset = 0;
   clickVolume = 0.15;
+  /** Called as each beat is scheduled, with its exact audio time (for music). */
+  onBeat: ((beat: number, time: number) => void) | undefined;
   private startTime = 0;
   private nextBeat = 0;
   private timer: ReturnType<typeof setInterval> | undefined;
@@ -64,7 +66,9 @@ export class Conductor {
 
   private schedule(): void {
     while (timeOfBeat(this.nextBeat, this.startTime, this.bpm) < this.ctx.currentTime + LOOKAHEAD) {
-      this.click(this.nextBeat, timeOfBeat(this.nextBeat, this.startTime, this.bpm));
+      const time = timeOfBeat(this.nextBeat, this.startTime, this.bpm);
+      this.click(this.nextBeat, time);
+      this.onBeat?.(this.nextBeat, time);
       this.nextBeat++;
     }
   }

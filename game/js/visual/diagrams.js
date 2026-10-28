@@ -55,6 +55,11 @@ class Sketch {
     polyline(points) {
         this.lines.strokePoints(points.map(([x, y]) => new Phaser.Math.Vector2(x, y)));
     }
+    /** One labelled cell of a pipeline timing chart. */
+    cell(x, y, label, bright = false, w = 64, h = 26) {
+        this.box(x, y, w, h, bright);
+        this.text(x, y, label, 13, bright ? 1 : label === 'wait' ? 0.45 : 0.85, bright);
+    }
     /** A light that pulses on a steady beat. */
     pulse(x, y) {
         const light = this.box(x, y, 18, 18, true);
@@ -160,6 +165,114 @@ const DIAGRAMS = {
         s.text(cx, cy - 50, 'CPU TIME = INSTRUCTIONS x CPI x CLOCK PERIOD', 20, 1, true);
         s.text(cx, cy + 20, 'PERFECT RUN:  20 x 1.00 x 1 µs = 20 µs', 18);
         s.text(cx, cy + 55, '5 STALLS:     20 x 1.25 x 1 µs = 25 µs', 18, 0.7);
+    },
+    // Three loads of laundry: one at a time (9 steps) vs overlapped (5 steps)
+    laundry(s, cx, cy) {
+        const col = (c) => cx - 192 + c * 48;
+        s.text(cx, cy - 92, 'ONE LOAD AT A TIME: 9 STEPS', 14, 0.7);
+        ['W', 'D', 'F', 'W', 'D', 'F', 'W', 'D', 'F'].forEach((step, i) => s.cell(col(i), cy - 64, `${step}${Math.floor(i / 3) + 1}`, false, 44, 24));
+        s.text(cx, cy - 26, 'OVERLAPPED: 5 STEPS', 14, 0.7);
+        for (let load = 0; load < 3; load++) {
+            ['W', 'D', 'F'].forEach((step, j) => s.cell(col(load + j), cy + 2 + load * 30, `${step}${load + 1}`, true, 44, 24));
+        }
+        s.text(cx + 290, cy + 32, 'W = WASH\nD = DRY\nF = FOLD', 13, 0.7);
+    },
+    // The five stages, left to right
+    stages(s, cx, cy) {
+        const stages = [
+            ['IF', 'FETCH', 'get instruction'],
+            ['ID', 'DECODE', 'read registers'],
+            ['EX', 'EXECUTE', 'ALU math'],
+            ['MEM', 'MEMORY', 'load / store'],
+            ['WB', 'WRITE BACK', 'save result'],
+        ];
+        stages.forEach(([name, word, detail], i) => {
+            const x = cx + (i - 2) * 168;
+            s.box(x, cy, 146, 96);
+            s.text(x, cy - 26, name, 24, 1, true);
+            s.text(x, cy + 8, word, 14);
+            s.text(x, cy + 30, detail, 12, 0.7);
+            if (i < 4)
+                s.arrow(x + 76, cy, x + 92, cy);
+        });
+    },
+    // Instructions overlapping across cycles
+    overlap(s, cx, cy) {
+        const col = (c) => cx - 220 + c * 66;
+        for (let c = 0; c < 8; c++)
+            s.text(col(c), cy - 88, `C${c + 1}`, 12, 0.6);
+        for (let row = 0; row < 4; row++) {
+            s.text(cx - 320, cy - 56 + row * 34, `INSTR ${row + 1}`, 13, 0.7);
+            ['IF', 'ID', 'EX', 'MEM', 'WB'].forEach((stage, j) => s.cell(col(row + j), cy - 56 + row * 34, stage, stage === 'WB', 60, 26));
+        }
+        s.text(cx + 160, cy + 82, 'from cycle 5 on: one finishes every cycle', 13, 0.8);
+    },
+    // A value read before it is written
+    hazard(s, cx, cy) {
+        const col = (c) => cx - 110 + c * 76;
+        for (let c = 0; c < 6; c++)
+            s.text(col(c), cy - 78, `CYCLE ${c + 1}`, 12, 0.6);
+        s.code(cx - 320, cy - 40, 'addi x1, x0, 5');
+        s.code(cx - 320, cy + 4, 'add x2, x1, x1');
+        ['IF', 'ID', 'EX', 'MEM', 'WB'].forEach((stage, j) => s.cell(col(j), cy - 40, stage, stage === 'WB', 70));
+        ['IF', 'ID', 'EX', 'MEM', 'WB'].forEach((stage, j) => s.cell(col(1 + j), cy + 4, stage, stage === 'ID', 70));
+        s.arrow(col(4) - 20, cy - 26, col(2) + 20, cy - 10);
+        s.text(cx, cy + 56, 'x1 is READ in cycle 3, but only WRITTEN in cycle 5', 14);
+    },
+    // The same pair with two stalls
+    stall(s, cx, cy) {
+        const col = (c) => cx - 150 + c * 68;
+        for (let c = 0; c < 8; c++)
+            s.text(col(c), cy - 78, `C${c + 1}`, 12, 0.6);
+        s.code(cx - 330, cy - 40, 'addi x1, x0, 5');
+        s.code(cx - 330, cy + 4, 'add x2, x1, x1');
+        ['IF', 'ID', 'EX', 'MEM', 'WB'].forEach((stage, j) => s.cell(col(j), cy - 40, stage, stage === 'WB', 62));
+        ['IF', 'wait', 'wait', 'ID', 'EX', 'MEM', 'WB'].forEach((stage, j) => s.cell(col(1 + j), cy + 4, stage, j === 3, 62));
+        s.text(cx, cy + 56, 'written in the first half of cycle 5, read in the second half', 14);
+    },
+    // The tier 2 screen in miniature
+    pipeplay(s, cx, cy) {
+        const laneW = 100;
+        const left = cx - 400;
+        const hitY = cy + 40;
+        for (let i = 0; i <= 3; i++)
+            s.polyline([[left + i * laneW, cy - 90], [left + i * laneW, hitY + 10]]);
+        s.polyline([[left, hitY], [left + 3 * laneW, hitY]]);
+        ['ALU [D]', 'MEM [F]', 'BRANCH [J]'].forEach((label, i) => s.text(left + (i + 0.5) * laneW, hitY + 26, label, 13));
+        s.text(left + 1.5 * laneW, hitY + 54, 'STALL [SPACE]', 14, 1, true);
+        s.backing(left + 0.5 * laneW, hitY, laneW - 8, 24);
+        s.box(left + 0.5 * laneW, hitY, laneW - 8, 24, true, false);
+        s.code(left + 0.5 * laneW, hitY, 'add x2, x1, x1', laneW - 14);
+        const names = ['IF', 'ID', 'EX', 'MEM', 'WB'];
+        const contents = ['sb', 'add', 'addi\n-> x1', '-', '-'];
+        names.forEach((name, i) => {
+            const x = cx + 10 + i * 72;
+            s.text(x, cy - 66, name, 12, 0.7);
+            s.box(x, cy - 30, 64, 50, i === 1 || i === 2);
+            s.text(x, cy - 30, contents[i], 13);
+        });
+        s.text(cx + 190, hitY + 6, 'add needs x1, still in EX:', 14, 0.8);
+        s.text(cx + 190, hitY + 34, 'PRESS SPACE', 18, 1, true);
+    },
+    // One music layer per filled stage
+    layers(s, cx, cy) {
+        const layers = [['IF', 'BASS'], ['ID', 'HI-HAT'], ['EX', 'DRUMS'], ['MEM', 'ARPEGGIO'], ['WB', 'MELODY']];
+        layers.forEach(([stage, layer], i) => {
+            const x = cx + (i - 2) * 150;
+            const filled = i < 3;
+            s.box(x, cy - 10, 130, 70, filled);
+            s.text(x, cy - 26, stage, 20, filled ? 1 : 0.5, true);
+            s.text(x, cy + 6, layer, 14, filled ? 1 : 0.5);
+        });
+        s.text(cx, cy + 62, '3 OF 5 STAGES FULL: BASS + HI-HAT + DRUMS PLAYING', 14, 0.8);
+    },
+    // Higher CPI, shorter cycles, faster overall
+    speedup(s, cx, cy) {
+        s.box(cx, cy - 56, 640, 46, true);
+        s.text(cx, cy - 56, 'CPU TIME = INSTRUCTIONS x CPI x CLOCK PERIOD', 20, 1, true);
+        s.text(cx, cy + 6, 'SINGLE-CYCLE (1 MHz): 20 x 1.00 x 1.00 µs = 20.0 µs', 16, 0.7);
+        s.text(cx, cy + 38, 'PIPELINED (4 MHz):    20 x 2.15 x 0.25 µs = 10.8 µs', 16);
+        s.text(cx, cy + 74, '1.9x FASTER, EVEN WITH MORE CYCLES PER INSTRUCTION', 14, 0.8);
     },
 };
 //# sourceMappingURL=diagrams.js.map

@@ -1,5 +1,6 @@
 import { keepKeyboardFocus } from './input/keyFocus.js';
 import { BriefingScene } from './scenes/BriefingScene.js';
+import { PipelineScene } from './scenes/PipelineScene.js';
 import { PlayScene } from './scenes/PlayScene.js';
 import { TitleScene } from './scenes/TitleScene.js';
 keepKeyboardFocus();
@@ -16,7 +17,7 @@ const game = new Phaser.Game({
     },
     // Keyboard is handled in input/keys.ts; Phaser's plugin double-fires keys within a frame.
     input: { keyboard: false },
-    scene: [TitleScene, BriefingScene, PlayScene],
+    scene: [TitleScene, BriefingScene, PlayScene, PipelineScene],
 });
 // Dev shortcut: ?scene=play jumps straight into a scene.
 const startScene = new URLSearchParams(location.search).get('scene');

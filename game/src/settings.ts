@@ -5,10 +5,12 @@ export type Settings = {
   readonly eraIndex: number;
   /** Lesson ids whose briefing the player has finished. */
   readonly seenLessons: readonly string[];
+  /** CPU tier chosen on the title screen. */
+  readonly tier: number;
 };
 
 const STORAGE_KEY = 'bit-cycler-settings';
-const DEFAULTS: Settings = { offset: 0, relaxed: false, eraIndex: 0, seenLessons: [] };
+const DEFAULTS: Settings = { offset: 0, relaxed: false, eraIndex: 0, seenLessons: [], tier: 1 };
 
 let current: Settings | undefined;
 

@@ -37,15 +37,17 @@ Add these to the URL, e.g. `http://localhost:8000/?scene=play&autoplay`:
 
 | Parameter | Effect |
 | --- | --- |
-| `?scene=play` | Skip the title and start the level |
+| `?scene=play` / `?scene=pipeline` | Skip the title and start tier 1 / tier 2 |
+| `?practice` | Start that scene in practice mode |
+| `?scene=briefing&lesson=tier2` | Open a lesson directly |
 | `?autoplay` | The game plays every note perfectly (demos, checking the results screen) |
 | `?era=1` … `?era=4` | Start in a given terminal era (8/16/32/64-bit look) |
 
 ## Controls
 
-Title: `Enter` play (first time: briefing → practice → play) · `B` briefing · `P` practice · `C` calibrate (then `←/→` to line the light up with the click) · `R` relaxed mode · `1–4` era.
+Title: `Enter` play (first time on a tier: briefing → practice → play) · `T` switch tier · `B` briefing · `P` practice · `C` calibrate (then `←/→` to line the light up with the click) · `R` relaxed mode · `1–4` era.
 Briefing: `Enter`/`→` next · `←` back · `Q` or `Esc` title.
-Play: `D` ALU · `F` MEM · `J` BRANCH · `Q` or `Esc` quit (Vimium swallows `Esc`, so the game also accepts `Q`) · `Enter` retry after the results screen.
+Play: `D` ALU · `F` MEM · `J` BRANCH · `Space` stall (tier 2) · `Q` or `Esc` quit (Vimium swallows `Esc`, so the game also accepts `Q`) · `Enter` retry after the results screen.
 
 ## Layout
 

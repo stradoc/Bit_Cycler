@@ -1,4 +1,5 @@
 import { Conductor } from '../audio/conductor.ts';
+import { TIERS, tierByNumber, type Tier } from '../data/tiers.ts';
 import { keyOf, onKeyDown } from '../input/keys.ts';
 import { getSettings, updateSettings } from '../settings.ts';
 import { cssColor, ERAS, TerminalLook } from '../visual/terminal.ts';
@@ -86,9 +87,14 @@ export class TitleScene extends Phaser.Scene {
         case 'Enter':
           return this.start();
         case 'B':
-          return this.scene.start('briefing', { lessonId: 'tier1' });
+          return this.scene.start('briefing', { lessonId: this.tier().lessonId });
         case 'P':
-          return this.scene.start('play', { practice: true });
+          return this.scene.start(this.tier().scene, { practice: true });
+        case 'T': {
+          const next = TIERS[(TIERS.indexOf(this.tier()) + 1) % TIERS.length];
+          updateSettings({ tier: next.number });
+          return this.renderText();
+        }
         case 'C':
           return this.toggleCalibration();
         case 'R':
@@ -109,10 +115,15 @@ export class TitleScene extends Phaser.Scene {
     });
   }
 
-  /** First time: the briefing teaches the concept before anything is played. */
+  private tier(): Tier {
+    return tierByNumber(getSettings().tier);
+  }
+
+  /** First time on a tier: the briefing teaches the concept before anything is played. */
   private start(): void {
-    if (getSettings().seenLessons.includes('tier1')) this.scene.start('play');
-    else this.scene.start('briefing', { lessonId: 'tier1' });
+    const tier = this.tier();
+    if (getSettings().seenLessons.includes(tier.lessonId)) this.scene.start(tier.scene);
+    else this.scene.start('briefing', { lessonId: tier.lessonId });
   }
 
   private restyle(): void {
@@ -128,7 +139,8 @@ export class TitleScene extends Phaser.Scene {
     const cursor = this.cursorOn ? '█' : ' ';
     this.prompt.setText(`PRESS ENTER TO START${cursor}`);
     this.options.setText(
-      `[B] BRIEFING   [P] PRACTICE   [C] CALIBRATE\n[R] RELAXED: ${settings.relaxed ? 'ON' : 'OFF'}   [1-4] ERA: ${this.look.era.name}`,
+      `[T] TIER ${this.tier().number}: ${this.tier().name}   [B] BRIEFING   [P] PRACTICE\n` +
+        `[C] CALIBRATE   [R] RELAXED: ${settings.relaxed ? 'ON' : 'OFF'}   [1-4] ERA: ${this.look.era.name}`,
     );
 
     if (!this.calibration) {

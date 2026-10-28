@@ -59,7 +59,20 @@ All Step 0 decisions are made.
 - Design doc scope section: removed fixed internal dates; replaced the dated timeline with a four-phase sequence.
 - Design doc superscalar section: corrected pairing rules. WAR is safe in in-order dual-issue; WAW and RAW block pairing; renaming matters once instructions can be reordered.
 
-### Esc didn't quit (uncommitted)
+### Tier 2: the pipeline, playable (uncommitted)
+- **Run logic** (`game/src/rhythm/pipelineRun.ts`): each beat is a cycle; the player's choice for the instruction in ID (route D/F/J or stall Space) is judged in a timing window, then the pipeline advances. Outcomes: issued, stalled (correct), wasted stall, violation (routed into a hazard: flushed), wrong unit / off-beat / missed (treated as stalls). Streak counts correct decisions; throughput = instructions completed per cycle over the last 8 cycles. 6 tests, including perfect play on SUM ARRAY = 43 cycles with a 36-decision streak.
+- **Pipeline screen** (`game/src/scenes/PipelineScene.ts`): live IF/ID/EX/MEM/WB strip (the instruction blocked by a hazard and the stage still computing its value are outlined), registers marked `<- EX` / `<- MEM` while their new value is still in flight, STALL [SPACE] under the lanes, throughput bar, struck-out notes on flush, feedback that explains each outcome (e.g. "DATA HAZARD! add READ x1 = 0 BUT addi IS STILL COMPUTING 5"). Clock 4 MHz (≈82 BPM). Results compare pipelined vs single-cycle CPU time (SUM ARRAY perfect: 10.8 µs vs 20.0 µs, 1.9× faster with CPI 2.15).
+- **Music layers** (`game/src/audio/music.ts`): bass, hi-hat, drums, arpeggio, melody, one per filled stage (Am–F–C–G). The conductor gained an `onBeat` hook so music is scheduled on the beat clock.
+- **Tier 2 lesson** (8 cards): one at a time is slow (laundry), five stages, a faster clock, data hazards, stalling, how it plays, listen to the pipeline, your score. Textbook-style timing charts drawn in `visual/diagrams.ts`.
+- **Practice** for tier 2: notes wait; first-time callouts for "no hazard: route it", "hazard: press SPACE", and taken-branch flushes; wrong choices explain instead of costing cycles.
+- **Tiers** (`game/src/data/tiers.ts`): `T` on the title switches tier 1 / 2; Enter, B and P follow the chosen tier. Saved in settings.
+- Simulator additions: `Pipeline.upcoming()` (next fetches with their future seq numbers, for drawing notes) and `stageOf()`; 1 new test (33 total).
+- Dev URL options: `?scene=pipeline`, `?practice`, `?lesson=tier2`.
+
+### Fixed while building tier 2
+- **Slow frames could misassign presses:** a key press could arrive before the frame closed the previous cycle and be applied to the wrong cycle. Presses now close every cycle that ended before their timestamp first. Autoplay and practice also step one cycle at a time (found via headless runs where autoplay stalled 57 times and practice didn't wait).
+
+### Esc didn't quit (committed in 97c44ad)
 - Cause: Vimium swallows Escape while a text field has focus (to leave insert mode), and the game keeps focus on a hidden field so Vimium doesn't steal D/F/J. The game's own Escape handling works (verified headlessly).
 - Fix: `Q` also quits / goes back (play, practice, results, briefing); the "[Q] QUIT" label is clickable. On-screen labels and README updated. Verified headlessly: `q` returns to the title.
 - `.gitignore`: added `.claude/settings.local.json` (personal Claude Code permission rules).
