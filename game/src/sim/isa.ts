@@ -62,6 +62,29 @@ export function describe(instr: Instruction): string {
   }
 }
 
+/** Registers an instruction reads. */
+export function sourceRegs(instr: Instruction): number[] {
+  switch (instr.op) {
+    case 'addi':
+    case 'lb':
+      return [instr.rs1];
+    default:
+      return [instr.rs1, instr.rs2];
+  }
+}
+
+/** Register an instruction writes, if any (stores and branches write none). */
+export function destReg(instr: Instruction): number | undefined {
+  switch (instr.op) {
+    case 'sb':
+    case 'beq':
+    case 'bne':
+      return undefined;
+    default:
+      return instr.rd;
+  }
+}
+
 export function unitOf(instr: Instruction): Unit {
   switch (instr.op) {
     case 'lb':

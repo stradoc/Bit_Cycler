@@ -34,6 +34,27 @@ export function describe(instr) {
             return `BRANCH IF NOT EQUAL: if ${x(instr.rs1)} ≠ ${x(instr.rs2)} go to ${instr.label}`;
     }
 }
+/** Registers an instruction reads. */
+export function sourceRegs(instr) {
+    switch (instr.op) {
+        case 'addi':
+        case 'lb':
+            return [instr.rs1];
+        default:
+            return [instr.rs1, instr.rs2];
+    }
+}
+/** Register an instruction writes, if any (stores and branches write none). */
+export function destReg(instr) {
+    switch (instr.op) {
+        case 'sb':
+        case 'beq':
+        case 'bne':
+            return undefined;
+        default:
+            return instr.rd;
+    }
+}
 export function unitOf(instr) {
     switch (instr.op) {
         case 'lb':

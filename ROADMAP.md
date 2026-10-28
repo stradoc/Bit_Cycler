@@ -45,14 +45,14 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 ## Phase 2: MVP
 
 ### CPU simulation
-- [ ] 5-stage pipeline model (IF, ID, EX, MEM, WB)
-- [ ] RAW hazard detection and stall (bubble insertion)
-- [ ] Forwarding unit (upgrade)
-- [ ] Branch handling: flush on mispredict; predictors none → 1-bit → 2-bit
+- [x] 5-stage pipeline model (IF, ID, EX, MEM, WB)
+- [x] RAW hazard detection and stall (bubble insertion)
+- [x] Forwarding unit (simulator option; still needs the upgrade in the shop)
+- [ ] Branch handling: flush on mispredict (done: taken-branch flush with fetch assuming not-taken); predictors none → 1-bit → 2-bit
 - [ ] L1 cache: hit/miss model with miss penalty
 - [ ] Word size: multi-chunk add-with-carry chains on narrow CPUs
 - [ ] Performance tracking: instruction count, cycles, CPI, clock period, CPU time
-- [ ] Tests: CPI matches hand-calculated examples for each hazard type
+- [x] Tests: CPI matches hand-calculated examples for each hazard type (pipeline; SUM ARRAY 43 / 35 cycles)
 
 ### Play screen
 - [ ] Five stage lanes with instructions scrolling in, registers highlighted

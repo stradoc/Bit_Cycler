@@ -59,7 +59,14 @@ All Step 0 decisions are made.
 - Design doc scope section: removed fixed internal dates; replaced the dated timeline with a four-phase sequence.
 - Design doc superscalar section: corrected pairing rules. WAR is safe in in-order dual-issue; WAW and RAW block pairing; renaming matters once instructions can be reordered.
 
-### Tempo curve (uncommitted)
+### Tier 2 pipeline simulator (uncommitted)
+- `game/src/sim/pipeline.ts`: the textbook 5-stage in-order pipeline (IF, ID, EX, MEM, WB), stepped one cycle per beat by the player's choice at ID (`issue` or `stall`). Register file written in the first half of WB, read in the second half of ID.
+- Hazard detection (`hazard()`, `stallsNeeded()`): no forwarding 2 / 1 / 0 stalls for a dependency 1 / 2 / 3+ back; with forwarding ALU→ALU 0, load-use 1; branches (resolved in ID) need operands a stage earlier (ALU 1, load 2 / 1).
+- Taken branches flush the instruction fetched behind them (fetch assumes not-taken). Issuing into a hazard reports the stale vs correct value, flushes, and refetches; the program still ends correct. Unnecessary stalls are reported as wasted cycles.
+- Reports CPI (including fill cycles), occupancy (for music layers), flushed slots (for struck-out notes). `sourceRegs()` / `destReg()` added to `isa.ts`.
+- `tests/pipeline.test.ts` (8 tests, 26 total): stall table, fill cost (N + 4), each dependency distance, forwarding, branch flush, hazard violation, wasted stall, and SUM ARRAY hand counts: **43 cycles / CPI 2.15 without forwarding, 35 / CPI 1.75 with** (20 instructions + 4 fill + 3 flushes + 16 or 8 stalls).
+
+### Tempo curve (committed in a815cde)
 - `game/src/rhythm/tempo.ts`: `tempoForClock(mhz, relaxed)`; tier 1 now derives its tempo from its 1 MHz clock (75 BPM, 60 relaxed/practice; was 80 / 64). New test (18 total).
 
 ### Tutorials: briefing → practice → play (committed in 089dda9)
