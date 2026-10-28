@@ -1,0 +1,21 @@
+{
+  "name": "bit-cycler",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tycoon + rhythm game where every beat is a CPU clock cycle (CSC 3501)",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "postinstall": "node -e \"fs.mkdirSync('game/lib',{recursive:true});fs.copyFileSync('node_modules/phaser/dist/phaser.min.js','game/lib/phaser.min.js')\"",
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "check": "tsc -p tests --noEmit",
+    "test": "node --test \"tests/**/*.test.ts\"",
+    "serve": "python3 -m http.server 8000 --directory game"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "phaser": "3.90.0",
+    "typescript": "7.0.2"
+  }
+}
