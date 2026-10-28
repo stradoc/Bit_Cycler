@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { PROGRAMS } from '../game/src/data/programs.ts';
 import { judge, NORMAL_WINDOWS } from '../game/src/rhythm/judge.ts';
 import { SingleCycleRun } from '../game/src/rhythm/run.ts';
+import { tempoForClock } from '../game/src/rhythm/tempo.ts';
 import { assemble } from '../game/src/sim/assembler.ts';
 import { Cpu } from '../game/src/sim/cpu.ts';
 import { unitOf } from '../game/src/sim/isa.ts';
@@ -76,4 +77,12 @@ test('CPI reflects stalls: 20 instructions with 5 misses = 25 cycles', () => {
   }
   assert.equal(run.cycles, 25);
   assert.equal(run.cpi, 25 / 20);
+});
+
+test('tempo grows 12 BPM per 10x clock, from 75 BPM at 1 MHz', () => {
+  assert.equal(tempoForClock(1), 75);
+  assert.equal(tempoForClock(10), 87);
+  assert.equal(tempoForClock(1000), 111);
+  assert.ok(Math.abs(tempoForClock(4000) - 118.2) < 0.1);
+  assert.equal(tempoForClock(1, true), 60); // relaxed / practice
 });

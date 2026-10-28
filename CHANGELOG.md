@@ -21,6 +21,9 @@ Technology and design decisions, with the reason for each (see `RULES.md` rule 3
 | 2026-10-28 | Design direction: **player is the control unit**; each tier adds one decision (route → stall → predict → chord) and upgrades automate it | Players learn what each piece of hardware does by doing its job by hand first |
 | 2026-10-28 | **Briefing → practice → play** for every concept; one idea per card (picture, ≤ 3 short lines, an analogy) | Concepts and gameplay must be easy to digest before they're tested |
 | 2026-10-28 | Streak feel for pipelining: **"pipeline fill"**. The clock (beat) never changes; correct hits keep the pipeline full (one instruction completes per beat, music builds one layer per occupied stage); mistakes flush it (struck-out notes, a gap of bubbles, layers drop out) and it refills | A literal tempo change on mistakes would teach something false (hazards don't slow the clock). Turbo/heat could later cover real clock changes |
+| 2026-10-28 | **Tempo follows the clock on a log scale:** 75 BPM at 1 MHz, +12 BPM per 10× clock (~118 BPM at 4 GHz); relaxed/practice at 80% | Real clocks grow ~4000×; a gentle, capped curve keeps the late game playable. CPU-time math uses the real period |
+| 2026-10-28 | **Clock is a dial** set before each program: upgrades raise the maximum, players may underclock | Makes CPU time = IC × CPI × period a player choice (faster clock vs. more stalls), like real overclocking instability; players control difficulty |
+| 2026-10-28 | **Overclock red zone** above the rated clock: faster and better-paid, but builds heat; overheating throttles mid-song; cooling widens the zone | Matches real overclocking (performance traded for heat and stability); ties the clock dial, heat meter and cooling upgrades together |
 | 2026-10-28 | All keyboard input via `game/src/input/keys.ts`; Phaser's keyboard plugin disabled | Phaser re-processes its per-frame key queue on every new key event, so two key events in one frame fired handlers twice (found when briefing pages skipped) |
 | 2026-10-28 | Art direction: 8/16-bit pixel art, ~480×270 internal resolution (now 960×540, see above), electronics effects, **old-terminal / green-phosphor CRT look** | Fits the hardware theme; visuals can evolve with CPU tier (presented as era styling, not a technical claim) |
 
@@ -56,7 +59,10 @@ All Step 0 decisions are made.
 - Design doc scope section: removed fixed internal dates; replaced the dated timeline with a four-phase sequence.
 - Design doc superscalar section: corrected pairing rules. WAR is safe in in-order dual-issue; WAW and RAW block pairing; renaming matters once instructions can be reordered.
 
-### Tutorials: briefing → practice → play (uncommitted)
+### Tempo curve (uncommitted)
+- `game/src/rhythm/tempo.ts`: `tempoForClock(mhz, relaxed)`; tier 1 now derives its tempo from its 1 MHz clock (75 BPM, 60 relaxed/practice; was 80 / 64). New test (18 total).
+
+### Tutorials: briefing → practice → play (committed in 089dda9)
 - **Briefing scene** (`game/src/scenes/BriefingScene.ts`): paged concept cards, ←/→/Enter/Esc, page counter. Lesson content is data (`game/src/data/lessons.ts`); diagrams are drawn in the current era's style (`game/src/visual/diagrams.ts`).
 - **Tier 1 lesson** (6 cards): a CPU follows instructions, the clock, three kinds of work (functional units), registers and memory, how it plays, your score (CPI and CPU time).
 - **Practice mode** (`PlayScene` with `{ practice: true }`): the chart holds each note on the hit line until it's played (the clock keeps ticking); the first time each instruction appears, a callout explains it in plain words (`describe()` in `isa.ts`, tested); a wrong key explains instead of stalling. Ends with "now play for real".

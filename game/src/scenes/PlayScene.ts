@@ -3,6 +3,7 @@ import { blip } from '../audio/sfx.ts';
 import { PROGRAMS } from '../data/programs.ts';
 import { NORMAL_WINDOWS, RELAXED_WINDOWS } from '../rhythm/judge.ts';
 import { SingleCycleRun, type NoteResult } from '../rhythm/run.ts';
+import { tempoForClock } from '../rhythm/tempo.ts';
 import { keyOf, onKeyDown } from '../input/keys.ts';
 import { getSettings } from '../settings.ts';
 import { assemble } from '../sim/assembler.ts';
@@ -11,11 +12,9 @@ import { describe, format, tokens, UNIT_ROLES, UNITS, unitOf, type Instruction, 
 import { codeLine } from '../visual/codeLine.ts';
 import { cssColor, ERAS, TerminalLook } from '../visual/terminal.ts';
 
-// Tier 1 clock. Kept slow for learning; clock-speed upgrades will raise it.
-const BPM = 80;
-const RELAXED_BPM = 64;
-const COUNT_IN = 4;
+// Tier 1 clock. Clock-speed upgrades will raise it (and the tempo with it).
 const CLOCK_MHZ = 1;
+const COUNT_IN = 4;
 const REGISTER_COUNT = 8;
 
 const LANE_X0 = 24;
@@ -101,7 +100,7 @@ export class PlayScene extends Phaser.Scene {
     const spec = PROGRAMS[0];
     const program = assemble(spec.source, REGISTER_COUNT);
     const easy = settings.relaxed || this.practice;
-    const bpm = easy ? RELAXED_BPM : BPM;
+    const bpm = tempoForClock(CLOCK_MHZ, easy);
     const windows = easy ? RELAXED_WINDOWS : NORMAL_WINDOWS;
     this.run = new SingleCycleRun(new Cpu(program, 8, spec.memory, REGISTER_COUNT), COUNT_IN, 60 / bpm, windows);
 

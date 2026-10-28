@@ -58,7 +58,11 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 - [ ] Five stage lanes with instructions scrolling in, registers highlighted
 - [ ] Event notes: hazard (stall/forward), branch fork, cache-miss hold, wide-arithmetic chain
 - [ ] Wrong or missed input → slow path (extra stall), never a fail state
-- [ ] Clock speed sets the tempo; heat meter and thermal throttling
+- [x] Clock speed sets the tempo: 75 BPM at 1 MHz, +12 BPM per 10× clock (`rhythm/tempo.ts`)
+- [ ] Clock dial before each program: choose any clock up to the purchased maximum; results show the trade-off (shorter period vs. more stalls)
+- [ ] Underclocking below the tier's base clock (e.g. 0.25 MHz ≈ 68 BPM); `tempoForClock` currently floors at 1 MHz
+- [ ] **Overclock red zone:** the dial continues past the rated maximum. Shorter period and better pay, but heat builds every beat; overheating **throttles** (clock drops mid-song until it cools). Cooling upgrades widen the safe red zone
+- [ ] Heat meter and thermal throttling (shared by the red zone and later clock upgrades)
 
 ### Memory and storage
 - [ ] RAM as page frames; page fault plays as a long hold note
