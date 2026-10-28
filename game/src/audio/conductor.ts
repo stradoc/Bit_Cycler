@@ -1,3 +1,4 @@
+import { blip } from './sfx.ts';
 import { beatAtTime, timeOfBeat } from './timing.ts';
 
 // How far ahead (seconds) beats are scheduled, and how often (ms) we top up.
@@ -12,6 +13,7 @@ export class Conductor {
   readonly bpm: number;
   /** Player calibration (seconds). Positive = the player hears audio later than reported. */
   offset = 0;
+  clickVolume = 0.15;
   private startTime = 0;
   private nextBeat = 0;
   private timer: ReturnType<typeof setInterval> | undefined;
@@ -36,18 +38,28 @@ export class Conductor {
 
   /** Fractional beat the player is hearing right now. */
   currentBeat(): number {
-    return beatAtTime(this.heardTime() - this.offset, this.startTime, this.bpm);
+    return this.beatAt(performance.now());
   }
 
-  /** Audio-clock time of the sound leaving the speakers right now. */
-  heardTime(): number {
+  /**
+   * Fractional beat the player was hearing at `performanceMs` (a performance.now()
+   * timestamp). Pass a KeyboardEvent's timeStamp to judge a press at the exact
+   * moment it happened, independent of frame rate.
+   */
+  beatAt(performanceMs: number): number {
+    return beatAtTime(this.heardTime(performanceMs) - this.offset, this.startTime, this.bpm);
+  }
+
+  /** Audio-clock time of the sound leaving the speakers at `performanceMs` (default: now). */
+  heardTime(performanceMs = performance.now()): number {
     // getOutputTimestamp() maps the sample currently at the output device to
-    // performance.now(); extrapolate from it to this exact moment.
+    // performance.now(); extrapolate from it to the requested moment.
     const ts = this.ctx.getOutputTimestamp?.();
     if (ts?.contextTime && ts.performanceTime) {
-      return ts.contextTime + (performance.now() - ts.performanceTime) / 1000;
+      return ts.contextTime + (performanceMs - ts.performanceTime) / 1000;
     }
-    return this.ctx.currentTime - (this.ctx.outputLatency || 0);
+    const latency = this.ctx.outputLatency || 0;
+    return this.ctx.currentTime - latency - (performance.now() - performanceMs) / 1000;
   }
 
   private schedule(): void {
@@ -58,14 +70,6 @@ export class Conductor {
   }
 
   private click(beat: number, time: number): void {
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-    osc.type = 'square';
-    osc.frequency.value = beat % 4 === 0 ? 1760 : 880;
-    gain.gain.setValueAtTime(0.15, time);
-    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.05);
-    osc.connect(gain).connect(this.ctx.destination);
-    osc.start(time);
-    osc.stop(time + 0.06);
+    blip(this.ctx, beat % 4 === 0 ? 1760 : 880, time, 0.05, 'square', this.clickVolume);
   }
 }

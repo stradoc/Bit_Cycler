@@ -31,6 +31,22 @@ npm run check      # type-check the tests too
 npm test           # run the simulation tests
 ```
 
+## Dev shortcuts
+
+Add these to the URL, e.g. `http://localhost:8000/?scene=play&autoplay`:
+
+| Parameter | Effect |
+| --- | --- |
+| `?scene=play` | Skip the title and start the level |
+| `?autoplay` | The game plays every note perfectly (demos, checking the results screen) |
+| `?era=1` … `?era=4` | Start in a given terminal era (8/16/32/64-bit look) |
+
+## Controls
+
+Title: `Enter` play (first time: briefing → practice → play) · `B` briefing · `P` practice · `C` calibrate (then `←/→` to line the light up with the click) · `R` relaxed mode · `1–4` era.
+Briefing: `Enter`/`→` next · `←` back · `Esc` title.
+Play: `D` ALU · `F` MEM · `J` BRANCH · `Esc` quit · `Enter` retry after the results screen.
+
 ## Layout
 
 | Path | What it is |

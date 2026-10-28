@@ -1,21 +1,22 @@
 import { Conductor } from '../audio/conductor.ts';
+import { keyOf, onKeyDown } from '../input/keys.ts';
+import { getSettings, updateSettings } from '../settings.ts';
 import { cssColor, ERAS, TerminalLook } from '../visual/terminal.ts';
 
-const BPM = 120;
+const CALIBRATION_BPM = 120;
 const OFFSET_STEP_MS = 5;
 const CURSOR_BLINK_MS = 530;
-const ERA_KEYS = ['ONE', 'TWO', 'THREE', 'FOUR'] as const;
 
-/** Placeholder title: proves tsc -> Phaser -> WebGL FX -> Web Audio all work together. */
+/** Title screen: start the game, calibrate audio, toggle relaxed mode, preview eras. */
 export class TitleScene extends Phaser.Scene {
-  private conductor: Conductor | undefined;
   private look!: TerminalLook;
-  private title!: Phaser.GameObjects.Text;
+  private calibration: Conductor | undefined;
+  private texts: Phaser.GameObjects.Text[] = [];
   private ledBase!: Phaser.GameObjects.Rectangle;
   private ledLight!: Phaser.GameObjects.Rectangle;
   private prompt!: Phaser.GameObjects.Text;
+  private options!: Phaser.GameObjects.Text;
   private readout!: Phaser.GameObjects.Text;
-  private promptText = 'CLICK OR PRESS ANY KEY';
   private cursorOn = true;
   private lastBeat = -1;
 
@@ -23,109 +24,148 @@ export class TitleScene extends Phaser.Scene {
     super('title');
   }
 
+  init(): void {
+    this.calibration = undefined;
+    this.texts = [];
+    this.lastBeat = -1;
+  }
+
   create(): void {
     const { width, height } = this.scale;
-    const ledY = height / 2 + 20;
-    const style = { fontFamily: 'monospace' };
+    const ledY = height / 2 + 24;
+    const text = (y: number, size: number) => {
+      const t = this.add.text(width / 2, y, '', { fontFamily: 'monospace', fontSize: `${size}px` }).setOrigin(0.5);
+      this.texts.push(t);
+      return t;
+    };
 
-    this.title = this.add.text(width / 2, height / 2 - 30, 'BIT CYCLER', { ...style, fontSize: '32px' }).setOrigin(0.5);
+    text(height / 2 - 80, 64).setText('BIT CYCLER');
+    this.ledBase = this.add.rectangle(width / 2, ledY, 20, 20).setVisible(false);
+    this.ledLight = this.add.rectangle(width / 2, ledY, 20, 20).setAlpha(0);
+    this.prompt = text(height / 2 + 80, 20);
+    this.options = text(height / 2 + 134, 16).setAlpha(0.7).setAlign('center').setLineSpacing(8);
+    this.readout = text(height - 32, 16).setAlpha(0.6);
 
-    // A dim LED that is always visible, with a bright light on top that flashes each beat.
-    this.ledBase = this.add.rectangle(width / 2, ledY, 10, 10);
-    this.ledLight = this.add.rectangle(width / 2, ledY, 10, 10).setAlpha(0);
-
-    this.prompt = this.add.text(width / 2, height / 2 + 50, '', { ...style, fontSize: '10px' }).setOrigin(0.5);
-    this.readout = this.add.text(width / 2, height - 16, '', { ...style, fontSize: '8px' }).setOrigin(0.5).setAlpha(0.6);
-
-    // ?era=1..4 in the URL picks the starting look (handy for previews).
+    // ?era=1..4 in the URL overrides the saved era (handy for previews).
     const eraParam = Number(new URLSearchParams(location.search).get('era'));
-    const startEra = ERAS.at(eraParam - 1) ?? ERAS[0];
-    this.look = new TerminalLook(this, startEra);
+    if (eraParam >= 1 && eraParam <= ERAS.length) updateSettings({ eraIndex: eraParam - 1 });
+    this.look = new TerminalLook(this, ERAS.at(getSettings().eraIndex) ?? ERAS[0]);
     this.restyle();
-    this.renderPrompt();
 
     this.time.addEvent({
       delay: CURSOR_BLINK_MS,
       loop: true,
       callback: () => {
         this.cursorOn = !this.cursorOn;
-        this.renderPrompt();
+        this.renderText();
       },
     });
 
-    // Browsers only allow audio after a user gesture.
-    this.input.once('pointerdown', () => this.startClock());
-    this.input.keyboard?.once('keydown', () => this.startClock());
-    this.input.keyboard?.on('keydown-LEFT', () => this.adjustOffset(-OFFSET_STEP_MS));
-    this.input.keyboard?.on('keydown-RIGHT', () => this.adjustOffset(OFFSET_STEP_MS));
-    // Preview eras until CPU upgrades exist to drive them.
-    ERA_KEYS.forEach((key, i) => {
-      this.input.keyboard?.on(`keydown-${key}`, () => {
-        this.look.setEra(ERAS[i]);
-        this.restyle();
-      });
-    });
+    this.bindKeys();
+    this.events.once('shutdown', () => this.calibration?.stop());
   }
 
   update(): void {
     this.look.update();
-    if (!this.conductor) return;
-    const beat = Math.floor(this.conductor.currentBeat());
+    if (!this.calibration) return;
+    const beat = Math.floor(this.calibration.currentBeat());
     if (beat < 0 || beat === this.lastBeat) return;
     this.lastBeat = beat;
 
     // Every beat flashes fully; the downbeat also pulses larger.
-    const downbeat = beat % 4 === 0;
     this.tweens.killTweensOf(this.ledLight);
-    this.ledLight.setAlpha(1).setScale(downbeat ? 1.6 : 1);
+    this.ledLight.setAlpha(1).setScale(beat % 4 === 0 ? 1.6 : 1);
     this.tweens.add({ targets: this.ledLight, alpha: 0, scale: 1, duration: 180 });
+  }
+
+  private bindKeys(): void {
+    this.input.once('pointerdown', () => this.start());
+    onKeyDown(this, (event) => {
+      const key = keyOf(event);
+      switch (key) {
+        case 'Enter':
+          return this.start();
+        case 'B':
+          return this.scene.start('briefing', { lessonId: 'tier1' });
+        case 'P':
+          return this.scene.start('play', { practice: true });
+        case 'C':
+          return this.toggleCalibration();
+        case 'R':
+          updateSettings({ relaxed: !getSettings().relaxed });
+          return this.renderText();
+        case 'ArrowLeft':
+          return this.adjustOffset(-OFFSET_STEP_MS);
+        case 'ArrowRight':
+          return this.adjustOffset(OFFSET_STEP_MS);
+      }
+      // 1-4 preview eras until CPU upgrades exist to drive them.
+      const era = ERAS.at(Number(key) - 1);
+      if (era && /^[1-9]$/.test(key)) {
+        updateSettings({ eraIndex: Number(key) - 1 });
+        this.look.setEra(era);
+        this.restyle();
+      }
+    });
+  }
+
+  /** First time: the briefing teaches the concept before anything is played. */
+  private start(): void {
+    if (getSettings().seenLessons.includes('tier1')) this.scene.start('play');
+    else this.scene.start('briefing', { lessonId: 'tier1' });
   }
 
   private restyle(): void {
     const { fg, dim } = this.look.era;
-    for (const text of [this.title, this.prompt, this.readout]) text.setColor(cssColor(fg));
+    for (const t of this.texts) t.setColor(cssColor(fg));
     this.ledBase.setFillStyle(dim);
     this.ledLight.setFillStyle(fg);
-    this.updateReadout();
+    this.renderText();
   }
 
-  private renderPrompt(): void {
-    this.prompt.setText(`${this.promptText}${this.cursorOn ? '█' : ' '}`);
-  }
+  private renderText(): void {
+    const settings = getSettings();
+    const cursor = this.cursorOn ? '█' : ' ';
+    this.prompt.setText(`PRESS ENTER TO START${cursor}`);
+    this.options.setText(
+      `[B] BRIEFING   [P] PRACTICE   [C] CALIBRATE\n[R] RELAXED: ${settings.relaxed ? 'ON' : 'OFF'}   [1-4] ERA: ${this.look.era.name}`,
+    );
 
-  private startClock(): void {
-    if (this.conductor) return;
-    if (!(this.sound instanceof Phaser.Sound.WebAudioSoundManager)) {
-      this.promptText = 'WEB AUDIO NOT AVAILABLE';
-      this.renderPrompt();
+    if (!this.calibration) {
+      this.readout.setText('');
       return;
     }
+    const latencyMs = Math.round((this.calibration.ctx.currentTime - this.calibration.heardTime()) * 1000);
+    const offsetMs = Math.round(settings.offset * 1000);
+    this.readout.setText(
+      `LATENCY ${latencyMs} MS   OFFSET ${offsetMs > 0 ? '+' : ''}${offsetMs} MS   [<-/->] ALIGN LIGHT TO CLICK`,
+    );
+  }
+
+  private toggleCalibration(): void {
+    if (this.calibration) {
+      this.calibration.stop();
+      this.calibration = undefined;
+      this.ledBase.setVisible(false);
+      this.renderText();
+      return;
+    }
+    if (!(this.sound instanceof Phaser.Sound.WebAudioSoundManager)) return;
     const ctx = this.sound.context;
     void ctx.resume();
-    this.conductor = new Conductor(ctx, BPM);
-    this.conductor.start();
-    this.promptText = `CLOCK: ${BPM} BPM`;
-    this.renderPrompt();
-    this.updateReadout();
-    // Refresh the latency figure as the audio device settles.
-    this.time.addEvent({ delay: 500, loop: true, callback: () => this.updateReadout() });
+    this.calibration = new Conductor(ctx, CALIBRATION_BPM);
+    this.calibration.offset = getSettings().offset;
+    this.calibration.start();
+    this.lastBeat = -1;
+    this.ledBase.setVisible(true);
+    this.renderText();
   }
 
   private adjustOffset(deltaMs: number): void {
-    if (!this.conductor) return;
-    this.conductor.offset += deltaMs / 1000;
-    this.updateReadout();
-  }
-
-  private updateReadout(): void {
-    const era = `${this.look.era.name} TERMINAL [1-4]`;
-    if (!this.conductor) {
-      this.readout.setText(era);
-      return;
-    }
-    const latencyMs = Math.round((this.conductor.ctx.currentTime - this.conductor.heardTime()) * 1000);
-    const offsetMs = Math.round(this.conductor.offset * 1000);
-    const sign = offsetMs > 0 ? '+' : '';
-    this.readout.setText(`${era}   LATENCY ${latencyMs} MS   OFFSET ${sign}${offsetMs} MS [<-/->]`);
+    if (!this.calibration) return;
+    const offset = getSettings().offset + deltaMs / 1000;
+    updateSettings({ offset });
+    this.calibration.offset = offset;
+    this.renderText();
   }
 }

@@ -2,11 +2,18 @@
 // green-phosphor CRT to a flat modern terminal. This is era styling, not a
 // claim that word size affects the display.
 
+import type { TokenKind } from '../sim/isa.ts';
+
+/** Color per syntax token kind. */
+export type SyntaxColors = Readonly<Record<TokenKind, number>>;
+
 export type Era = {
   readonly name: string;
   readonly fg: number; // phosphor / text color
   readonly dim: number; // unlit or secondary elements
   readonly bg: number;
+  // Monochrome CRTs highlight with brightness; color arrives in later eras.
+  readonly syntax: SyntaxColors;
   readonly bloom: number; // 0 = none
   readonly scanlines: number; // overlay opacity, 0 = none
   readonly curve: number; // barrel distortion, 0 = flat
@@ -15,10 +22,26 @@ export type Era = {
 };
 
 export const ERAS: readonly Era[] = [
-  { name: '8-BIT', fg: 0x39ff14, dim: 0x0f4a06, bg: 0x030803, bloom: 1.8, scanlines: 0.25, curve: 0.04, vignette: 0.3, flicker: 0.02 },
-  { name: '16-BIT', fg: 0x8cff7a, dim: 0x1f4d1a, bg: 0x040904, bloom: 1.2, scanlines: 0.15, curve: 0.02, vignette: 0.2, flicker: 0 },
-  { name: '32-BIT', fg: 0xf0f5f0, dim: 0x3c453c, bg: 0x0a0c0a, bloom: 0.6, scanlines: 0.06, curve: 0, vignette: 0.1, flicker: 0 },
-  { name: '64-BIT', fg: 0xe8e8e8, dim: 0x45474d, bg: 0x1a1b1e, bloom: 0, scanlines: 0, curve: 0, vignette: 0, flicker: 0 },
+  {
+    name: '8-BIT', fg: 0x39ff14, dim: 0x0f4a06, bg: 0x030803,
+    syntax: { op: 0x39ff14, reg: 0x2ccc10, num: 0x1f9a0b, label: 0x1f9a0b, punct: 0x177508 },
+    bloom: 1.8, scanlines: 0.25, curve: 0.02, vignette: 0.3, flicker: 0.02,
+  },
+  {
+    name: '16-BIT', fg: 0x8cff7a, dim: 0x1f4d1a, bg: 0x040904,
+    syntax: { op: 0x8cff7a, reg: 0x70d661, num: 0x52ab45, label: 0x52ab45, punct: 0x3e8034 },
+    bloom: 1.2, scanlines: 0.15, curve: 0.01, vignette: 0.2, flicker: 0,
+  },
+  {
+    name: '32-BIT', fg: 0xf0f5f0, dim: 0x3c453c, bg: 0x0a0c0a,
+    syntax: { op: 0xffffff, reg: 0x9fd8dc, num: 0xe6d49a, label: 0xd4b4e6, punct: 0x8a948a },
+    bloom: 0.6, scanlines: 0.06, curve: 0, vignette: 0.1, flicker: 0,
+  },
+  {
+    name: '64-BIT', fg: 0xe8e8e8, dim: 0x45474d, bg: 0x1a1b1e,
+    syntax: { op: 0xffffff, reg: 0x56d4dd, num: 0xe5c07b, label: 0xc678dd, punct: 0x8a8f98 },
+    bloom: 0, scanlines: 0, curve: 0, vignette: 0, flicker: 0,
+  },
 ];
 
 export function cssColor(color: number): string {

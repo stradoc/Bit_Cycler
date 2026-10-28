@@ -31,13 +31,16 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 
 - [x] Folder skeleton: `index.html`, entry script, empty README
 - [x] Conductor: audio-clock beat scheduling with a metronome click (confirm sync by ear in a real browser)
-- [ ] Input judgment: Perfect / Good / Miss windows, plus an audio latency calibration offset
-- [ ] Note highway: one lane, notes scroll in on the beat
-- [ ] Tier 1 CPU: single-cycle model runs a tiny program, one instruction per beat
-- [ ] Register panel shows values changing as instructions execute
-- [ ] Relaxed mode toggle (wide windows, pipeline waits for input)
+- [x] Input judgment: Perfect / Good / Miss windows, plus an audio latency calibration offset
+- [x] Note highway: 3 lanes (ALU / MEM / BRANCH); route each instruction to its unit on the beat
+- [x] Tier 1 CPU: single-cycle model runs a program, one instruction per beat
+- [x] Register panel shows values changing as instructions execute (plus memory and program listing)
+- [x] Relaxed mode toggle (wider windows, slower tempo)
+- [ ] Relaxed mode: pipeline waits for input instead of stalling
+- [ ] Playtest in a real browser and tune timing windows
+- [ ] Full-length song (~60 s): longer program or several programs back to back
 
-**Done when:** a 60-second tier 1 song is playable, instructions visibly execute on the beat, and registers update correctly.
+**Done when:** a 60-second tier 1 song is playable, instructions visibly execute on the beat, and registers update correctly. (Currently ~15 s.)
 
 ## Phase 2: MVP
 
@@ -80,9 +83,24 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 - [x] Terminal look with four eras (green CRT → modern terminal), previewable with keys 1–4
 - [ ] Drive the era from the player's CPU word size instead of the preview keys
 
-### Education
-- [ ] Short tutorial the first time each mechanic appears
+### Education: briefing → practice → play for every concept
+- [x] Briefing system: paged concept cards (picture, ≤ 3 short lines, an analogy, then "how it plays")
+- [x] Practice mode: notes wait at the hit line, first-time callouts explain each instruction, wrong keys explain instead of stalling
+- [x] Tier 1 lesson: what a CPU does, the clock, functional units, registers vs memory, how it plays, scoring
+- [ ] Tier 2 lesson: pipelining (laundry analogy), data hazards, stalls
+- [ ] Tier 3 lessons: forwarding, branch prediction
+- [ ] Storage lessons: RAM / page faults, HDD
 - [ ] Track hazard-decision accuracy (learning objective 1) and show it after each contract
+
+### Tier 2–3 play screen (design: player is the control unit)
+- [ ] Pipeline strip above the hit line (IF ID EX MEM WB), advancing each beat; in-flight destination registers glow
+- [ ] "Pipeline fill" feel: clock never changes; music adds one layer per occupied stage; a flush strikes out in-flight notes, leaves a gap of bubbles and drops layers, then refills; live throughput (instructions completed per cycle) meter
+- [ ] STALL key (Space) inserts a bubble; stall rules follow the textbook 5-stage pipeline (distance 1 → 2 stalls, distance 2 → 1)
+- [ ] Routing into a hazard shows the stale value read (red) next to the correct one, then flushes
+- [ ] Forwarding upgrade: ALU→ALU needs 0 stalls, load-use needs 1
+- [ ] Branch prediction keys: J = predict not taken, K = predict taken; mispredict strikes out wrong-path notes
+- [ ] Results compare single-cycle vs pipelined CPU time (CPI up, period down, faster overall)
+- [ ] Run logic accepts several presses per beat (ready for superscalar chords later)
 
 **Done when:** a new player can go from tier 1 to tier 3 and buy an HDD in one ~30-minute session, the CPI numbers are verified by tests, and the game runs from a plain static server.
 
