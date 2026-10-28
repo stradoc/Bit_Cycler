@@ -44,8 +44,8 @@ Add these to the URL, e.g. `http://localhost:8000/?scene=play&autoplay`:
 ## Controls
 
 Title: `Enter` play (first time: briefing → practice → play) · `B` briefing · `P` practice · `C` calibrate (then `←/→` to line the light up with the click) · `R` relaxed mode · `1–4` era.
-Briefing: `Enter`/`→` next · `←` back · `Esc` title.
-Play: `D` ALU · `F` MEM · `J` BRANCH · `Esc` quit · `Enter` retry after the results screen.
+Briefing: `Enter`/`→` next · `←` back · `Q` or `Esc` title.
+Play: `D` ALU · `F` MEM · `J` BRANCH · `Q` or `Esc` quit (Vimium swallows `Esc`, so the game also accepts `Q`) · `Enter` retry after the results screen.
 
 ## Layout
 

@@ -59,7 +59,12 @@ All Step 0 decisions are made.
 - Design doc scope section: removed fixed internal dates; replaced the dated timeline with a four-phase sequence.
 - Design doc superscalar section: corrected pairing rules. WAR is safe in in-order dual-issue; WAW and RAW block pairing; renaming matters once instructions can be reordered.
 
-### Tier 2 pipeline simulator (uncommitted)
+### Esc didn't quit (uncommitted)
+- Cause: Vimium swallows Escape while a text field has focus (to leave insert mode), and the game keeps focus on a hidden field so Vimium doesn't steal D/F/J. The game's own Escape handling works (verified headlessly).
+- Fix: `Q` also quits / goes back (play, practice, results, briefing); the "[Q] QUIT" label is clickable. On-screen labels and README updated. Verified headlessly: `q` returns to the title.
+- `.gitignore`: added `.claude/settings.local.json` (personal Claude Code permission rules).
+
+### Tier 2 pipeline simulator (committed in 467e366)
 - `game/src/sim/pipeline.ts`: the textbook 5-stage in-order pipeline (IF, ID, EX, MEM, WB), stepped one cycle per beat by the player's choice at ID (`issue` or `stall`). Register file written in the first half of WB, read in the second half of ID.
 - Hazard detection (`hazard()`, `stallsNeeded()`): no forwarding 2 / 1 / 0 stalls for a dependency 1 / 2 / 3+ back; with forwarding ALU→ALU 0, load-use 1; branches (resolved in ID) need operands a stage earlier (ALU 1, load 2 / 1).
 - Taken branches flush the instruction fetched behind them (fetch assumes not-taken). Issuing into a hazard reports the stale vs correct value, flushes, and refetches; the program still ends correct. Unnecessary stalls are reported as wasted cycles.

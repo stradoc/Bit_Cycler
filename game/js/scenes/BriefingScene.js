@@ -27,7 +27,8 @@ export class BriefingScene extends Phaser.Scene {
                 this.next();
             else if (key === 'ArrowLeft')
                 this.turn(-1);
-            else if (key === 'Escape')
+            // Q too: Vimium-style extensions swallow Escape while a text field has focus.
+            else if (key === 'Escape' || key === 'Q')
                 this.scene.start('title');
         });
     }
@@ -76,7 +77,7 @@ export class BriefingScene extends Phaser.Scene {
         this.layer.add(drawDiagram(this, page.diagram, cx, 205, this.look.era));
         page.lines.forEach((line, i) => text(cx, 340 + i * 32, line, 20));
         text(cx, 450, page.analogy, 18, 0.75);
-        text(cx, 508, last ? '[<-] BACK      [ENTER] START PRACTICE' : '[<-] BACK      [ENTER] NEXT      [ESC] SKIP', 16, 0.6);
+        text(cx, 508, last ? '[<-] BACK      [ENTER] START PRACTICE' : '[<-] BACK      [ENTER] NEXT      [Q] SKIP', 16, 0.6);
     }
 }
 //# sourceMappingURL=BriefingScene.js.map

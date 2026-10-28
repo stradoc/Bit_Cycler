@@ -217,7 +217,10 @@ export class PlayScene extends Phaser.Scene {
     this.statsText = this.text(PANEL_X, y, '');
     y += 28;
     this.feedback = this.text(PANEL_X, y, this.practice ? 'PRACTICE: NOTES WAIT\nFOR YOU' : 'GET READY...', 20);
-    this.text(PANEL_X, 512, '[ESC] QUIT').setAlpha(0.5);
+    this.text(PANEL_X, 512, '[Q] QUIT')
+      .setAlpha(0.5)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => this.scene.start('title'));
 
     this.refreshPanel();
   }
@@ -232,7 +235,8 @@ export class PlayScene extends Phaser.Scene {
     if (unit) {
       event.preventDefault();
       this.press(unit, this.chartBeat(event.timeStamp));
-    } else if (event.key === 'Escape') {
+    } else if (event.key === 'Escape' || keyOf(event) === 'Q') {
+      // Q too: Vimium-style extensions swallow Escape while a text field has focus.
       this.scene.start('title');
     } else if (event.key === 'Enter' && this.finished) {
       this.scene.restart({ practice: false });
@@ -362,7 +366,7 @@ export class PlayScene extends Phaser.Scene {
       'NOW PLAY FOR REAL: NOTES WON\'T WAIT,',
       'SO HIT EACH ONE ON THE BEAT.',
       '',
-      '[ENTER] PLAY    [ESC] TITLE',
+      '[ENTER] PLAY    [Q] TITLE',
     ] : [
       'PROGRAM COMPLETE',
       '',
@@ -377,7 +381,7 @@ export class PlayScene extends Phaser.Scene {
       '',
       `PERFECT ${counts.PERFECT}   GOOD ${counts.GOOD}   MISS ${counts.MISS}`,
       '',
-      '[ENTER] RETRY    [ESC] TITLE',
+      '[ENTER] RETRY    [Q] TITLE',
     ];
     const { width, height } = this.scale;
     const { fg, bg } = this.look.era;

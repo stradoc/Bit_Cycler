@@ -30,7 +30,8 @@ export class BriefingScene extends Phaser.Scene {
       const key = keyOf(event);
       if (key === 'Enter' || key === ' ' || key === 'ArrowRight') this.next();
       else if (key === 'ArrowLeft') this.turn(-1);
-      else if (key === 'Escape') this.scene.start('title');
+      // Q too: Vimium-style extensions swallow Escape while a text field has focus.
+      else if (key === 'Escape' || key === 'Q') this.scene.start('title');
     });
   }
 
@@ -88,7 +89,7 @@ export class BriefingScene extends Phaser.Scene {
     text(
       cx,
       508,
-      last ? '[<-] BACK      [ENTER] START PRACTICE' : '[<-] BACK      [ENTER] NEXT      [ESC] SKIP',
+      last ? '[<-] BACK      [ENTER] START PRACTICE' : '[<-] BACK      [ENTER] NEXT      [Q] SKIP',
       16,
       0.6,
     );
