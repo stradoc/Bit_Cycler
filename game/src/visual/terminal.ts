@@ -69,7 +69,7 @@ const CLASSIC_DARK_ERA: Era = {
   taken: 0x5fb3ff, notTaken: 0xffa040,
   fire: [0xffff60, 0xff8000, 0xc00000],
   bloom: 0, scanlines: 0, curve: 0, vignette: 0, flicker: 0,
-  font: 'monospace', hires: true, smooth: false, accent: 0x7ab8ff, lcd: 0, chip: 'lowpoly',
+  font: "'IBM XGA', monospace", hires: true, smooth: false, accent: 0x7ab8ff, lcd: 0, chip: 'lowpoly',
   window: { style: 'classic', desk: 0x1c2a33, bar: 0x1c2f5e, bar2: 0x4a6aa5, title: 0xf0f0f0, border: CLASSIC_DARK.dark, palette: CLASSIC_DARK },
 };
 
@@ -80,7 +80,8 @@ export const ERAS: readonly Era[] = [
     taken: 0x39ff14, notTaken: 0x26b80d,
     fire: [0xd8ffc8, 0x39ff14, 0x1f9a0b],
     bloom: 1.8, scanlines: 0.4, curve: 0.02, vignette: 0.4, flicker: 0.02,
-    font: 'monospace', hires: false, smooth: false, accent: 0x39ff14, lcd: 0, chip: 'wire',
+    // The original IBM PC's ROM font, drawn tall as CGA text looked on screen.
+    font: "'IBM BIOS', monospace", hires: false, smooth: false, accent: 0x39ff14, lcd: 0, chip: 'wire',
   },
   {
     // A late-80s DOS app in text mode on a CRT: blue, the 16-color palette, double-line boxes, drop shadows.
@@ -89,7 +90,8 @@ export const ERAS: readonly Era[] = [
     taken: 0x55ffff, notTaken: 0xffaa00,
     fire: [0xffff55, 0xff5555, 0xaa0000],
     bloom: 0, scanlines: 0.22, curve: 0, vignette: 0.25, flicker: 0,
-    font: 'monospace', hires: true, smooth: false, accent: 0x55ffff, lcd: 0, chip: 'flat',
+    // DOS's own: the VGA text-mode font.
+    font: "'IBM VGA', monospace", hires: true, smooth: false, accent: 0x55ffff, lcd: 0, chip: 'flat',
     window: {
       style: 'dos', desk: 0x0000aa, bar: 0xaaaaaa, bar2: 0xaaaaaa, title: 0x000000, border: 0x000000,
       palette: { light: 0xffffff, soft: 0xaaaaaa, face: 0xaaaaaa, shadow: 0x000000, dark: 0x000000, field: 0x0000aa, select: 0x00aaaa, selectText: 0x000000 },
@@ -102,7 +104,8 @@ export const ERAS: readonly Era[] = [
     taken: 0x0050c8, notTaken: 0xb85c00,
     fire: [0xffff60, 0xff8000, 0xc00000],
     bloom: 0, scanlines: 0, curve: 0, vignette: 0, flicker: 0,
-    font: 'monospace', hires: true, smooth: false, accent: 0x000080, lcd: 0, chip: 'lowpoly',
+    // A thin early-90s PC font, closer to the period's light interface text than DOS's heavy one.
+    font: "'IBM XGA', monospace", hires: true, smooth: false, accent: 0x000080, lcd: 0, chip: 'lowpoly',
     window: { style: 'classic', desk: 0x008080, bar: 0x000080, bar2: 0x1084d0, title: 0xffffff, border: CLASSIC.dark, palette: CLASSIC },
     dark: CLASSIC_DARK_ERA,
   },

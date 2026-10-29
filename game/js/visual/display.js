@@ -116,11 +116,19 @@ export function fitCamera(camera) {
     camera.centerOn(WIDTH / 2, (HEIGHT + frame.bottom - frame.top) / 2);
     camera.roundPixels = !smooth;
 }
-/** The modern era's font, bundled (SIL Open Font License, in assets/fonts). Loaded before the game starts. */
+/**
+ * Each era's font, bundled in assets/fonts (credits in CREDITS.txt): period
+ * PC fonts from The Ultimate Oldschool PC Font Pack (CC BY-SA 4.0) for the
+ * 8-, 16- and 32-bit eras, JetBrains Mono (SIL OFL) for the 64-bit one.
+ * Loaded before the game starts, so texts measure with the right font.
+ */
 export async function loadFonts() {
     const faces = [
         new FontFace('JetBrains Mono', 'url(assets/fonts/JetBrainsMono-Regular.woff2)', { weight: '400' }),
         new FontFace('JetBrains Mono', 'url(assets/fonts/JetBrainsMono-Bold.woff2)', { weight: '700' }),
+        new FontFace('IBM BIOS', 'url(assets/fonts/Web437_IBM_BIOS-2y.woff)'),
+        new FontFace('IBM VGA', 'url(assets/fonts/Web437_IBM_VGA_9x16.woff)'),
+        new FontFace('IBM XGA', 'url(assets/fonts/Web437_IBM_XGA-AI_7x15.woff)'),
     ];
     // A font that fails to load falls back to the plain monospace.
     await Promise.all(faces.map((face) => face.load().then((loaded) => document.fonts.add(loaded), () => undefined)));

@@ -13,7 +13,7 @@ Phases move on when ready. There are no internal due dates; the only fixed date 
 Checked against the assignment spec: everything else required is met (browser, no installs, 2.3 MB of 35 MB, relative paths, mechanics that teach, no quizzes, feedback, progression, in-game instructions). In priority order:
 
 - [ ] **Measure the learning objective** (required): % of correct hazard decisions after each contract (tier 2 vs tier 3), plus a report card. See Education below
-- [ ] **`game/README.md`** (required): the project, how it was developed, educational purpose and learning objectives, how to play, credits (JetBrains Mono, SIL Open Font License, `assets/fonts`). Say the 8/16-bit CPUs are simplified teaching CPUs and which figures are approximate
+- [ ] **`game/README.md`** (required): the project, how it was developed, educational purpose and learning objectives, how to play, credits (fonts: JetBrains Mono, SIL OFL; The Ultimate Oldschool PC Font Pack by VileR, CC BY-SA 4.0; see `assets/fonts/CREDITS.txt`). Say the 8/16-bit CPUs are simplified teaching CPUs and which figures are approximate
 - [ ] **`thumbnail.png`** (required): 16:9 PNG, exactly 800×450, ≤ 500 KB
 - [ ] **Every teammate commits their own work**: only students who actively contribute get credit, and all commits so far come from one account
 - [ ] **Outside playtest** (the spec asks to evaluate and refine through testing and feedback): someone new plays from the title through tier 3; fix what they trip on; tune the timing windows
@@ -126,7 +126,7 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 - [x] 32-bit dark mode (D on the title screen); the shop's selected item, contract cards and the song's key labels are buttons that press in
 - [x] 16-bit era as a DOS app (blue text mode, menu and status bars, double-line boxes, drop shadows, EGA chip)
 - [x] CRT scanlines, phosphor stripes and vignette as a fine overlay at the screen's resolution
-- [ ] Era fonts: a VGA-style font for 16-bit and 32-bit (e.g. from the Ultimate Oldschool PC Font Pack, CC BY-SA 4.0, needs a credit) or a blocky one for 8-bit? Open
+- [x] A period font per era: IBM BIOS (8-bit), IBM VGA (16-bit), IBM XGA (32-bit) from The Ultimate Oldschool PC Font Pack; JetBrains Mono (64-bit)
 - [ ] Playtest the 64-bit era on a real screen with `?fps`: smoothness, ligatures (`<-` drawn as an arrow) kept or not
 - [ ] Drive the era from the player's CPU word size instead of the preview keys
 

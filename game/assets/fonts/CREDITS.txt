@@ -1,0 +1,12 @@
+Fonts used in Bit Cycler
+
+JetBrains Mono (64-bit era)
+  JetBrainsMono-Regular.woff2, JetBrainsMono-Bold.woff2
+  Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)
+  SIL Open Font License 1.1: see JetBrainsMono-OFL.txt
+
+The Ultimate Oldschool PC Font Pack v2.2 by VileR (https://int10h.org/oldschool-pc-fonts/)
+  Web437_IBM_BIOS-2y.woff (8-bit era), Web437_IBM_VGA_9x16.woff (16-bit era),
+  Web437_IBM_XGA-AI_7x15.woff (32-bit era)
+  Creative Commons Attribution-ShareAlike 4.0 International (https://creativecommons.org/licenses/by-sa/4.0/):
+  see OldschoolPC-LICENSE.txt. Used unmodified.
