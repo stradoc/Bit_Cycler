@@ -212,13 +212,17 @@ export class PipelineScene extends Phaser.Scene {
   /** Rated clock in MHz, from the clock upgrades owned; the dial over- or underclocks it. */
   private ratedMhz: number = BASE_MHZ.pipelined;
   /** The chip's maximum clock when this run started (wear can lower it); a replay starts from the run's. */
+  /** The chip's top clock (its wear) as the song starts, and whether H may pass the rated clock. */
   private startMaxDial: number = THERMAL.maxDial;
+  private canOverclock = false;
+  /** The clock was stopped (overheated) at the last check, to say when it starts again. */
+  private wasHalted = false;
   /** The clock dial on each cycle of this run (G / H change it), for the replay. */
   private dialRecording: number[] = [];
   private watchDials: readonly number[] = [];
   /** Overheats already reported (each one wears the chip). */
   private overheatsShown = 0;
-  /** The clock ratio the music is playing at; changes when the chip throttles or recovers. */
+  /** The clock ratio the music is playing at; changes when the dial is turned. */
   private tempoRatio = 1;
   private heat!: HeatEffects;
   private gauge!: {
@@ -267,6 +271,7 @@ export class PipelineScene extends Phaser.Scene {
       watch?: readonly Recorded[];
       watchDials?: readonly number[];
       maxDial?: number;
+      canOverclock?: boolean;
       contract?: Contract;
       paid?: boolean;
       late?: boolean;
@@ -296,9 +301,12 @@ export class PipelineScene extends Phaser.Scene {
     this.paid = data?.paid ?? false;
     this.late = data?.late ?? false;
     // Without the overclocking unlock, the dial stops at the rated clock (?clock=150, a dev shortcut, allows it).
+    // Wear is the chip's own; practice always runs on a new chip, so it never overheats.
     const progress = getProgress();
     const devClock = new URLSearchParams(location.search).has('clock');
-    this.startMaxDial = data?.maxDial ?? (progress.overclocking || devClock ? progress.chipMaxDial : 1);
+    this.startMaxDial = data?.maxDial ?? (this.practice ? THERMAL.maxDial : progress.chipMaxDial);
+    this.canOverclock = data?.canOverclock ?? (progress.overclocking || devClock);
+    this.wasHalted = false;
     this.returnTo = data?.returnTo;
     this.watchDials = data?.watchDials ?? [];
     this.dialRecording = [];
@@ -351,7 +359,7 @@ export class PipelineScene extends Phaser.Scene {
     const cpu = new Cpu(program, 8, spec.memory, REGISTER_COUNT);
     this.listing = this.buildListing(program);
     this.freshCpu = cpu.clone();
-    const chip = new Chip(this.ratedMhz, this.startMaxDial, thermalConfig(progress));
+    const chip = new Chip(this.ratedMhz, this.startMaxDial, thermalConfig(progress), this.canOverclock);
     // ?clock=150 starts the song overclocked (dev shortcut). Practice always runs at the rated clock.
     const clockParam = Number(new URLSearchParams(location.search).get('clock')) / 100;
     if (clockParam && !this.practice && !this.watching) chip.setDial(clockParam);
@@ -439,7 +447,7 @@ export class PipelineScene extends Phaser.Scene {
       if (this.contract && this.paid) this.scene.start('board');
       else this.scene.restart({ practice: false, ...this.hardware() });
     } else if (key === 'W' && this.showingResults && this.watching) {
-      this.scene.restart({ watch: this.watching, watchDials: this.watchDials, ...this.hardware(), maxDial: this.startMaxDial, paid: this.paid, late: this.late });
+      this.scene.restart({ watch: this.watching, watchDials: this.watchDials, ...this.hardware(), maxDial: this.startMaxDial, canOverclock: this.canOverclock, paid: this.paid, late: this.late });
     }
   }
 
@@ -459,15 +467,15 @@ export class PipelineScene extends Phaser.Scene {
       const why =
         direction < 0
           ? 'CAN\'T GO FURTHER'
-          : chip.maxDial <= 1 && !getProgress().overclocking
-            ? 'OVERCLOCKING: IN THE SHOP'
-            : chip.maxDial < THERMAL.maxDial
-              ? 'CHIP DAMAGED BY HEAT'
+          : chip.maxDial < THERMAL.maxDial && (chip.canOverclock || chip.maxDial <= 1)
+            ? 'CHIP DAMAGED BY HEAT'
+            : !chip.canOverclock
+              ? 'OVERCLOCKING: IN THE SHOP'
               : 'CAN\'T GO FURTHER';
       this.feedback.setText(`${limit}\n${why}`);
       return;
     }
-    const note = chip.throttled ? 'STILL THROTTLED: COOLING' : dial > 1 ? 'OVERCLOCKED: WATCH THE HEAT' : dial < 1 ? 'UNDERCLOCKED: RUNS COOLER' : 'RATED CLOCK';
+    const note = chip.halted ? 'CLOCK STOPPED: COOLING' : dial > 1 ? 'OVERCLOCKED: WATCH THE HEAT' : dial < 1 ? 'UNDERCLOCKED: RUNS COOLER' : 'RATED CLOCK';
     this.feedback.setText(`CLOCK ${percent}% (${formatMhz(this.ratedMhz * dial)})\n${note}`);
     this.syncClock();
   }
@@ -629,23 +637,31 @@ export class PipelineScene extends Phaser.Scene {
   }
 
   /**
-   * The clock changed (the dial was turned, or the chip throttled or cooled):
-   * change the tempo to match. An overheat also wears the chip, which is saved
-   * until it's repaired.
+   * After each cycle: an overheat stops the clock and wears the chip (saved
+   * until it's repaired), and a turned dial changes the tempo.
    */
   private syncClock(): void {
     const { chip } = this.run;
     if (chip.overheats > this.overheatsShown) {
       this.overheatsShown = chip.overheats;
       this.buzz();
-      this.feedback.setText(`OVERHEATED: THROTTLED!\nCHIP DAMAGED: MAX ${Math.round(chip.maxDial * 100)}%`);
       if (!this.watching && !this.practice) updateProgress((p) => ({ ...p, chipMaxDial: chip.maxDial }));
     }
     if (chip.clockRatio === this.tempoRatio) return;
-    const cooled = this.tempoRatio < chip.clockRatio && !chip.throttled && this.run.chip.throttledCycles > 0;
     this.tempoRatio = chip.clockRatio;
     this.conductor?.setTempo(this.tempo());
-    if (cooled && !this.watching) this.feedback.setText(`COOLED TO ${Math.round(chip.resumeAt)}°C:\nBACK TO ${chip.mhz.toFixed(1)} MHz`);
+  }
+
+  /** Every frame while the clock is stopped: says so, and says when it runs again. */
+  private showHalt(): void {
+    const { chip } = this.run;
+    if (chip.halted) {
+      const worn = chip.maxDial <= 1 ? 'CHIP WORN OUT: [G] OR REPAIR' : `CHIP DAMAGED: MAX ${Math.round(chip.maxDial * 100)}%`;
+      this.feedback.setText(`OVERHEATED: CLOCK STOPPED\nCOOLING ${Math.round(chip.temperature)}°C -> ${Math.round(chip.resumeAt)}°C\n${worn}`);
+    } else if (this.wasHalted) {
+      this.feedback.setText(`COOLED: CLOCK RUNNING\nAGAIN AT ${Math.round(chip.dial * 100)}%`);
+    }
+    this.wasHalted = chip.halted;
   }
 
   private buzz(): void {
@@ -815,7 +831,7 @@ export class PipelineScene extends Phaser.Scene {
     this.clickable(this.text(x, 6, 'CLOCK', 11).setOrigin(0.5, 0).setAlpha(0.6), () => GLOSSARY.CLOCK);
     const clock = this.text(x, 20, '', 15).setOrigin(0.5, 0);
     const mode = this.text(x, 40, '', 11).setOrigin(0.5, 0);
-    const keys = this.startMaxDial > 1 ? '[G] -   [H] +' : '[G] SLOWER';
+    const keys = this.canOverclock && this.startMaxDial > 1 ? '[G] -   [H] +' : '[G] SLOWER';
     this.text(x, 55, this.practice ? 'RATED (PRACTICE)' : keys, 11).setOrigin(0.5, 0).setAlpha(0.7);
     const tube = this.add.rectangle(x, (GAUGE_TOP + GAUGE_BOTTOM) / 2, 18, GAUGE_BOTTOM - GAUGE_TOP).setStrokeStyle(1, fg, 0.6);
     this.clickable(tube, () => GLOSSARY.HEAT);
@@ -845,18 +861,19 @@ export class PipelineScene extends Phaser.Scene {
     this.gauge.mark.setY(markY);
     this.gauge.markText.setY(markY).setText(`${Math.round(limit)}`);
     const color = t >= limit - 5 ? fire[2] : t >= limit - 20 ? fire[1] : fg;
-    const blink = chip.throttled && Math.floor(now / 250) % 2 === 0;
+    const blink = chip.halted && Math.floor(now / 250) % 2 === 0;
     this.gauge.fill.setFillStyle(color).setSize(12, GAUGE_BOTTOM - 2 - this.gaugeY(t)).setAlpha(blink ? 0.5 : 1);
     this.gauge.temp.setText(`${Math.round(t)}°C`).setColor(cssColor(color));
     this.gauge.clock.setText(formatMhz(Number(chip.mhz.toPrecision(3))));
     const percent = Math.round(chip.dial * 100);
     // Wear only matters once the chip can overclock (without the unlock its maximum is just the rated clock).
-    const worn = this.startMaxDial > 1 || getProgress().overclocking ? chip.maxDial < THERMAL.maxDial : false;
+    const worn = chip.maxDial < THERMAL.maxDial;
     this.gauge.worn.setText(worn ? `MAX ${Math.round(chip.maxDial * 100)}%` : '').setColor(cssColor(fire[1]));
     this.gauge.mode
-      .setText(chip.throttled ? 'THROTTLED' : chip.dial > 1 ? `OVERCLOCK ${percent}%` : chip.dial < 1 ? `UNDERCLOCK ${percent}%` : 'RATED')
-      .setColor(cssColor(chip.throttled || chip.dial > 1 ? fire[1] : fg));
-    if (!this.finished) this.heat.update(t, limit, chip.throttled, now);
+      .setText(chip.halted ? 'CLOCK STOPPED' : chip.dial > 1 ? `OVERCLOCK ${percent}%` : chip.dial < 1 ? `UNDERCLOCK ${percent}%` : 'RATED')
+      .setColor(cssColor(chip.halted || chip.dial > 1 ? fire[1] : fg));
+    if (!this.finished) this.heat.update(t, limit, chip.halted, now);
+    if (!this.finished && !this.practice) this.showHalt();
   }
 
   private tierTitle(): string {
@@ -1403,7 +1420,7 @@ export class PipelineScene extends Phaser.Scene {
     conductor.offset = getSettings().offset;
     conductor.clickVolume = this.paused ? 0 : 0.04;
     conductor.onBeat = (beat, time) => {
-      if (beat > this.firstBeat && !this.finished && !this.paused) {
+      if (beat > this.firstBeat && !this.finished && !this.paused && !this.run.chip.halted) {
         this.music.playBeat(beat - this.firstBeat - 1, time, 60 / conductor.bpm, this.run.pipeline.occupancy);
       }
     };
@@ -1657,7 +1674,7 @@ export class PipelineScene extends Phaser.Scene {
   private jobSeconds(contract: Contract): number {
     const p = this.run.pipeline;
     const { chip } = this.run;
-    const micros = (chip.micros / Math.max(1, chip.cycles)) * p.cycles;
+    const micros = (chip.totalMicros / Math.max(1, chip.cycles)) * p.cycles;
     return (contract.instructions * (micros / Math.max(1, p.instructions))) / 1e6;
   }
 
@@ -1692,7 +1709,7 @@ export class PipelineScene extends Phaser.Scene {
       if (contract) updateProgress((p) => completeContract(p, contract.id, Math.random, this.late));
       // Every real run is followed by its replay; the results come at the end of it.
       this.showCallout('RUN COMPLETE!\nNOW WATCH YOUR REPLAY.\nCLICK ANYTHING IN IT TO LEARN WHAT IT IS.');
-      const replay = { watch: this.recording, watchDials: this.dialRecording, ...this.hardware(), maxDial: this.startMaxDial, paid: Boolean(contract), late: this.late };
+      const replay = { watch: this.recording, watchDials: this.dialRecording, ...this.hardware(), maxDial: this.startMaxDial, canOverclock: this.canOverclock, paid: Boolean(contract), late: this.late };
       this.time.delayedCall(2000, () => this.scene.restart(replay));
       return;
     }
@@ -1727,9 +1744,10 @@ export class PipelineScene extends Phaser.Scene {
     const { chip } = this.run;
     const n = Math.max(1, p.instructions);
     const time = (micros: number) => formatDuration(micros / 1e6);
-    // Time per instruction at the clocks actually run (overclocking, throttling), in µs.
-    const perInstruction = (chip.micros / Math.max(1, chip.cycles)) * (p.cycles / n);
-    const avgPeriod = perInstruction / p.cpi;
+    // Time per instruction at the clocks actually run, plus the time the clock was stopped to cool (µs).
+    const avgPeriod = chip.micros / Math.max(1, chip.cycles);
+    const cooling = chip.haltedMicros / n;
+    const perInstruction = p.cpi * avgPeriod + cooling;
     const lines = [`RESULTS: ${this.spec.client ?? this.spec.name} ON ${this.tierTitle()}`];
 
     // Extra lines only when they apply: branch guessing, and a clock that wasn't the rated one.
@@ -1742,6 +1760,11 @@ export class PipelineScene extends Phaser.Scene {
       lines.push(
         `CLOCK: AVERAGE ${formatMhz(Number((1 / avgPeriod).toPrecision(3)))}, PEAK ${Math.round(chip.peak)}°C` +
           (chip.overheats > 0 ? `, OVERHEATED ${chip.overheats}x: MAX CLOCK NOW ${Math.round(chip.maxDial * 100)}%` : ''),
+      );
+    }
+    if (chip.haltedBeats > 0) {
+      lines.push(
+        `CLOCK STOPPED TO COOL FOR ${chip.haltedBeats} BEATS: NO CYCLES, BUT ${time(chip.haltedMicros)} LOST (+${time(cooling)} PER INSTRUCTION)`,
       );
     }
 

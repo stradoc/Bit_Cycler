@@ -86,3 +86,21 @@ test('tempo grows 20 BPM per 10x clock, from 75 BPM at 1 MHz', () => {
   assert.ok(Math.abs(tempoForClock(4000) - 147.0) < 0.1); // pipelined, fully upgraded
   assert.equal(tempoForClock(1, true), 60); // relaxed / practice
 });
+
+test('an overheated chip stops the clock: presses are ignored, notes come later, and no cycle runs', () => {
+  const run = newRun();
+  play(run, expectedUnit(run));
+  const cycle = run.pipeline.cycle;
+  const due = run.dueBeat;
+  run.chip.temperature = 200; // far too hot: the next cycle stops the clock
+  play(run, expectedUnit(run));
+  assert.ok(run.chip.halted);
+  assert.equal(run.press({ kind: 'route', unit: expectedUnit(run) }, run.dueBeat), null); // nothing to decide
+  run.update(run.dueBeat + 3); // three beats pass with the clock stopped
+  assert.equal(run.pipeline.cycle, cycle + 1);
+  assert.ok(run.chip.haltedBeats >= 3);
+  assert.equal(run.dueBeat, due + 1 + run.chip.haltedBeats);
+  while (run.chip.halted) run.update(run.dueBeat + 1); // it cools and starts again
+  assert.ok(play(run, expectedUnit(run)));
+  assert.equal(run.pipeline.cycle, cycle + 2);
+});

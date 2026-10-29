@@ -101,13 +101,13 @@ export class HeatEffects {
             .setDepth(depth);
     }
     /** Call every frame with the chip's temperature and the one it overheats at (lower on a worn chip). */
-    update(temperature, limit, throttled, now) {
+    update(temperature, limit, halted, now) {
         const warm = ramp(temperature, limit - WARM, limit);
         const flicker = 0.85 + 0.15 * Math.sin(now / 70) * Math.sin(now / 23);
-        this.glow.setAlpha((throttled ? 0.22 : 0.16 * warm) * flicker);
+        this.glow.setAlpha((halted ? 0.22 : 0.16 * warm) * flicker);
         this.rate(this.smoke, ramp(temperature, limit - HOT - 3, limit), 260, 60);
         this.rate(this.sparks, ramp(temperature, limit - HOT, limit), 200, 25);
-        const blaze = throttled ? 1 : ramp(temperature, limit - CRITICAL, limit);
+        const blaze = halted ? 1 : ramp(temperature, limit - CRITICAL, limit);
         this.rate(this.flames, blaze, 30, 3);
         this.rate(this.sideFlames, blaze, 40, 5);
     }

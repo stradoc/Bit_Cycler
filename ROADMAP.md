@@ -8,6 +8,18 @@ Phases move on when ready. There are no internal due dates; the only fixed date 
 
 ---
 
+## Before submission (from the rubric check, 2026-10-29)
+
+Checked against the assignment spec: everything else required is met (browser, no installs, 2.3 MB of 35 MB, relative paths, mechanics that teach, no quizzes, feedback, progression, in-game instructions). In priority order:
+
+- [ ] **Measure the learning objective** (required): % of correct hazard decisions after each contract (tier 2 vs tier 3), plus a report card. See Education below
+- [ ] **`game/README.md`** (required): the project, how it was developed, educational purpose and learning objectives, how to play, credits. Say the 8/16-bit CPUs are simplified teaching CPUs and which figures are approximate
+- [ ] **`thumbnail.png`** (required): 16:9 PNG, exactly 800×450, ≤ 500 KB
+- [ ] **Every teammate commits their own work**: only students who actively contribute get credit, and all commits so far come from one account
+- [ ] **Outside playtest** (the spec asks to evaluate and refine through testing and feedback): someone new plays from the title through tier 3; fix what they trip on; tune the timing windows
+- [ ] **Textbook check** (design rule): stall counts, forwarding, branch penalty, CPU time, power wall, and any latency figures checked against Patterson & Hennessy; anything stylized (tempo scale, wear, overheat limits) labeled
+- [ ] Submission steps: `games.yml` entry (title, authors, topic, description, learning_objective, game_url, thumbnail), copy `game/` to `games/bit-cycler/`, GitHub Pages test, pull request by Nov 30
+
 ## Step 0: Decisions needed first
 
 Nothing is built until these are settled (see `RULES.md` rule 3). Each one gets a full pros/cons write-up before it's decided.
@@ -65,7 +77,8 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 - [x] Clock upgrades raise the tempo again, steeper: +20 BPM per 10× clock (pipelined 87 → ~147 BPM, single-cycle 75 → ~135); songs use the rated clock
 - [x] Bus stops at the panel's box edge (the row lights up; a stored byte gets an outline) instead of running over the text
 - [x] Heat builds faster (time constant 25 → 15 cycles): 150% overheats in ~28 busy beats, 140% in ~53, within one song
-- [x] A worn chip overheats sooner (88°C at 140% ... 70°C at 110%), so its top clock stays as risky as 150% on a new chip
+- [x] A worn chip overheats sooner (88°C at 140% ... 65°C at 100%), so its top clock stays as risky as 150% on a new chip; worn out, even 100% overheats (underclock or repair)
+- [x] Overheating stops the clock (notes freeze, ~5-8 beats) instead of throttling to rated; the time counts in CPU time, not CPI
 - [x] Key registers (NEXT, END, GRID) tagged in the REGISTERS box and introduced in a ~4 s count-in before each song and practice
 - [ ] Cache miss in the song: load shows `MISS → RAM`, the bus carries the block to its line, a counter rolls up the real cycles; presses during the freeze are ignored
 - [ ] CACHE box in the panel (valid, tag, data per line; each lookup shown as `0000 01 10 → line 1, tag 0 → HIT`); MEMORY box grows to addresses 0-63
@@ -143,4 +156,4 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 
 - Pipeline designer (cut the datapath; stalls stay manual at every depth; open: hold Space until the hazard clears), after L2 / L3 and pages + HDD
 - Stretch, in priority order: SSD flash mode → dual-issue → NVMe mode → out-of-order + renaming, report card, before/after check
-- Submission: README, 800×450 thumbnail (≤ 500 KB), `games.yml` entry, size check (≤ 35 MB), GitHub Pages test, pull request
+- Submission: see "Before submission" at the top

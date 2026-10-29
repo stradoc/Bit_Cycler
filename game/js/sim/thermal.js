@@ -1,10 +1,11 @@
 // Clock speed, power and heat. Dynamic power grows with frequency and with
 // voltage squared (P ≈ C·V²·f), and a faster clock needs more voltage, so heat
 // grows faster than speed: the "power wall". The chip warms toward a steady
-// temperature set by its power, and throttles back to its rated clock when
-// it gets too hot, like a real CPU. Each overheat also wears the chip: real
-// heat and voltage slowly lower the fastest clock a chip runs reliably at
-// (here sped up a lot), until it's repaired.
+// temperature set by its power. When it gets too hot it stops its clock until
+// it cools, like a real CPU's thermal clock modulation (real ones stop it in
+// bursts of microseconds; here it's a few beats). Each overheat also wears the
+// chip: real heat and voltage slowly lower the fastest clock a chip runs
+// reliably at (here sped up a lot), until it's repaired.
 export const THERMAL = {
     /** Temperature of an idle chip (°C). */
     ambient: 40,
@@ -19,9 +20,14 @@ export const THERMAL = {
     voltageSlope: 0.4,
     /** Power on a cycle where nothing issues (stall, bubble): idle hardware switches less. */
     idlePower: 0.7,
-    /** A new chip throttles at this temperature, and runs at full clock again once cooled to `resumeAt` (°C); a worn one sooner (Chip.throttleAt). */
+    /**
+     * A new chip overheats at this temperature and stops its clock until it cools to `resumeAt` (°C).
+     * A worn one overheats sooner (Chip.throttleAt).
+     */
     throttleAt: 95,
     resumeAt: 80,
+    /** Power while the clock is stopped: only leakage, so it cools fast. */
+    haltPower: 0.2,
     /**
      * Clock dial range, as a fraction of the rated clock, and one step of it (G / H in a song).
      * Underclocking to 50% halves the tempo, time to think, at the cost of twice the CPU time.
@@ -29,7 +35,7 @@ export const THERMAL = {
     minDial: 0.5,
     maxDial: 1.5,
     dialStep: 0.1,
-    /** Each overheat lowers the chip's maximum clock by this much, down to its rated clock. */
+    /** Each overheat lowers the chip's top clock by this much, down to its rated clock. */
     damagePerOverheat: 0.1,
 };
 /** Dynamic power relative to running flat out at the rated clock. */
@@ -41,80 +47,102 @@ export function relativePower(clockRatio, active, config = THERMAL) {
 export function steadyTemperature(clockRatio, config = THERMAL) {
     return config.ambient + config.ratedRise * relativePower(clockRatio, true, config);
 }
-/** A CPU's clock and temperature, advanced one clock cycle at a time. */
+/** A CPU's clock and temperature, advanced one clock cycle (or one stopped beat) at a time. */
 export class Chip {
     ratedMhz;
     /** The clock the player set, as a fraction of the rated clock (> 1 = overclocked). */
     dial = 1;
-    /** The highest the dial goes: lowered by overheating (wear) until repaired. */
+    /** The chip's own top clock: lowered by overheating (wear) until repaired. */
     maxDial;
-    /** Times it reached the throttle temperature this run. */
+    /** Whether H may go past the rated clock (the overclocking upgrade). */
+    canOverclock;
+    /** Times it overheated this run. */
     overheats = 0;
     config;
     temperature;
     peak;
-    /** Too hot: running at the rated clock until it cools to `resumeAt` (the getter). */
-    throttled = false;
-    throttledCycles = 0;
+    /** Too hot: the clock is stopped (nothing runs) until it cools to `resumeAt`. */
+    halted = false;
+    /** Beats spent with the clock stopped, and the time they took (µs): no cycles, but time passes. */
+    haltedBeats = 0;
+    haltedMicros = 0;
     /** Real time the cycles so far took, at whatever clock each one ran (µs). */
     micros = 0;
     cycles = 0;
-    constructor(ratedMhz, maxDial = THERMAL.maxDial, config = THERMAL) {
+    constructor(ratedMhz, maxDial = THERMAL.maxDial, config = THERMAL, canOverclock = true) {
         this.ratedMhz = ratedMhz;
         this.config = config;
         this.maxDial = Math.min(config.maxDial, Math.max(1, maxDial));
+        this.canOverclock = canOverclock;
         this.temperature = config.ambient;
         this.peak = config.ambient;
     }
-    /** Sets the dial, kept within its range (the maximum shrinks as the chip wears). Returns the dial. */
+    /** The highest the dial goes: the chip's top clock, or the rated clock without the overclocking upgrade. */
+    get dialCap() {
+        return this.canOverclock ? this.maxDial : 1;
+    }
+    /** Sets the dial, kept within its range (the top shrinks as the chip wears). Returns the dial. */
     setDial(dial) {
         // Rounded to whole percent so repeated steps don't drift (0.1 isn't exact in binary).
-        this.dial = Math.round(Math.min(this.maxDial, Math.max(this.config.minDial, dial)) * 100) / 100;
+        this.dial = Math.round(Math.min(this.dialCap, Math.max(this.config.minDial, dial)) * 100) / 100;
         return this.dial;
     }
-    /** The clock right now, as a fraction of the rated clock. Throttling drops an overclock back to rated. */
+    /** The clock as a fraction of the rated clock. While it's stopped, beats keep this tempo but nothing runs. */
     get clockRatio() {
-        return this.throttled ? Math.min(1, this.dial) : this.dial;
+        return this.dial;
     }
     get mhz() {
         return this.ratedMhz * this.clockRatio;
     }
-    /**
-     * Overheats (throttles) at this temperature. A worn chip takes less heat:
-     * the limit drops so its highest setting heats up to it as fast as 150% does
-     * on a new chip (the same share of the way from ambient to where it settles).
-     * With no overclock left, it's the normal limit again, so the rated clock is always safe.
-     */
-    get throttleAt() {
-        const { config } = this;
-        if (this.maxDial <= 1)
-            return config.throttleAt;
-        const share = relativePower(this.maxDial, true, config) / relativePower(config.maxDial, true, config);
-        return config.ambient + (config.throttleAt - config.ambient) * share;
+    /** Real time so far, cycles plus stopped beats (µs). */
+    get totalMicros() {
+        return this.micros + this.haltedMicros;
     }
-    /** Runs at full clock again once cooled to this: never below where the rated clock settles, so it always recovers. */
+    /**
+     * How much heat the chip takes, from 1 (new) down: a worn chip's top clock
+     * heats up to its limit as fast as 150% does on a new chip (the same share
+     * of the way from ambient to where it settles). Worn down to 100%, even the
+     * rated clock overheats; underclocking is the way out, or a repair.
+     */
+    get tolerance() {
+        return relativePower(this.maxDial, true, this.config) / relativePower(this.config.maxDial, true, this.config);
+    }
+    /** Overheats (stops its clock) at this temperature: 95°C new, lower as it wears. */
+    get throttleAt() {
+        const { ambient, throttleAt } = this.config;
+        return ambient + (throttleAt - ambient) * this.tolerance;
+    }
+    /** Starts its clock again once cooled to this. */
     get resumeAt() {
-        const ratedSteady = this.config.ambient + this.config.ratedRise;
-        return Math.min(this.config.resumeAt, (this.throttleAt + ratedSteady) / 2);
+        const { ambient, resumeAt } = this.config;
+        return ambient + (resumeAt - ambient) * this.tolerance;
+    }
+    /** Moves the temperature one step toward `target`. */
+    settle(target) {
+        this.temperature += (target - this.temperature) / this.config.timeConstant;
+        this.peak = Math.max(this.peak, this.temperature);
     }
     /** One clock cycle. `active`: an instruction issued (otherwise a stall or bubble, using less power). */
     cycle(active) {
         const { config } = this;
         this.micros += 1 / this.mhz;
         this.cycles++;
-        if (this.throttled)
-            this.throttledCycles++;
-        const target = config.ambient + config.ratedRise * relativePower(this.clockRatio, active, config);
-        this.temperature += (target - this.temperature) / config.timeConstant;
-        this.peak = Math.max(this.peak, this.temperature);
-        if (!this.throttled && this.temperature >= this.throttleAt) {
-            this.throttled = true;
+        this.settle(config.ambient + config.ratedRise * relativePower(this.clockRatio, active, config));
+        if (this.temperature >= this.throttleAt) {
+            this.halted = true;
             this.overheats++;
             this.maxDial = Math.max(1, Math.round((this.maxDial - config.damagePerOverheat) * 100) / 100);
             this.setDial(this.dial);
         }
-        else if (this.throttled && this.temperature <= this.resumeAt)
-            this.throttled = false;
+    }
+    /** One beat with the clock stopped: nothing runs and only leakage heats it, but the beat's time still passes. */
+    coolBeat() {
+        const { config } = this;
+        this.haltedMicros += 1 / this.mhz;
+        this.haltedBeats++;
+        this.settle(config.ambient + config.ratedRise * config.haltPower);
+        if (this.temperature <= this.resumeAt)
+            this.halted = false;
     }
 }
 //# sourceMappingURL=thermal.js.map

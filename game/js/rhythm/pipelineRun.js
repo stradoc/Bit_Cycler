@@ -28,7 +28,7 @@ export class PipelineRun {
     /** Seconds per beat at the chip's rated clock. */
     ratedSecondsPerBeat;
     windows;
-    /** Clock and temperature: each cycle heats it, and overclocking or throttling changes the tempo. */
+    /** Clock and temperature: each cycle heats it, the dial changes the tempo, and overheating stops the clock. */
     chip;
     counts = {
         issued: 0, stalled: 0, 'wasted-stall': 0, violation: 0, 'wrong-unit': 0, 'off-beat': 0, missed: 0,
@@ -54,9 +54,9 @@ export class PipelineRun {
     get done() {
         return this.pipeline.done;
     }
-    /** Beat on which the current cycle's decision is due. */
+    /** Beat on which the current cycle's decision is due (later by each beat the clock was stopped). */
     get dueBeat() {
-        return this.firstBeat + this.pipeline.cycle;
+        return this.firstBeat + this.pipeline.cycle + this.chip.haltedBeats;
     }
     /** The choice already made this cycle, if any. */
     get decided() {
@@ -74,7 +74,8 @@ export class PipelineRun {
      */
     press(action, beat) {
         const slot = this.pipeline.stages.ID;
-        if (!slot || this.pending || this.done)
+        // With the clock stopped there's nothing to decide: presses are ignored.
+        if (!slot || this.pending || this.done || this.chip.halted)
             return null;
         // A note already waiting on the line isn't moving, so there's no beat to hit:
         // any press during its cycle counts. Timing only matters when a note first arrives.
@@ -107,11 +108,17 @@ export class PipelineRun {
         this.applyGuess(action, outcome);
         return this.pending;
     }
-    /** Call every frame: advances the pipeline for each cycle whose window has closed. */
+    /**
+     * Call every frame: advances the pipeline for each cycle whose window has
+     * closed. A beat with the clock stopped (overheated) just cools the chip.
+     */
     update(beat) {
         const reports = [];
         while (!this.done && (beat - this.dueBeat) * this.secondsPerBeat > this.windows.good) {
-            reports.push(this.advance());
+            if (this.chip.halted)
+                this.chip.coolBeat();
+            else
+                reports.push(this.advance());
         }
         return reports;
     }

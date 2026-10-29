@@ -90,7 +90,7 @@ export const GLOSSARY = {
   },
   HEAT: {
     title: 'TEMPERATURE',
-    body: 'Power grows with voltage squared times the clock, and a faster clock needs more voltage. At 95°C it throttles to its rated clock until it cools to 80°C, and the heat wears it: its top clock drops 10% and it overheats at a lower temperature (88°C at 140%), until repaired. The gauge marks where it overheats now.',
+    body: 'Power grows with voltage squared times the clock, and a faster clock needs more voltage. At 95°C it overheats and stops its clock (real chips do this in bursts of microseconds): nothing runs until it cools to 80°C, and that time still counts. The heat wears it: its top clock drops 10% and it overheats sooner (88°C at 140%; worn out, 65°C, so even 100% overheats) until repaired. The gauge marks where it overheats now.',
   },
   SINGLE_CYCLE: {
     title: 'SINGLE-CYCLE CPU',

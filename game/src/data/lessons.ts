@@ -320,13 +320,13 @@ export const OVERCLOCK_LESSON: Lesson = {
     {
       title: 'THERMAL THROTTLING',
       diagram: 'throttle',
-      lines: ['At 95°C the chip throttles: back to its rated clock', '(the song slows down) until it cools to 80°C.', 'Stalls and bubbles use less power, so they run cooler.'],
+      lines: ['At 95°C the chip overheats and stops its clock: the notes', 'freeze and nothing runs until it cools to 80°C.', 'Stalls and bubbles use less power, so they run cooler.'],
       analogy: 'Smoke and flames warn you first: press G before it gets there.',
     },
     {
       title: 'HEAT WEARS THE CHIP',
       diagram: 'damage',
-      lines: ['Every overheat damages the chip: its top clock drops 10%', '(150% -> 140%) and it overheats at a lower temperature,', 'so its new top clock is just as risky. Repair fixes both.'],
+      lines: ['Every overheat damages the chip: its top clock drops 10%', '(150% -> 140%) and it overheats sooner. Worn out, even 100%', 'overheats: underclock (G) or repair it in the shop.'],
       analogy: 'Exaggerated: real chips wear slowly and throttle long before they burn.',
     },
   ],

@@ -620,27 +620,32 @@ const DIAGRAMS: Record<DiagramId, (s: Sketch, cx: number, cy: number) => void> =
     // The overheat and cool-down points step down as the chip wears.
     const limits: [number, number][] = [[x(0), y(chip.throttleAt)]];
     const resumes: [number, number][] = [[x(0), y(chip.resumeAt)]];
-    const throttledAt: number[] = [];
+    const stoppedAt: number[] = [];
     for (let c = 1; c <= cycles; c++) {
       const overheats = chip.overheats;
       const [limit, resume] = [chip.throttleAt, chip.resumeAt];
-      chip.cycle(true);
+      // A beat: one cycle, or one beat with the clock stopped while it cools.
+      if (chip.halted) {
+        chip.coolBeat();
+        stoppedAt.push(c);
+      } else {
+        chip.cycle(true);
+      }
       chip.setDial(1.5); // the player keeps it as high as the worn chip allows
       points.push([x(c), y(chip.temperature)]);
-      if (chip.throttled) throttledAt.push(c);
       if (chip.overheats > overheats) s.text(x(c), y(limit) - 14, `MAX ${Math.round(chip.maxDial * 100)}%`, 11, 0.9);
       limits.push([x(c), y(limit)], [x(c), y(chip.throttleAt)]);
       resumes.push([x(c), y(resume)], [x(c), y(chip.resumeAt)]);
     }
-    for (const c of throttledAt) s.hintText(x(c), top + height + 10, '■', false, 8);
+    for (const c of stoppedAt) s.hintText(x(c), top + height + 10, '■', false, 8);
     s.polyline(points);
     s.polyline(limits);
     s.polyline(resumes);
     s.text(left - 50, y(THERMAL.throttleAt), `${THERMAL.throttleAt}°C`, 12, 0.9);
     s.text(left - 50, y(THERMAL.resumeAt), `${THERMAL.resumeAt}°C`, 12, 0.7);
     s.text(left - 50, y(40), '40°C', 12, 0.6);
-    s.hintText(cx, top + height + 28, '■ = throttled: back to the rated clock until it cools', false, 12);
-    s.text(cx, top - 30, 'DIAL AT ITS MAXIMUM, EVERY BEAT BUSY', 12, 0.8);
+    s.hintText(cx, top + height + 28, '■ = clock stopped: nothing runs until it cools', false, 12);
+    s.text(cx, top - 30, 'DIAL KEPT AT ITS MAXIMUM, EVERY BEAT BUSY', 12, 0.8);
   },
 
   // Each overheat lowers the chip's top clock until it's repaired
