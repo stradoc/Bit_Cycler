@@ -4,7 +4,7 @@
 
 export type DiagramId =
   | 'cpu' | 'clock' | 'units' | 'storage' | 'highway' | 'score'
-  | 'laundry' | 'stages' | 'overlap' | 'hazard' | 'stall' | 'pipeplay' | 'layers' | 'speedup';
+  | 'laundry' | 'stages' | 'stall' | 'pipeplay' | 'speedup';
 
 export type LessonPage = {
   readonly title: string;
@@ -95,84 +95,34 @@ export const TIER2_LESSON: Lesson = {
   scene: 'pipeline',
   pages: [
     {
-      title: 'ONE AT A TIME IS SLOW',
+      title: 'PIPELINING',
       diagram: 'laundry',
-      lines: [
-        "Tier 1's CPU finished each instruction",
-        'before starting the next, so most of the',
-        'CPU sat idle. Pipelining overlaps the work.',
-      ],
-      analogy: 'Laundry: start washing load 2 while load 1 is drying.',
+      lines: ['Tier 1 ran one instruction at a time.', 'A pipeline overlaps them, like laundry.'],
+      analogy: 'Wash load 2 while load 1 dries.',
     },
     {
       title: 'FIVE STAGES',
       diagram: 'stages',
-      lines: [
-        "The CPU's work is split into five short steps.",
-        'Each instruction moves one stage per cycle,',
-        'so five instructions can be in flight at once.',
-      ],
-      analogy: 'Like an assembly line with five stations.',
+      lines: ['Each instruction moves one stage per beat.', 'Short stages let the clock run 4x faster.'],
+      analogy: 'Five instructions in flight at once.',
     },
     {
-      title: 'A FASTER CLOCK',
-      diagram: 'overlap',
-      lines: [
-        'Short stages let the clock tick faster: 4 MHz.',
-        'Once the pipeline is full, one instruction',
-        'finishes every cycle. Filling it takes 4 cycles.',
-      ],
-      analogy: 'The tempo rises a little: you are running a faster chip.',
-    },
-    {
-      title: 'DATA HAZARDS',
-      diagram: 'hazard',
-      lines: [
-        'An instruction reads its registers in ID.',
-        "If an older instruction hasn't written that",
-        "register yet (in WB), the value isn't ready.",
-      ],
-      analogy: 'Like starting a recipe step before the ingredient is cooked.',
-    },
-    {
-      title: 'STALLING',
+      title: 'WAIT FOR YOUR DATA',
       diagram: 'stall',
-      lines: [
-        'The fix is to wait: a STALL holds it in ID',
-        'and sends an empty BUBBLE down the pipeline.',
-        'Result from 1 back: 2 stalls. 2 back: 1 stall.',
-      ],
-      analogy: 'A short wait beats cooking with raw ingredients.',
+      lines: ['If it needs a register the one ahead', "hasn't written yet, it must STALL (wait)."],
+      analogy: 'Like waiting for an ingredient to finish cooking.',
     },
     {
       title: 'HOW IT PLAYS',
       diagram: 'pipeplay',
-      lines: [
-        'Route notes as before: D = ALU  F = MEM  J = BRANCH.',
-        'But if it reads a register still being computed',
-        '(outlined in the pipeline), press SPACE to stall.',
-      ],
-      analogy: 'Route into a hazard: FLUSH. Stall for nothing: a wasted cycle.',
-    },
-    {
-      title: 'LISTEN TO THE PIPELINE',
-      diagram: 'layers',
-      lines: [
-        'Each filled stage adds a layer to the music.',
-        'A full pipeline plays the whole song;',
-        'stalls and flushes strip it back down.',
-      ],
-      analogy: 'Keep the streak going and the song keeps building.',
+      lines: ['Routed notes slide down through EX, MEM, WB.', 'A LINK to a note below means: press SPACE.'],
+      analogy: 'Route too early: FLUSH. Stall for nothing: a wasted cycle.',
     },
     {
       title: 'YOUR SCORE',
       diagram: 'speedup',
-      lines: [
-        'Stalls push CPI above 1.00, but every cycle',
-        'is 4x shorter than tier 1, so the pipelined',
-        'CPU still finishes the program sooner.',
-      ],
-      analogy: 'Results compare your run with the single-cycle CPU.',
+      lines: ['Stalls raise CPI, but cycles are 4x shorter,', 'so the pipeline still finishes first.'],
+      analogy: 'The music builds as your pipeline fills.',
     },
   ],
 };

@@ -50,9 +50,9 @@ class Sketch {
   }
 
   /** One instruction, syntax-highlighted. `source` may define its own label. */
-  code(x: number, y: number, source: string, maxWidth?: number): void {
+  code(x: number, y: number, source: string, maxWidth?: number, compact = false): void {
     const [instr] = assemble(source).instructions;
-    this.parts.push(codeLine(this.scene, x, y, tokens(instr), this.era.syntax, { center: true, maxWidth }));
+    this.parts.push(codeLine(this.scene, x, y, tokens(instr, compact), this.era.syntax, { center: true, maxWidth }));
   }
 
   arrow(x1: number, y1: number, x2: number, y2: number): void {
@@ -220,29 +220,6 @@ const DIAGRAMS: Record<DiagramId, (s: Sketch, cx: number, cy: number) => void> =
     });
   },
 
-  // Instructions overlapping across cycles
-  overlap(s, cx, cy) {
-    const col = (c: number) => cx - 220 + c * 66;
-    for (let c = 0; c < 8; c++) s.text(col(c), cy - 88, `C${c + 1}`, 12, 0.6);
-    for (let row = 0; row < 4; row++) {
-      s.text(cx - 320, cy - 56 + row * 34, `INSTR ${row + 1}`, 13, 0.7);
-      ['IF', 'ID', 'EX', 'MEM', 'WB'].forEach((stage, j) => s.cell(col(row + j), cy - 56 + row * 34, stage, stage === 'WB', 60, 26));
-    }
-    s.text(cx + 160, cy + 82, 'from cycle 5 on: one finishes every cycle', 13, 0.8);
-  },
-
-  // A value read before it is written
-  hazard(s, cx, cy) {
-    const col = (c: number) => cx - 110 + c * 76;
-    for (let c = 0; c < 6; c++) s.text(col(c), cy - 78, `CYCLE ${c + 1}`, 12, 0.6);
-    s.code(cx - 320, cy - 40, 'addi x1, x0, 5');
-    s.code(cx - 320, cy + 4, 'add x2, x1, x1');
-    ['IF', 'ID', 'EX', 'MEM', 'WB'].forEach((stage, j) => s.cell(col(j), cy - 40, stage, stage === 'WB', 70));
-    ['IF', 'ID', 'EX', 'MEM', 'WB'].forEach((stage, j) => s.cell(col(1 + j), cy + 4, stage, stage === 'ID', 70));
-    s.arrow(col(4) - 20, cy - 26, col(2) + 20, cy - 10);
-    s.text(cx, cy + 56, 'x1 is READ in cycle 3, but only WRITTEN in cycle 5', 14);
-  },
-
   // The same pair with two stalls
   stall(s, cx, cy) {
     const col = (c: number) => cx - 150 + c * 68;
@@ -251,45 +228,37 @@ const DIAGRAMS: Record<DiagramId, (s: Sketch, cx: number, cy: number) => void> =
     s.code(cx - 330, cy + 4, 'add x2, x1, x1');
     ['IF', 'ID', 'EX', 'MEM', 'WB'].forEach((stage, j) => s.cell(col(j), cy - 40, stage, stage === 'WB', 62));
     ['IF', 'wait', 'wait', 'ID', 'EX', 'MEM', 'WB'].forEach((stage, j) => s.cell(col(1 + j), cy + 4, stage, j === 3, 62));
-    s.text(cx, cy + 56, 'written in the first half of cycle 5, read in the second half', 14);
+    s.text(cx, cy + 56, 'add waits 2 cycles, until x1 is written', 14);
   },
 
-  // The tier 2 screen in miniature
+  // The tier 2 screen in miniature: the waiting note linked to the instruction below it
   pipeplay(s, cx, cy) {
-    const laneW = 100;
+    const laneW = 140;
     const left = cx - 400;
-    const hitY = cy + 40;
-    for (let i = 0; i <= 3; i++) s.polyline([[left + i * laneW, cy - 90], [left + i * laneW, hitY + 10]]);
+    const hitY = cy - 20;
+    const rowY = (row: number) => hitY + 34 * (row + 1);
+    const lane = (i: number) => left + (i + 0.5) * laneW;
+    for (let i = 0; i <= 3; i++) s.polyline([[left + i * laneW, cy - 100], [left + i * laneW, rowY(2) + 17]]);
     s.polyline([[left, hitY], [left + 3 * laneW, hitY]]);
-    ['ALU [D]', 'MEM [F]', 'BRANCH [J]'].forEach((label, i) => s.text(left + (i + 0.5) * laneW, hitY + 26, label, 13));
-    s.text(left + 1.5 * laneW, hitY + 54, 'STALL [SPACE]', 14, 1, true);
-    s.backing(left + 0.5 * laneW, hitY, laneW - 8, 24);
-    s.box(left + 0.5 * laneW, hitY, laneW - 8, 24, true, false);
-    s.code(left + 0.5 * laneW, hitY, 'add x2, x1, x1', laneW - 14);
+    ['ID', 'EX', 'MEM', 'WB'].forEach((stage, i) => s.text(left - 24, i === 0 ? hitY : rowY(i - 1), stage, 12, 0.7));
 
-    const names = ['IF', 'ID', 'EX', 'MEM', 'WB'];
-    const contents = ['sb', 'add', 'addi\n-> x1', '-', '-'];
-    names.forEach((name, i) => {
-      const x = cx + 10 + i * 72;
-      s.text(x, cy - 66, name, 12, 0.7);
-      s.box(x, cy - 30, 64, 50, i === 1 || i === 2);
-      s.text(x, cy - 30, contents[i], 13);
-    });
-    s.text(cx + 190, hitY + 6, 'add needs x1, still in EX:', 14, 0.8);
-    s.text(cx + 190, hitY + 34, 'PRESS SPACE', 18, 1, true);
-  },
+    s.backing(lane(1), hitY - 64, laneW - 8, 24);
+    s.box(lane(1), hitY - 64, laneW - 8, 24);
+    s.code(lane(1), hitY - 64, 'lb x4, 0(x1)', laneW - 16, true);
 
-  // One music layer per filled stage
-  layers(s, cx, cy) {
-    const layers = [['IF', 'BASS'], ['ID', 'HI-HAT'], ['EX', 'DRUMS'], ['MEM', 'ARPEGGIO'], ['WB', 'MELODY']];
-    layers.forEach(([stage, layer], i) => {
-      const x = cx + (i - 2) * 150;
-      const filled = i < 3;
-      s.box(x, cy - 10, 130, 70, filled);
-      s.text(x, cy - 26, stage, 20, filled ? 1 : 0.5, true);
-      s.text(x, cy + 6, layer, 14, filled ? 1 : 0.5);
-    });
-    s.text(cx, cy + 62, '3 OF 5 STAGES FULL: BASS + HI-HAT + DRUMS PLAYING', 14, 0.8);
+    s.backing(lane(0), hitY, laneW - 8, 24);
+    s.box(lane(0), hitY, laneW - 8, 24, true, false);
+    s.code(lane(0), hitY, 'add x2, x1, x1', laneW - 16, true);
+    s.text(lane(0), hitY - 24, 'x1 NOT READY', 12, 1, true);
+
+    s.backing(lane(0), rowY(0), laneW - 8, 24);
+    s.box(lane(0), rowY(0), laneW - 8, 24, true, false);
+    s.code(lane(0), rowY(0), 'addi x1, x0, 5', laneW - 16, true);
+    s.polyline([[lane(0) + 14, hitY + 12], [lane(0) + 14, rowY(0) - 12]]);
+
+    s.text(cx + 200, hitY - 10, 'addi is still computing x1', 15, 0.8);
+    s.text(cx + 200, hitY + 24, 'PRESS SPACE', 20, 1, true);
+    s.text(cx + 200, hitY + 58, 'until the link is gone', 15, 0.8);
   },
 
   // Higher CPI, shorter cycles, faster overall
@@ -298,6 +267,6 @@ const DIAGRAMS: Record<DiagramId, (s: Sketch, cx: number, cy: number) => void> =
     s.text(cx, cy - 56, 'CPU TIME = INSTRUCTIONS x CPI x CLOCK PERIOD', 20, 1, true);
     s.text(cx, cy + 6, 'SINGLE-CYCLE (1 MHz): 20 x 1.00 x 1.00 µs = 20.0 µs', 16, 0.7);
     s.text(cx, cy + 38, 'PIPELINED (4 MHz):    20 x 2.15 x 0.25 µs = 10.8 µs', 16);
-    s.text(cx, cy + 74, '1.9x FASTER, EVEN WITH MORE CYCLES PER INSTRUCTION', 14, 0.8);
+    s.text(cx, cy + 74, '1.9x FASTER', 16, 1, true);
   },
 };

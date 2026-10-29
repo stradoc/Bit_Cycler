@@ -23,6 +23,8 @@ export type Decision = {
   readonly judgment: Judgment;
   /** The hazard blocking the instruction when the choice was made, if any. */
   readonly hazard: Hazard | null;
+  /** The instruction had already been waiting on the line (stalled), so timing didn't count. */
+  readonly waited: boolean;
 };
 
 export type CycleReport = CycleResult & { readonly decision: Decision | null };
@@ -57,6 +59,8 @@ export class PipelineRun {
   streak = 0;
   bestStreak = 0;
   private pending: Decision | null = null;
+  /** Seq of the instruction that stalled last cycle and is still waiting in ID. */
+  private waitingSeq: number | null = null;
   /** Recent cycles: 1 if an instruction completed (reached WB), else 0. */
   private completions: number[] = [];
 
@@ -94,11 +98,25 @@ export class PipelineRun {
   press(action: Action, beat: number): Decision | null {
     const slot = this.pipeline.stages.ID;
     if (!slot || this.pending || this.done) return null;
-    const offset = (beat - this.dueBeat) * this.secondsPerBeat;
-    if (offset < -this.windows.early) return null;
-    const judgment = judge(offset, this.windows);
+    // A note already waiting on the line isn't moving, so there's no beat to hit:
+    // any press during its cycle counts. Timing only matters when a note first arrives.
+    const waited = this.waitingSeq === slot.seq;
+    let judgment: Judgment = 'PERFECT';
+    if (!waited) {
+      const offset = (beat - this.dueBeat) * this.secondsPerBeat;
+      if (offset < -this.windows.early) return null;
+      judgment = judge(offset, this.windows);
+    }
     const outcome = judgment === 'MISS' ? 'off-beat' : (evaluate(this.pipeline, action) ?? 'missed');
-    this.pending = { slot, action, outcome, judgment, hazard: this.pipeline.hazard() };
+    this.pending = { slot, action, outcome, judgment, hazard: this.pipeline.hazard(), waited };
+    return this.pending;
+  }
+
+  /** Sets this cycle's decision directly (replaying a recorded run). */
+  force(action: Action | null, outcome: Outcome, judgment: Judgment): Decision | null {
+    const slot = this.pipeline.stages.ID;
+    if (!slot || this.done) return null;
+    this.pending = { slot, action, outcome, judgment, hazard: this.pipeline.hazard(), waited: this.waitingSeq === slot.seq };
     return this.pending;
   }
 
@@ -115,7 +133,8 @@ export class PipelineRun {
     const slot = this.pipeline.stages.ID;
     let decision = this.pending;
     if (slot && !decision) {
-      decision = { slot, action: null, outcome: 'missed', judgment: 'MISS', hazard: this.pipeline.hazard() };
+      const waited = this.waitingSeq === slot.seq;
+      decision = { slot, action: null, outcome: 'missed', judgment: 'MISS', hazard: this.pipeline.hazard(), waited };
     }
     this.pending = null;
 
@@ -132,6 +151,8 @@ export class PipelineRun {
     // Only a correct route or a violation actually issues; every other outcome is a stall.
     const issues = decision?.outcome === 'issued' || decision?.outcome === 'violation';
     const result = this.pipeline.step(issues ? 'issue' : 'stall');
+    const id = this.pipeline.stages.ID;
+    this.waitingSeq = slot && id?.seq === slot.seq ? id.seq : null;
     this.completions.push(result.committed ? 1 : 0);
     if (this.completions.length > THROUGHPUT_WINDOW) this.completions.shift();
     return { ...result, decision };

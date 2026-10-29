@@ -97,7 +97,7 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 - [ ] Track hazard-decision accuracy (learning objective 1) and show it after each contract
 
 ### Tier 2–3 play screen (design: player is the control unit)
-- [x] Pipeline strip (IF ID EX MEM WB) advancing each beat; registers still being computed marked with their stage (placed in the right panel)
+- [x] Pipeline shown on the highway: hit line = ID, EX / MEM / WB rows below; a link from a waiting note to the instruction computing its register; registers still being computed marked in the panel
 - [x] "Pipeline fill" feel: clock never changes; music adds one layer per occupied stage; a flush strikes out notes and drops layers, then refills; live throughput meter
 - [x] STALL key (Space) inserts a bubble; stall rules follow the textbook 5-stage pipeline (distance 1 → 2 stalls, distance 2 → 1)
 - [x] Routing into a hazard shows the stale value read next to the correct one, then flushes
@@ -105,7 +105,10 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 - [ ] Branch prediction keys: J = predict not taken, K = predict taken; mispredict strikes out wrong-path notes
 - [x] Results compare single-cycle vs pipelined CPU time (CPI up, period down, faster overall)
 - [x] Tier switch on the title screen (`T`) until the shop exists
-- [ ] Playtest tier 2 in a real browser: timing, music mix, readability of the strip
+- [ ] Playtest tier 2 in a real browser: timing, music mix, readability
+- [x] Results on notes, a bus carrying results to registers / memory, and a 2x replay (picked from five views tried in playtest)
+- [x] Tier 2 program listing that scrolls with the instruction in ID and tags each line with its stage
+- [x] Plain-English stage labels (FETCH / DECODE / EXECUTE / MEMORY / WRITE BACK); results wait until the last instruction leaves WB
 - [ ] Run logic accepts several presses per beat (ready for superscalar chords later)
 
 **Done when:** a new player can go from tier 1 to tier 3 and buy an HDD in one ~30-minute session, the CPI numbers are verified by tests, and the game runs from a plain static server.

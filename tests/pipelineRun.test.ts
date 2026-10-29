@@ -63,16 +63,17 @@ test('stalling with no hazard wastes a cycle and breaks the streak', () => {
   assert.equal(run.streak, 0);
 });
 
-test('a wrong unit, an off-beat press, or no press all stall', () => {
+test('an off-beat press, a wrong unit, or no press all stall', () => {
   const run = newRun('lb x1, 0(x0)');
+  endCycle(run);
+  // First arrival, 150 ms late: past the good window but before the cycle advanced
+  assert.equal(run.press({ kind: 'route', unit: 'MEM' }, run.dueBeat + 0.15 / SPB)?.outcome, 'off-beat');
   endCycle(run);
   assert.equal(run.press({ kind: 'route', unit: 'ALU' }, run.dueBeat)?.outcome, 'wrong-unit');
   endCycle(run);
-  // 150 ms late: past the good window but before the cycle advanced
-  assert.equal(run.press({ kind: 'route', unit: 'MEM' }, run.dueBeat + 0.15 / SPB)?.outcome, 'off-beat');
-  endCycle(run);
   const [missed] = endCycle(run); // no press at all
   assert.equal(missed.decision?.outcome, 'missed');
+  assert.equal(missed.decision?.waited, true); // shown as "late", not "off beat"
   assert.equal(run.pipeline.stalls, 3);
   assert.equal(run.pipeline.instructions, 0); // lb still waiting in ID
 });
@@ -93,4 +94,46 @@ test('throughput approaches 1 instruction per cycle when the pipeline stays full
     endCycle(run);
     if (run.pipeline.instructions === 10) assert.equal(run.throughput, 1);
   }
+});
+
+test('a note already waiting on the line is not timed', () => {
+  const run = newRun('addi x1, x0, 5\nadd x2, x1, x1');
+  endCycle(run);
+  run.press({ kind: 'route', unit: 'ALU' }, run.dueBeat);
+  endCycle(run); // addi issues; add arrives in ID with a 2-stall hazard
+  assert.equal(run.press({ kind: 'stall' }, run.dueBeat)?.waited, false); // first arrival: timed
+  endCycle(run);
+  // Still waiting: a press half a beat early would normally be ignored, but now it counts.
+  const second = run.press({ kind: 'stall' }, run.dueBeat - 0.5);
+  assert.equal(second?.waited, true);
+  assert.equal(second?.outcome, 'stalled');
+  endCycle(run);
+  const go = run.press({ kind: 'route', unit: 'ALU' }, run.dueBeat - 0.5);
+  assert.equal(go?.outcome, 'issued');
+  assert.equal(go?.judgment, 'PERFECT');
+});
+
+test('forcing recorded decisions replays a run exactly', () => {
+  const spec = PROGRAMS[0];
+  const record: { action: Action | null; outcome: Parameters<PipelineRun['force']>[1]; judgment: 'PERFECT' | 'GOOD' | 'MISS' }[] = [];
+  const original = newRun(spec.source, false, spec.memory);
+  let i = 0;
+  while (!original.done) {
+    // Make a few deliberate mistakes so the replay has something to reproduce.
+    const action = i % 7 === 3 ? { kind: 'stall' as const } : best(original);
+    if (action) original.press(action, original.dueBeat);
+    for (const r of endCycle(original)) if (r.decision) record.push({ action: r.decision.action, outcome: r.decision.outcome, judgment: r.decision.judgment });
+    i++;
+  }
+  const replay = newRun(spec.source, false, spec.memory);
+  let next = 0;
+  while (!replay.done) {
+    if (replay.pipeline.stages.ID) {
+      const r = record[next++];
+      replay.force(r.action, r.outcome, r.judgment);
+    }
+    endCycle(replay);
+  }
+  assert.equal(replay.pipeline.cycle, original.pipeline.cycle);
+  assert.deepEqual(replay.counts, original.counts);
 });

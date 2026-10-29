@@ -24,6 +24,8 @@ Technology and design decisions, with the reason for each (see `RULES.md` rule 3
 | 2026-10-28 | **Tempo follows the clock on a log scale:** 75 BPM at 1 MHz, +12 BPM per 10× clock (~118 BPM at 4 GHz); relaxed/practice at 80% | Real clocks grow ~4000×; a gentle, capped curve keeps the late game playable. CPU-time math uses the real period |
 | 2026-10-28 | **Clock is a dial** set before each program: upgrades raise the maximum, players may underclock | Makes CPU time = IC × CPI × period a player choice (faster clock vs. more stalls), like real overclocking instability; players control difficulty |
 | 2026-10-28 | **Overclock red zone** above the rated clock: faster and better-paid, but builds heat; overheating throttles mid-song; cooling widens the zone | Matches real overclocking (performance traded for heat and stability); ties the clock dial, heat meter and cooling upgrades together |
+| 2026-10-28 | Tier 2 layout: **EX / MEM / WB rows below the hit line**, with a link from a waiting note to the instruction computing its register | Playtest: the corner pipeline strip was too far from the notes to use while playing |
+| 2026-10-28 | Tier 2 shows **results on notes**, a **bus** carrying results to registers/memory, and a **2x replay**; breathers and a view selector were tried and dropped | Playtest of five views: these let players see what the CPU did without looking away from the notes |
 | 2026-10-28 | All keyboard input via `game/src/input/keys.ts`; Phaser's keyboard plugin disabled | Phaser re-processes its per-frame key queue on every new key event, so two key events in one frame fired handlers twice (found when briefing pages skipped) |
 | 2026-10-28 | Art direction: 8/16-bit pixel art, ~480×270 internal resolution (now 960×540, see above), electronics effects, **old-terminal / green-phosphor CRT look** | Fits the hardware theme; visuals can evolve with CPU tier (presented as era styling, not a technical claim) |
 
@@ -59,7 +61,23 @@ All Step 0 decisions are made.
 - Design doc scope section: removed fixed internal dates; replaced the dated timeline with a four-phase sequence.
 - Design doc superscalar section: corrected pairing rules. WAR is safe in in-order dual-issue; WAW and RAW block pairing; renaming matters once instructions can be reordered.
 
-### Tier 2: the pipeline, playable (uncommitted)
+### Tier 2: results on notes, the bus, and replay (uncommitted)
+- Playtest: hard to appreciate registers/memory while focused on notes. Tried five switchable views (standard, results on notes, flying values, breathers, replay). Kept results on notes and replay; turned flying values into a bus; dropped breathers and the view selector.
+- **Results on notes:** in the WB row a note shows what it did (`x2 = 4`, `mem[8] = 17`, `BRANCH TAKEN`).
+- **The bus:** each result travels right along a wire from its row, up a vertical bus, and into its register or memory cell, lighting the wire behind it. Register results leave from WB (written back), stores from MEM (memory is written in MEM). The panel only changes when the value arrives.
+- **Replay:** every results screen offers `[W] WATCH REPLAY`: the recorded run at 2x speed. `PipelineRun.force()` replays decisions exactly (tested).
+- **No timing on waiting notes:** once a note is waiting on the line (stalled), any press during its cycle counts; timing only applies on first arrival. A missed waiting note says "LATE: +1 CYCLE" instead of "OFF BEAT". Tested.
+- Tier 2 panel shows the **program listing** (top right): a 6-line window that scrolls to follow the instruction in ID, marked with `>`, with each line tagged by the pipeline stage it's in (IF / ID / EX / MEM / WB); `^` / `v` when there's more above / below.
+- **Plain stage names** down the left of the pipeline: FETCH / DECODE / EXECUTE / MEMORY / WRITE BACK, with IF / ID / EX / MEM / WB underneath (lanes shifted right to make room).
+- **The song ends when the pipeline drains:** the last instruction finishes its WRITE BACK beat and slides out, and its value lands, before the results appear (cycle count unchanged).
+- Tier 2 panel shows **memory** too. Transfers and fades run on the real clock. Verified in real-time headless runs. 2 new tests (35 total).
+
+### Tier 2 rework after playtest (uncommitted)
+- **The highway is the pipeline:** the hit line is ID, with EX / MEM / WB rows underneath. Routed notes slide down one row per beat in their own lane. When the note on the line needs a register still being computed, it pulses, is tagged "x4 NOT READY", and a **link** connects it to the instruction below that's computing it. Rule for the player: link = stall, no link = route. The top-right pipeline strip is gone; the panel keeps registers (`<-EX` / `<-MEM`), throughput, stats and feedback. Callouts and feedback reworded around the link.
+- **Tutorial trimmed** from 8 cards to 5, two short lines each (pipelining, five stages, wait for your data, how it plays, your score). Unused diagrams removed; "how it plays" redrawn for the new layout.
+- **Slow-frame fixes:** issued notes ease to their rows, and fades run on the real clock (not Phaser tweens), so slow frames can't leave notes stranded on screen. Verified in a real-time headless run.
+
+### Tier 2: the pipeline, playable (committed in ce8bab5)
 - **Run logic** (`game/src/rhythm/pipelineRun.ts`): each beat is a cycle; the player's choice for the instruction in ID (route D/F/J or stall Space) is judged in a timing window, then the pipeline advances. Outcomes: issued, stalled (correct), wasted stall, violation (routed into a hazard: flushed), wrong unit / off-beat / missed (treated as stalls). Streak counts correct decisions; throughput = instructions completed per cycle over the last 8 cycles. 6 tests, including perfect play on SUM ARRAY = 43 cycles with a 36-decision streak.
 - **Pipeline screen** (`game/src/scenes/PipelineScene.ts`): live IF/ID/EX/MEM/WB strip (the instruction blocked by a hazard and the stage still computing its value are outlined), registers marked `<- EX` / `<- MEM` while their new value is still in flight, STALL [SPACE] under the lanes, throughput bar, struck-out notes on flush, feedback that explains each outcome (e.g. "DATA HAZARD! add READ x1 = 0 BUT addi IS STILL COMPUTING 5"). Clock 4 MHz (≈82 BPM). Results compare pipelined vs single-cycle CPU time (SUM ARRAY perfect: 10.8 µs vs 20.0 µs, 1.9× faster with CPI 2.15).
 - **Music layers** (`game/src/audio/music.ts`): bass, hi-hat, drums, arpeggio, melody, one per filled stage (Am–F–C–G). The conductor gained an `onBeat` hook so music is scheduled on the beat clock.
