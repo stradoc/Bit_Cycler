@@ -61,7 +61,16 @@ All Step 0 decisions are made.
 - Design doc scope section: removed fixed internal dates; replaced the dated timeline with a four-phase sequence.
 - Design doc superscalar section: corrected pairing rules. WAR is safe in in-order dual-issue; WAW and RAW block pairing; renaming matters once instructions can be reordered.
 
-### Tier 2: results on notes, the bus, and replay (uncommitted)
+### Tier 3: forwarding (uncommitted)
+- **Tier 3** (`T` on the title cycles 1 → 2 → 3): the tier 2 pipeline with the forwarding unit on. ALU results reach the next instruction with no stall; a load used right away still stalls once (load-use); a branch needs a brand-new ALU value one beat early. Tier options (`forwarding`) travel from the tier list / lesson to the scene and survive retry and replay.
+- **Forwarding on screen:** when an instruction issues with a forwarded value, the value (`x4=3`) jumps up a lit wire from the producer's note in EXECUTE or MEMORY into it.
+- **Lesson 3** (4 cards): hand it over (ALU → ALU timing chart), loads still wait (load-use timing chart), how it plays, your score. Practice explains the first forward and the first load-use stall.
+- **Results** compare three CPUs: your forwarding run, the best possible run without forwarding (`perfectCycles()`), and single-cycle; plus "FORWARDING SAVED N CYCLES". SUM ARRAY perfect: 35 cycles / 8.8 µs vs 43 / 10.8 µs vs 20.0 µs.
+- Simulator: `Pipeline.forwardedFrom()` and `perfectCycles()`, 2 tests (37 total). Dev option `?forwarding`.
+- Verified in real-time headless runs: one load-use stall, `x4=3` forwarded from MEMORY into `add`, results 35 cycles / CPI 1.75.
+- **Accuracy fix (playtest):** the load-use callout said "lb is still reading memory" while `lb` was in EXECUTE, where it only computes the address; it reads memory in MEMORY. Explanations now depend on the producer's actual stage (`whyNotReady()`), for both the hazard callout and the wrong-move message. Callout box made taller to fit.
+
+### Tier 2: results on notes, the bus, and replay (committed in af4dc6c)
 - Playtest: hard to appreciate registers/memory while focused on notes. Tried five switchable views (standard, results on notes, flying values, breathers, replay). Kept results on notes and replay; turned flying values into a bus; dropped breathers and the view selector.
 - **Results on notes:** in the WB row a note shows what it did (`x2 = 4`, `mem[8] = 17`, `BRANCH TAKEN`).
 - **The bus:** each result travels right along a wire from its row, up a vertical bus, and into its register or memory cell, lighting the wire behind it. Register results leave from WB (written back), stores from MEM (memory is written in MEM). The panel only changes when the value arrives.

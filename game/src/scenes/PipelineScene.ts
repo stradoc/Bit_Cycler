@@ -18,7 +18,7 @@ import { getSettings } from '../settings.ts';
 import { assemble } from '../sim/assembler.ts';
 import { Cpu } from '../sim/cpu.ts';
 import { describe, tokens, UNIT_ROLES, UNITS, unitOf, type Instruction, type Program, type Unit } from '../sim/isa.ts';
-import { STAGES, type Slot } from '../sim/pipeline.ts';
+import { perfectCycles, STAGES, type Hazard, type Slot } from '../sim/pipeline.ts';
 import { codeLine } from '../visual/codeLine.ts';
 import { cssColor, ERAS, TerminalLook } from '../visual/terminal.ts';
 
@@ -147,12 +147,18 @@ export class PipelineScene extends Phaser.Scene {
   private recording: Recorded[] = [];
   /** Set when watching a replay: the recorded run to play back. */
   private watching: readonly Recorded[] | null = null;
+  /** Tier 3: the forwarding unit passes results straight to the next instruction. */
+  private forwarding = false;
+  /** The CPU as the program starts, for best-case comparisons on the results screen. */
+  private freshCpu!: Cpu;
 
   constructor() {
     super('pipeline');
   }
 
-  init(data?: { practice?: boolean; watch?: readonly Recorded[] }): void {
+  init(data?: { practice?: boolean; watch?: readonly Recorded[]; forwarding?: boolean }): void {
+    // ?forwarding in the URL turns tier 3's forwarding on (dev shortcut).
+    this.forwarding = data?.forwarding ?? new URLSearchParams(location.search).has('forwarding');
     // ?practice in the URL starts in practice mode (dev shortcut).
     this.practice = data?.practice ?? new URLSearchParams(location.search).has('practice');
     this.watching = data?.watch ?? null;
@@ -190,7 +196,8 @@ export class PipelineScene extends Phaser.Scene {
     const program = assemble(spec.source, REGISTER_COUNT);
     const cpu = new Cpu(program, 8, spec.memory, REGISTER_COUNT);
     this.listing = this.buildListing(program);
-    this.run = new PipelineRun(cpu, false, FIRST_BEAT, 60 / bpm, easy ? RELAXED_WINDOWS : NORMAL_WINDOWS);
+    this.freshCpu = cpu.clone();
+    this.run = new PipelineRun(cpu, this.forwarding, FIRST_BEAT, 60 / bpm, easy ? RELAXED_WINDOWS : NORMAL_WINDOWS);
     this.shownRegs = [...this.run.pipeline.regs];
     this.shownMemory = cpu.memory.slice();
 
@@ -249,9 +256,9 @@ export class PipelineScene extends Phaser.Scene {
     } else if (key === 'Escape' || key === 'Q') {
       this.scene.start('title');
     } else if (key === 'Enter' && this.finished) {
-      this.scene.restart({ practice: false });
+      this.scene.restart({ practice: false, forwarding: this.forwarding });
     } else if (key === 'W' && this.finished && !this.practice) {
-      this.scene.restart({ watch: this.watching ?? this.recording });
+      this.scene.restart({ watch: this.watching ?? this.recording, forwarding: this.forwarding });
     }
   }
 
@@ -345,6 +352,7 @@ export class PipelineScene extends Phaser.Scene {
         const streak = this.run.streak + 1;
         const label = d.waited ? 'GO' : d.judgment;
         this.feedback.setText(`${label}${streak >= 4 ? `\nSTREAK ${streak}` : ''}`);
+        this.showForwarding(d.slot);
         return;
       }
       case 'stalled':
@@ -419,14 +427,27 @@ export class PipelineScene extends Phaser.Scene {
     if (!slot) return;
     if (hazard && !this.explained.has('hazard')) {
       this.explained.add('hazard');
-      this.showCallout(
-        `HAZARD: ${slot.instr.op} needs x${hazard.reg}, but ${hazard.producer.instr.op}\n(linked below) hasn't finished it.\nPress SPACE until the link is gone.`,
-      );
+      this.showCallout(`HAZARD: ${slot.instr.op} needs x${hazard.reg}, but\n${this.whyNotReady(hazard)}\nPress SPACE until the link is gone.`);
     } else if (!hazard && !this.explained.has('route')) {
       this.explained.add('route');
       const unit = unitOf(slot.instr);
       this.showCallout(`NO LINK: nothing below is still\ncomputing what it needs.\nRoute it: press ${LANE_KEYS[unit]} (${unit})`);
     }
+  }
+
+  /**
+   * Why a value isn't ready yet, by where its producer actually is. A load only
+   * works out its address in EXECUTE and reads memory in MEMORY; its value exists
+   * after that, which is why even forwarding can't hand it over any sooner.
+   */
+  private whyNotReady(hazard: Hazard): string {
+    const op = hazard.producer.instr.op;
+    const stage = this.run.pipeline.stageOf(hazard.producer.seq);
+    if (op === 'lb' && stage === 'EX') {
+      return 'lb is in EXECUTE, only working out\nthe address. It reads memory next beat,\ntoo late to forward.';
+    }
+    if (op === 'lb' && stage === 'MEM') return 'lb is reading memory right now;\nthe value exists at the end of this beat.';
+    return `${op} (linked below) hasn't finished it.`;
   }
 
   private explainMistake(outcome: string): string {
@@ -435,7 +456,7 @@ export class PipelineScene extends Phaser.Scene {
     if (!slot) return '';
     const unit = unitOf(slot.instr);
     if (outcome === 'violation' && hazard) {
-      return `WAIT! x${hazard.reg} is still being computed\nby ${hazard.producer.instr.op} (linked below).\nPress SPACE to stall.`;
+      return `WAIT! x${hazard.reg} isn't ready:\n${this.whyNotReady(hazard)}\nPress SPACE to stall.`;
     }
     if (outcome === 'wasted-stall') return `NO NEED TO WAIT: there's no link.\nRoute it: press ${LANE_KEYS[unit]} (${unit})`;
     return `${describe(slot.instr)}\n${UNIT_ROLES[unit]} -> press ${LANE_KEYS[unit]} (${unit})`;
@@ -489,7 +510,8 @@ export class PipelineScene extends Phaser.Scene {
 
   private drawPanel(name: string): void {
     const mode = this.watching ? '   REPLAY (2x SPEED)' : '';
-    this.text(PANEL_X, 10, `TIER 2: PIPELINE   ${name}${mode}`, 14).setAlpha(0.7);
+    const tier = this.forwarding ? 'TIER 3: FORWARDING' : 'TIER 2: PIPELINE';
+    this.text(PANEL_X, 10, `${tier}   ${name}${mode}`, 14).setAlpha(0.7);
     let y = LISTING_TOP + LISTING_ROWS * LISTING_LINE + 10;
     this.text(PANEL_X, y, 'REGISTERS  (<- STILL COMPUTING)').setAlpha(0.7);
     y += 22;
@@ -578,7 +600,7 @@ export class PipelineScene extends Phaser.Scene {
 
   private drawCallout(): void {
     const { fg, bg } = this.look.era;
-    const box = this.add.rectangle(0, 0, LANES_W - 8, 120, bg).setStrokeStyle(2, fg);
+    const box = this.add.rectangle(0, 0, LANES_W - 8, 150, bg).setStrokeStyle(2, fg);
     this.calloutText = this.text(0, 0, '').setOrigin(0.5).setAlign('center').setLineSpacing(8);
     this.callout = this.add.container(LANE_X0 + LANES_W / 2, 170, [box, this.calloutText]).setDepth(600).setVisible(false);
   }
@@ -673,6 +695,36 @@ export class PipelineScene extends Phaser.Scene {
     // Fits inside one beat, so values never pile up on the bus.
     const duration = Math.min(600, this.run.secondsPerBeat * 1000 * 0.8);
     this.transfers.push({ text, path, start: performance.now(), duration, land });
+  }
+
+  /**
+   * Tier 3: when an instruction issues with a value forwarded from EX or MEM,
+   * that value jumps up a lit wire from the producer's note into it.
+   */
+  private showForwarding(consumer: Slot): void {
+    const forwarded = this.run.pipeline.forwardedFrom();
+    const note = this.notes.get(noteKey(consumer));
+    if (!note) return;
+    for (const { reg, producer } of forwarded) {
+      const from = this.inFlight.get(producer.seq);
+      if (!from) continue;
+      const midY = (from.box.y + note.box.y) / 2;
+      const x = note.box.x + 34;
+      const path: Point[] = [
+        [from.box.x + 34, from.box.y - NOTE_H / 2],
+        [from.box.x + 34, midY],
+        [x, midY],
+        [x, note.box.y + NOTE_H / 2],
+      ];
+      const text = this.text(path[0][0], path[0][1], `x${reg}=${producer.value}`, 14).setOrigin(1, 1).setDepth(700);
+      const duration = Math.min(350, this.run.secondsPerBeat * 1000 * 0.45);
+      this.transfers.push({ text, path, start: performance.now(), duration, land: () => {} });
+    }
+    if (this.practice && forwarded.length > 0 && !this.explained.has('forward')) {
+      this.explained.add('forward');
+      const { reg, producer } = forwarded[0];
+      this.showCallout(`FORWARDED: x${reg} came straight from\n${producer.instr.op} (watch the wire light up).\nNo stall needed!`);
+    }
   }
 
   /** Moves values along the bus on the real clock, lighting the wire behind them. */
@@ -842,6 +894,20 @@ export class PipelineScene extends Phaser.Scene {
 
   // ---- results ----
 
+  /** CPU-time lines: this run, plus (on tier 3) the best a CPU without forwarding could do. */
+  private timeLines(pipelined: number, single: number, without: number | undefined): string[] {
+    const p = this.run.pipeline;
+    const n = p.instructions;
+    const lines = [
+      `${this.forwarding ? 'WITH FORWARDING:     ' : 'PIPELINED (4 MHz):   '} ${n} x ${p.cpi.toFixed(2)} x 0.25 µs = ${pipelined.toFixed(1)} µs`,
+    ];
+    if (without !== undefined) {
+      lines.push(`NO FORWARDING (BEST): ${n} x ${(without / n).toFixed(2)} x 0.25 µs = ${(without / CLOCK_MHZ).toFixed(1)} µs`);
+    }
+    lines.push(`SINGLE-CYCLE (1 MHz): ${n} x 1.00 x 1.00 µs = ${single.toFixed(1)} µs`);
+    return lines;
+  }
+
   /**
    * The program is done once its last instruction reaches WB. Let it finish
    * that beat, slide out of the pipeline, and land its value, then show results.
@@ -867,6 +933,7 @@ export class PipelineScene extends Phaser.Scene {
     const pipelined = p.cycle / CLOCK_MHZ;
     const single = p.instructions / SINGLE_CYCLE_MHZ;
     const ratio = single / pipelined;
+    const without = this.forwarding ? perfectCycles(this.freshCpu, { forwarding: false }) : undefined;
 
     const lines = this.practice
       ? [
@@ -886,12 +953,18 @@ export class PipelineScene extends Phaser.Scene {
           `STALLS ${p.stalls}   FLUSHED ${p.flushed}   BEST STREAK ${this.run.bestStreak}`,
           '',
           'CPU TIME = INSTRUCTIONS x CPI x CLOCK PERIOD',
-          `PIPELINED (4 MHz):    ${p.instructions} x ${p.cpi.toFixed(2)} x 0.25 µs = ${pipelined.toFixed(1)} µs`,
-          `SINGLE-CYCLE (1 MHz): ${p.instructions} x 1.00 x 1.00 µs = ${single.toFixed(1)} µs`,
+          ...this.timeLines(pipelined, single, without),
           '',
           ratio >= 1
-            ? `${ratio.toFixed(1)}x FASTER, EVEN WITH A HIGHER CPI`
+            ? `${ratio.toFixed(1)}x FASTER THAN SINGLE-CYCLE, EVEN WITH A HIGHER CPI`
             : `${(1 / ratio).toFixed(1)}x SLOWER: TOO MANY STALLS AND FLUSHES`,
+          ...(without === undefined
+            ? []
+            : [
+                p.cycle < without
+                  ? `FORWARDING SAVED ${without - p.cycle} CYCLES VS. A PERFECT TIER 2 RUN`
+                  : 'STILL SLOWER THAN A PERFECT RUN WITHOUT FORWARDING',
+              ]),
           '',
           `[ENTER] ${this.watching ? 'PLAY' : 'RETRY'}    [W] WATCH REPLAY    [Q] TITLE`,
         ];

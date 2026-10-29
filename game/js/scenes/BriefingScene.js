@@ -44,7 +44,7 @@ export class BriefingScene extends Phaser.Scene {
         }
         const seen = new Set(getSettings().seenLessons).add(this.lesson.id);
         updateSettings({ seenLessons: [...seen] });
-        this.scene.start(this.lesson.scene, { practice: true });
+        this.scene.start(this.lesson.scene, { practice: true, ...this.lesson.options });
     }
     turn(delta) {
         const page = Phaser.Math.Clamp(this.page + delta, 0, this.lesson.pages.length - 1);

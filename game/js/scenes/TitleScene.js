@@ -80,7 +80,7 @@ export class TitleScene extends Phaser.Scene {
                 case 'B':
                     return this.scene.start('briefing', { lessonId: this.tier().lessonId });
                 case 'P':
-                    return this.scene.start(this.tier().scene, { practice: true });
+                    return this.scene.start(this.tier().scene, { practice: true, ...this.tier().options });
                 case 'T': {
                     const next = TIERS[(TIERS.indexOf(this.tier()) + 1) % TIERS.length];
                     updateSettings({ tier: next.number });
@@ -112,7 +112,7 @@ export class TitleScene extends Phaser.Scene {
     start() {
         const tier = this.tier();
         if (getSettings().seenLessons.includes(tier.lessonId))
-            this.scene.start(tier.scene);
+            this.scene.start(tier.scene, { ...tier.options });
         else
             this.scene.start('briefing', { lessonId: tier.lessonId });
     }

@@ -155,6 +155,25 @@ export class Pipeline {
     return STAGES.find((stage) => this.stages[stage]?.seq === seq);
   }
 
+  /**
+   * With forwarding on: the registers the instruction in ID will receive
+   * straight from an older instruction still in EX or MEM, instead of from the
+   * register file. Empty when there's a hazard (it has to stall first).
+   */
+  forwardedFrom(): { reg: number; producer: Slot }[] {
+    const consumer = this.stages.ID;
+    if (!consumer || !this.options.forwarding || this.hazard()) return [];
+    const forwarded: { reg: number; producer: Slot }[] = [];
+    for (const reg of new Set(sourceRegs(consumer.instr))) {
+      if (reg === 0) continue;
+      const producer = (['EX', 'MEM'] as const)
+        .map((stage) => this.stages[stage])
+        .find((slot) => slot && destReg(slot.instr) === reg);
+      if (producer) forwarded.push({ reg, producer });
+    }
+    return forwarded;
+  }
+
   /** The correct choice this cycle (used by autoplay and tests). */
   bestAction(): 'issue' | 'stall' {
     return this.hazard() ? 'stall' : 'issue';
@@ -240,4 +259,11 @@ export class Pipeline {
     if (rd !== undefined && slot.value !== undefined) this.regs[rd] = slot.value;
     this.instructions++;
   }
+}
+
+/** Cycles a perfectly played run takes (stalling exactly when needed); for comparisons. */
+export function perfectCycles(cpu: Cpu, options: PipelineOptions): number {
+  const pipeline = new Pipeline(cpu.clone(), options);
+  while (!pipeline.done) pipeline.step(pipeline.bestAction());
+  return pipeline.cycle;
 }

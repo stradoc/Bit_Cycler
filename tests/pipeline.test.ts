@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { PROGRAMS } from '../game/src/data/programs.ts';
 import { assemble } from '../game/src/sim/assembler.ts';
 import { Cpu } from '../game/src/sim/cpu.ts';
-import { Pipeline, stallsNeeded, type CycleResult } from '../game/src/sim/pipeline.ts';
+import { perfectCycles, Pipeline, stallsNeeded, type CycleResult } from '../game/src/sim/pipeline.ts';
 
 function pipeline(source: string, forwarding: boolean, memory: number[] = []): Pipeline {
   return new Pipeline(new Cpu(assemble(source), 8, memory), { forwarding });
@@ -137,4 +137,31 @@ test('SUM ARRAY runs correctly on the pipeline; forwarding makes it faster', () 
   // Forwarding: load-use (1) + branch on a fresh ALU result (1) -> 4 x 2 = 8.
   assert.equal(forwarded.stalls, 8);
   assert.equal(forwarded.cycle, 20 + 4 + 3 + 8);
+});
+
+test('forwardedFrom names the values handed straight to the instruction in ID', () => {
+  const alu = pipeline('addi x1, x0, 5\nadd x2, x1, x1', true);
+  alu.step('issue'); // addi into ID
+  alu.step('issue'); // addi into EX; add into ID
+  assert.deepEqual(alu.forwardedFrom().map((f) => [f.reg, f.producer.instr.op]), [[1, 'addi']]);
+
+  const plain = pipeline('addi x1, x0, 5\nadd x2, x1, x1', false);
+  plain.step('issue');
+  plain.step('issue');
+  assert.deepEqual(plain.forwardedFrom(), []); // no forwarding unit: it has to stall
+
+  const loadUse = pipeline('lb x1, 0(x0)\nadd x2, x1, x1', true, [7]);
+  loadUse.step('issue');
+  loadUse.step('issue');
+  assert.deepEqual(loadUse.forwardedFrom(), []); // load-use hazard: stall first
+  loadUse.step('stall');
+  assert.deepEqual(loadUse.forwardedFrom().map((f) => [f.reg, f.producer.instr.op]), [[1, 'lb']]); // now from MEM
+});
+
+test('perfectCycles gives the best possible run, without changing the CPU passed in', () => {
+  const spec = PROGRAMS[0];
+  const cpu = new Cpu(assemble(spec.source, 8), 8, spec.memory);
+  assert.equal(perfectCycles(cpu, { forwarding: false }), 43);
+  assert.equal(perfectCycles(cpu, { forwarding: true }), 35);
+  assert.equal(cpu.pc, 0);
 });

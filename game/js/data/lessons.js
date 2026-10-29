@@ -105,8 +105,41 @@ export const TIER2_LESSON = {
         },
     ],
 };
+export const TIER3_LESSON = {
+    id: 'tier3',
+    title: 'LESSON 3: FORWARDING',
+    scene: 'pipeline',
+    options: { forwarding: true },
+    pages: [
+        {
+            title: 'HAND IT OVER',
+            diagram: 'forward',
+            lines: ['A result exists at the end of EXECUTE,', 'two stages before it is written back.'],
+            analogy: 'Forwarding wires pass it straight to the next instruction.',
+        },
+        {
+            title: 'LOADS STILL WAIT',
+            diagram: 'loaduse',
+            lines: ["A load's value comes out of MEMORY,", 'one stage too late: it still needs 1 stall.'],
+            analogy: 'The load-use hazard: the one forwarding cannot fix.',
+        },
+        {
+            title: 'HOW IT PLAYS',
+            diagram: 'forwardplay',
+            lines: ['Most links are gone: route straight away.', 'Watch forwarded values jump up the wire.'],
+            analogy: 'A link now usually means a load: stall once.',
+        },
+        {
+            title: 'YOUR SCORE',
+            diagram: 'speedup3',
+            lines: ['Fewer stalls means a lower CPI', 'at the same 4 MHz clock.'],
+            analogy: 'Results compare you with tier 2 and tier 1.',
+        },
+    ],
+};
 export const LESSONS = {
     [TIER1_LESSON.id]: TIER1_LESSON,
     [TIER2_LESSON.id]: TIER2_LESSON,
+    [TIER3_LESSON.id]: TIER3_LESSON,
 };
 //# sourceMappingURL=lessons.js.map

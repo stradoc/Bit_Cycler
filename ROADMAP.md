@@ -92,7 +92,8 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 - [x] Practice mode: notes wait at the hit line, first-time callouts explain each instruction, wrong keys explain instead of stalling
 - [x] Tier 1 lesson: what a CPU does, the clock, functional units, registers vs memory, how it plays, scoring
 - [x] Tier 2 lesson: pipelining (laundry analogy), data hazards, stalls (+ tier 2 practice)
-- [ ] Tier 3 lessons: forwarding, branch prediction
+- [x] Tier 3 lesson: forwarding
+- [ ] Branch prediction lesson
 - [ ] Storage lessons: RAM / page faults, HDD
 - [ ] Track hazard-decision accuracy (learning objective 1) and show it after each contract
 
@@ -101,7 +102,7 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 - [x] "Pipeline fill" feel: clock never changes; music adds one layer per occupied stage; a flush strikes out notes and drops layers, then refills; live throughput meter
 - [x] STALL key (Space) inserts a bubble; stall rules follow the textbook 5-stage pipeline (distance 1 → 2 stalls, distance 2 → 1)
 - [x] Routing into a hazard shows the stale value read next to the correct one, then flushes
-- [ ] Forwarding upgrade: ALU→ALU needs 0 stalls, load-use needs 1
+- [x] Forwarding (tier 3): ALU→ALU needs 0 stalls, load-use needs 1; forwarded values shown jumping up a wire; results compare with/without forwarding
 - [ ] Branch prediction keys: J = predict not taken, K = predict taken; mispredict strikes out wrong-path notes
 - [x] Results compare single-cycle vs pipelined CPU time (CPI up, period down, faster overall)
 - [x] Tier switch on the title screen (`T`) until the shop exists

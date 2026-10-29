@@ -241,5 +241,64 @@ const DIAGRAMS = {
         s.text(cx, cy + 38, 'PIPELINED (4 MHz):    20 x 2.15 x 0.25 µs = 10.8 µs', 16);
         s.text(cx, cy + 74, '1.9x FASTER', 16, 1, true);
     },
+    // An ALU result forwarded from one EXECUTE straight into the next
+    forward(s, cx, cy) {
+        const col = (c) => cx - 150 + c * 72;
+        for (let c = 0; c < 6; c++)
+            s.text(col(c), cy - 78, `C${c + 1}`, 12, 0.6);
+        s.code(cx - 330, cy - 40, 'addi x1, x0, 5');
+        s.code(cx - 330, cy + 4, 'add x2, x1, x1');
+        ['IF', 'ID', 'EX', 'MEM', 'WB'].forEach((stage, j) => s.cell(col(j), cy - 40, stage, j === 2, 64));
+        ['IF', 'ID', 'EX', 'MEM', 'WB'].forEach((stage, j) => s.cell(col(1 + j), cy + 4, stage, j === 2, 64));
+        s.arrow(col(2) + 20, cy - 27, col(3) - 20, cy - 9);
+        s.text(cx, cy + 56, 'x1 goes straight from EXECUTE to EXECUTE: no waiting', 14);
+    },
+    // A load: its value only exists after MEMORY, so one wait is still needed
+    loaduse(s, cx, cy) {
+        const col = (c) => cx - 160 + c * 68;
+        for (let c = 0; c < 7; c++)
+            s.text(col(c), cy - 78, `C${c + 1}`, 12, 0.6);
+        s.code(cx - 340, cy - 40, 'lb x1, 0(x2)');
+        s.code(cx - 340, cy + 4, 'add x2, x1, x1');
+        ['IF', 'ID', 'EX', 'MEM', 'WB'].forEach((stage, j) => s.cell(col(j), cy - 40, stage, j === 3, 62));
+        ['IF', 'ID', 'wait', 'EX', 'MEM', 'WB'].forEach((stage, j) => s.cell(col(1 + j), cy + 4, stage, j === 3, 62));
+        s.arrow(col(3) + 20, cy - 27, col(4) - 20, cy - 9);
+        s.text(cx, cy + 56, 'the loaded value is ready after MEMORY: one wait', 14);
+    },
+    // The tier 3 screen in miniature: a value jumping up the forwarding wire
+    forwardplay(s, cx, cy) {
+        const laneW = 130;
+        const left = cx - 330;
+        const hitY = cy - 40;
+        const rowY = (row) => hitY + 44 * (row + 1);
+        const lane = (i) => left + (i + 0.5) * laneW;
+        for (let i = 0; i <= 3; i++)
+            s.polyline([[left + i * laneW, cy - 100], [left + i * laneW, rowY(2) + 20]]);
+        s.polyline([[left, hitY], [left + 3 * laneW, hitY]]);
+        ['DECODE', 'EXECUTE', 'MEMORY', 'WRITE BACK'].forEach((stage, i) => s.text(left - 46, i === 0 ? hitY : rowY(i - 1), stage, 11, 0.7));
+        const noteW = laneW - 30;
+        s.backing(lane(0) - 8, hitY, noteW, 24);
+        s.box(lane(0) - 8, hitY, noteW, 24, true, false);
+        s.code(lane(0) - 8, hitY, 'add x2, x1, x1', noteW - 8, true);
+        s.backing(lane(0) - 8, rowY(0), noteW, 24);
+        s.box(lane(0) - 8, rowY(0), noteW, 24, false, false);
+        s.code(lane(0) - 8, rowY(0), 'addi x1, x0, 5', noteW - 8, true);
+        // The forwarding wire: out of EXECUTE, up the side, into the waiting note
+        const edge = lane(0) - 8 + noteW / 2;
+        s.polyline([[edge, rowY(0)], [edge + 18, rowY(0)], [edge + 18, hitY]]);
+        s.arrow(edge + 18, hitY, edge + 2, hitY);
+        s.text(edge + 46, (hitY + rowY(0)) / 2, 'x1=5', 13, 1, true);
+        s.text(cx + 250, hitY - 10, 'x1 is forwarded from EXECUTE:', 15, 0.8);
+        s.text(cx + 250, hitY + 24, 'ROUTE IT (D)', 20, 1, true);
+        s.text(cx + 250, hitY + 58, 'no stall needed', 15, 0.8);
+    },
+    // Same clock, fewer stalls
+    speedup3(s, cx, cy) {
+        s.box(cx, cy - 56, 640, 46, true);
+        s.text(cx, cy - 56, 'CPU TIME = INSTRUCTIONS x CPI x CLOCK PERIOD', 20, 1, true);
+        s.text(cx, cy + 6, 'NO FORWARDING (TIER 2): 20 x 2.15 x 0.25 µs = 10.8 µs', 16, 0.7);
+        s.text(cx, cy + 38, 'WITH FORWARDING:        20 x 1.75 x 0.25 µs =  8.8 µs', 16);
+        s.text(cx, cy + 74, '1.2x FASTER, SAME CLOCK', 16, 1, true);
+    },
 };
 //# sourceMappingURL=diagrams.js.map
