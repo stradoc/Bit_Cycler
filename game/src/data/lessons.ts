@@ -11,7 +11,8 @@ export type DiagramId =
   | 'fork' | 'guess' | 'guessplay' | 'speedup4'
   | 'branchread' | 'loopend' | 'howguess'
   | 'table1' | 'grid' | 'misses1' | 'override' | 'when1'
-  | 'counter2' | 'misses2' | 'weak2' | 'when2' | 'score2';
+  | 'counter2' | 'misses2' | 'weak2' | 'when2' | 'score2'
+  | 'overclock' | 'power' | 'throttle' | 'damage';
 
 export type LessonPage = {
   readonly title: string;
@@ -297,6 +298,39 @@ export const TIER6_LESSON: Lesson = {
   ],
 };
 
+/** Shown before the first real song on a pipelined tier (where G / H overclock); then that tier starts. */
+export const OVERCLOCK_LESSON: Lesson = {
+  id: 'overclock',
+  title: 'OVERCLOCKING',
+  scene: 'pipeline',
+  pages: [
+    {
+      title: 'FASTER CLOCK, FASTER BEAT',
+      diagram: 'overclock',
+      lines: ['In a song, H overclocks the chip (+10%) and G slows it.', 'One beat is one clock cycle, so the song speeds up', 'and the program finishes sooner.'],
+      analogy: 'Too fast to think? G underclocks (down to 50%): slower, but more CPU time.',
+    },
+    {
+      title: 'THE POWER WALL',
+      diagram: 'power',
+      lines: ['A faster clock needs a higher voltage, and power', 'grows with voltage squared: +50% clock costs over', '2x the power. All that power turns into heat.'],
+      analogy: 'This wall is why desktop clocks stopped climbing in the mid-2000s.',
+    },
+    {
+      title: 'THERMAL THROTTLING',
+      diagram: 'throttle',
+      lines: ['At 95°C the chip throttles: back to its rated clock', '(the song slows down) until it cools to 80°C.', 'Stalls and bubbles use less power, so they run cooler.'],
+      analogy: 'Smoke and flames warn you first: press G before it gets there.',
+    },
+    {
+      title: 'HEAT WEARS THE CHIP',
+      diagram: 'damage',
+      lines: ['Every overheat damages the chip: its top clock drops', '10% (150% -> 140%) and stays down until you repair it.', 'Real chips wear out from heat and voltage too, just slower.'],
+      analogy: 'The flames are exaggerated: a real chip throttles long before it burns.',
+    },
+  ],
+};
+
 export const LESSONS: Readonly<Record<string, Lesson>> = {
   [TIER1_LESSON.id]: TIER1_LESSON,
   [TIER2_LESSON.id]: TIER2_LESSON,
@@ -304,4 +338,5 @@ export const LESSONS: Readonly<Record<string, Lesson>> = {
   [TIER4_LESSON.id]: TIER4_LESSON,
   [TIER5_LESSON.id]: TIER5_LESSON,
   [TIER6_LESSON.id]: TIER6_LESSON,
+  [OVERCLOCK_LESSON.id]: OVERCLOCK_LESSON,
 };

@@ -1,6 +1,7 @@
 import type { Cpu } from '../sim/cpu.ts';
 import { unitOf, type Unit } from '../sim/isa.ts';
 import { Pipeline, type CycleResult, type Hazard, type PipelineOptions, type Slot } from '../sim/pipeline.ts';
+import { Chip } from '../sim/thermal.ts';
 import { judge, type Judgment, type Windows } from './judge.ts';
 
 /** What the player can do with the instruction in ID. Routing a branch can carry a guess: taken or not. */
@@ -29,7 +30,11 @@ export type Decision = {
   readonly waited: boolean;
 };
 
-export type CycleReport = CycleResult & { readonly decision: Decision | null };
+export type CycleReport = CycleResult & {
+  readonly decision: Decision | null;
+  /** The clock dial during this cycle (replays set it back to this). */
+  readonly dial: number;
+};
 
 const CORRECT: readonly Outcome[] = ['issued', 'stalled'];
 const THROUGHPUT_WINDOW = 8;
@@ -53,8 +58,11 @@ export class PipelineRun {
   readonly pipeline: Pipeline;
   /** Beat on which cycle 1 happens. */
   readonly firstBeat: number;
-  readonly secondsPerBeat: number;
+  /** Seconds per beat at the chip's rated clock. */
+  readonly ratedSecondsPerBeat: number;
   readonly windows: Windows;
+  /** Clock and temperature: each cycle heats it, and overclocking or throttling changes the tempo. */
+  readonly chip: Chip;
   readonly counts: Record<Outcome, number> = {
     issued: 0, stalled: 0, 'wasted-stall': 0, violation: 0, 'wrong-unit': 0, 'off-beat': 0, missed: 0,
   };
@@ -66,11 +74,17 @@ export class PipelineRun {
   /** Recent cycles: 1 if an instruction completed (reached WB), else 0. */
   private completions: number[] = [];
 
-  constructor(cpu: Cpu, options: PipelineOptions, firstBeat: number, secondsPerBeat: number, windows: Windows) {
+  constructor(cpu: Cpu, options: PipelineOptions, firstBeat: number, secondsPerBeat: number, windows: Windows, chip = new Chip(1)) {
     this.pipeline = new Pipeline(cpu, options);
     this.firstBeat = firstBeat;
-    this.secondsPerBeat = secondsPerBeat;
+    this.ratedSecondsPerBeat = secondsPerBeat;
     this.windows = windows;
+    this.chip = chip;
+  }
+
+  /** Seconds per beat right now: one beat is one cycle, so a faster clock means a faster beat. */
+  get secondsPerBeat(): number {
+    return this.ratedSecondsPerBeat / this.chip.clockRatio;
   }
 
   get done(): boolean {
@@ -161,10 +175,12 @@ export class PipelineRun {
     // Only a correct route or a violation actually issues; every other outcome is a stall.
     const issues = decision?.outcome === 'issued' || decision?.outcome === 'violation';
     const result = this.pipeline.step(issues ? 'issue' : 'stall');
+    const { dial } = this.chip;
+    this.chip.cycle(issues);
     const id = this.pipeline.stages.ID;
     this.waitingSeq = slot && id?.seq === slot.seq ? id.seq : null;
     this.completions.push(result.committed ? 1 : 0);
     if (this.completions.length > THROUGHPUT_WINDOW) this.completions.shift();
-    return { ...result, decision };
+    return { ...result, decision, dial };
   }
 }

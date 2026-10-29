@@ -59,10 +59,10 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 - [ ] Event notes: hazard (stall/forward), branch fork, cache-miss hold, wide-arithmetic chain
 - [ ] Wrong or missed input → slow path (extra stall), never a fail state
 - [x] Clock speed sets the tempo: 75 BPM at 1 MHz, +12 BPM per 10× clock (`rhythm/tempo.ts`)
-- [ ] Clock dial before each program: choose any clock up to the purchased maximum; results show the trade-off (shorter period vs. more stalls)
-- [ ] Underclocking below the tier's base clock (e.g. 0.25 MHz ≈ 68 BPM); `tempoForClock` currently floors at 1 MHz
-- [ ] **Overclock red zone:** the dial continues past the rated maximum. Shorter period and better pay, but heat builds every beat; overheating **throttles** (clock drops mid-song until it cools). Cooling upgrades widen the safe red zone
-- [ ] Heat meter and thermal throttling (shared by the red zone and later clock upgrades)
+- [x] Clock dial in the song (`G` / `H`, 50–150% of the rated clock, tiers 2–6); results show average clock, peak temperature, overheats and real CPU time. Still to do: rated clock upgrades in the shop, and tier 1
+- [x] Underclocking down to 50% (slower tempo to think, more CPU time, cooler)
+- [x] **Overclock red zone:** the dial goes past the rated clock; heat builds every beat; overheating **throttles** (clock drops to rated mid-song until it cools) and **wears the chip** (maximum clock -10% until repaired). Still to do with the shop: better pay when overclocked, paid repairs, cooling upgrades that widen the safe zone
+- [x] Heat meter and thermal throttling (`sim/thermal.ts`), with fire effects building up with heat (`visual/heat.ts`)
 
 ### Memory and storage
 - [ ] RAM as page frames; page fault plays as a long hold note

@@ -8,11 +8,14 @@ export class BriefingScene extends Phaser.Scene {
     look;
     lesson = TIER1_LESSON;
     page = 0;
+    then;
     layer;
     constructor() {
         super('briefing');
     }
     init(data) {
+        // Where to go after the last page; by default, practice of the lesson's concept.
+        this.then = data?.then;
         // ?lesson=tier2 in the URL opens a lesson directly (dev shortcut).
         const id = data?.lessonId ?? new URLSearchParams(location.search).get('lesson') ?? TIER1_LESSON.id;
         this.lesson = LESSONS[id] ?? TIER1_LESSON;
@@ -44,7 +47,10 @@ export class BriefingScene extends Phaser.Scene {
         }
         const seen = new Set(getSettings().seenLessons).add(this.lesson.id);
         updateSettings({ seenLessons: [...seen] });
-        this.scene.start(this.lesson.scene, { practice: true, ...this.lesson.options });
+        if (this.then)
+            this.scene.start(this.then.scene, this.then.data);
+        else
+            this.scene.start(this.lesson.scene, { practice: true, ...this.lesson.options });
     }
     turn(delta) {
         const page = Phaser.Math.Clamp(this.page + delta, 0, this.lesson.pages.length - 1);
@@ -79,7 +85,7 @@ export class BriefingScene extends Phaser.Scene {
         this.layer.add(drawDiagram(this, page.diagram, cx, 205, this.look.era));
         page.lines.forEach((line, i) => text(cx, 340 + i * 32, line, 20));
         text(cx, 450, page.analogy, 18, 0.75);
-        text(cx, 508, last ? '[<-] BACK      [ENTER] START PRACTICE' : '[<-] BACK      [ENTER] NEXT      [Q] SKIP', 16, 0.6);
+        text(cx, 508, last ? `[<-] BACK      [ENTER] ${this.then ? 'PLAY' : 'START PRACTICE'}` : '[<-] BACK      [ENTER] NEXT      [Q] SKIP', 16, 0.6);
     }
 }
 //# sourceMappingURL=BriefingScene.js.map

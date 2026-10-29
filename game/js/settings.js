@@ -1,5 +1,5 @@
 const STORAGE_KEY = 'bit-cycler-settings';
-const DEFAULTS = { offset: 0, relaxed: false, eraIndex: 0, seenLessons: [], tier: 1 };
+const DEFAULTS = { offset: 0, relaxed: false, eraIndex: 0, seenLessons: [], tier: 1, chipMaxDial: 1.5 };
 let current;
 export function getSettings() {
     if (!current) {

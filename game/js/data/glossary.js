@@ -81,5 +81,13 @@ export const GLOSSARY = {
         title: '2-BIT PREDICTOR',
         body: 'A counter per branch, 0-3: taken counts up, not taken down; 2-3 guess taken. One surprise only weakens it (N n t T).',
     },
+    CLOCK: {
+        title: 'CLOCK SPEED',
+        body: 'Cycles per second; one beat is one cycle. Overclocking runs the chip faster than it is rated for: the song speeds up and the program finishes sooner.',
+    },
+    HEAT: {
+        title: 'TEMPERATURE',
+        body: 'Power grows with voltage squared times the clock, and a faster clock needs more voltage. At 95°C it throttles to its rated clock until it cools to 80°C, and the heat wears it: its top clock drops 10%.',
+    },
 };
 //# sourceMappingURL=glossary.js.map

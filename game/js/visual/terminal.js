@@ -6,24 +6,28 @@ export const ERAS = [
         name: '8-BIT', fg: 0x39ff14, dim: 0x0f4a06, bg: 0x030803,
         syntax: { op: 0x39ff14, reg: 0x2ccc10, num: 0x1f9a0b, label: 0x1f9a0b, punct: 0x177508 },
         taken: 0x39ff14, notTaken: 0x26b80d,
+        fire: [0xd8ffc8, 0x39ff14, 0x1f9a0b],
         bloom: 1.8, scanlines: 0.25, curve: 0.02, vignette: 0.3, flicker: 0.02,
     },
     {
         name: '16-BIT', fg: 0x8cff7a, dim: 0x1f4d1a, bg: 0x040904,
         syntax: { op: 0x8cff7a, reg: 0x70d661, num: 0x52ab45, label: 0x52ab45, punct: 0x3e8034 },
         taken: 0x8cff7a, notTaken: 0x52ab45,
+        fire: [0xe8ffe0, 0x8cff7a, 0x3e8034],
         bloom: 1.2, scanlines: 0.15, curve: 0.01, vignette: 0.2, flicker: 0,
     },
     {
         name: '32-BIT', fg: 0xf0f5f0, dim: 0x3c453c, bg: 0x0a0c0a,
         syntax: { op: 0xffffff, reg: 0x9fd8dc, num: 0xe6d49a, label: 0xd4b4e6, punct: 0x8a948a },
         taken: 0x56b4e9, notTaken: 0xe69f00,
+        fire: [0xfff3b0, 0xff8c1a, 0xd62a0a],
         bloom: 0.6, scanlines: 0.06, curve: 0, vignette: 0.1, flicker: 0,
     },
     {
         name: '64-BIT', fg: 0xe8e8e8, dim: 0x45474d, bg: 0x1a1b1e,
         syntax: { op: 0xffffff, reg: 0x56d4dd, num: 0xe5c07b, label: 0xc678dd, punct: 0x8a8f98 },
         taken: 0x56b4e9, notTaken: 0xe69f00,
+        fire: [0xfff3b0, 0xff8c1a, 0xd62a0a],
         bloom: 0, scanlines: 0, curve: 0, vignette: 0, flicker: 0,
     },
 ];

@@ -8,13 +8,17 @@ const SCHEDULE_INTERVAL_MS = 25;
 /** Keeps the beat. Every timing decision in the game reads this clock. */
 export class Conductor {
     ctx;
+    /** Current tempo; setTempo() changes it from the next beat on. */
     bpm;
     /** Player calibration (seconds). Positive = the player hears audio later than reported. */
     offset = 0;
     clickVolume = 0.15;
     /** Called as each beat is scheduled, with its exact audio time (for music). */
     onBeat;
-    startTime = 0;
+    /** Beat times follow the current tempo from this anchor (the beat and audio time of the last tempo change). */
+    anchor = { beat: 0, time: 0 };
+    /** The tempo in force before the last change, for presses just before it. */
+    previous;
     nextBeat = 0;
     timer;
     constructor(ctx, bpm) {
@@ -23,7 +27,8 @@ export class Conductor {
     }
     start() {
         this.stop();
-        this.startTime = this.ctx.currentTime + LOOKAHEAD;
+        this.anchor = { beat: 0, time: this.ctx.currentTime + LOOKAHEAD };
+        this.previous = undefined;
         this.nextBeat = 0;
         this.schedule();
         this.timer = setInterval(() => this.schedule(), SCHEDULE_INTERVAL_MS);
@@ -32,6 +37,18 @@ export class Conductor {
         if (this.timer !== undefined)
             clearInterval(this.timer);
         this.timer = undefined;
+    }
+    /**
+     * Changes the tempo from the next unscheduled beat on, so every beat stays
+     * evenly placed (a CPU's clock changing speed, e.g. thermal throttling).
+     */
+    setTempo(bpm) {
+        if (bpm === this.bpm)
+            return;
+        const time = this.timeOf(this.nextBeat);
+        this.previous = { bpm: this.bpm, anchor: this.anchor };
+        this.anchor = { beat: this.nextBeat, time };
+        this.bpm = bpm;
     }
     /** Fractional beat the player is hearing right now. */
     currentBeat() {
@@ -43,7 +60,9 @@ export class Conductor {
      * moment it happened, independent of frame rate.
      */
     beatAt(performanceMs) {
-        return beatAtTime(this.heardTime(performanceMs) - this.offset, this.startTime, this.bpm);
+        const time = this.heardTime(performanceMs) - this.offset;
+        const { bpm, anchor } = this.previous && time < this.anchor.time ? this.previous : { bpm: this.bpm, anchor: this.anchor };
+        return anchor.beat + beatAtTime(time, anchor.time, bpm);
     }
     /** Audio-clock time of the sound leaving the speakers at `performanceMs` (default: now). */
     heardTime(performanceMs = performance.now()) {
@@ -57,12 +76,16 @@ export class Conductor {
         return this.ctx.currentTime - latency - (performance.now() - performanceMs) / 1000;
     }
     schedule() {
-        while (timeOfBeat(this.nextBeat, this.startTime, this.bpm) < this.ctx.currentTime + LOOKAHEAD) {
-            const time = timeOfBeat(this.nextBeat, this.startTime, this.bpm);
+        while (this.timeOf(this.nextBeat) < this.ctx.currentTime + LOOKAHEAD) {
+            const time = this.timeOf(this.nextBeat);
             this.click(this.nextBeat, time);
             this.onBeat?.(this.nextBeat, time);
             this.nextBeat++;
         }
+    }
+    /** Audio time of `beat` (at or after the last tempo change). */
+    timeOf(beat) {
+        return timeOfBeat(beat - this.anchor.beat, this.anchor.time, this.bpm);
     }
     click(beat, time) {
         blip(this.ctx, beat % 4 === 0 ? 1760 : 880, time, 0.05, 'square', this.clickVolume);

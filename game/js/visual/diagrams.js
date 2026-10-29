@@ -1,5 +1,6 @@
 import { assemble } from '../sim/assembler.js';
 import { tokens } from '../sim/isa.js';
+import { Chip, relativePower, steadyTemperature } from '../sim/thermal.js';
 import { branchHint, hintColor } from './branchHint.js';
 import { codeLine } from './codeLine.js';
 import { cssColor } from './terminal.js';
@@ -528,6 +529,77 @@ const DIAGRAMS = {
                 s.box(cx + 30 + misses * 11, y, misses * 22, 18, i === 3);
             s.text(cx + 30 + misses * 22 + 52, y, `${misses} MISSES`, 14, 0.9);
         });
+    },
+    // Overclocking: the dial, from underclocked to the red zone
+    overclock(s, cx, cy) {
+        const x = (percent) => cx + (percent - 100) * 5.6;
+        s.polyline([[x(50), cy], [x(150), cy]]);
+        for (let p = 50; p <= 150; p += 10) {
+            s.polyline([[x(p), cy - 8], [x(p), cy + 8]]);
+            s.text(x(p), cy + 26, `${p}%`, 13, p === 100 ? 1 : 0.7, p === 100);
+            s.text(x(p), cy + 46, `${((4 * p) / 100).toFixed(1)}`, 11, 0.6);
+        }
+        s.text(x(100), cy - 30, 'RATED', 13, 1, true);
+        s.hintText((x(110) + x(150)) / 2, cy - 30, 'OVERCLOCKED: FASTER, HOTTER', false, 13);
+        s.text(x(70), cy - 30, 'UNDERCLOCKED: SLOWER, TIME TO THINK', 13, 0.7);
+        s.text(cx, cy + 70, 'MHz (tiers 2-6 are rated at 4 MHz)     in a song: H = faster, G = slower', 12, 0.7);
+        s.text(cx, cy - 76, 'CPU TIME = INSTRUCTIONS x CPI x CLOCK PERIOD: a shorter period is less time', 13, 0.8);
+    },
+    // Power grows faster than the clock (computed from the game's own model)
+    power(s, cx, cy) {
+        s.text(cx, cy - 84, 'POWER ≈ VOLTAGE² x CLOCK', 18, 1, true);
+        [1, 1.2, 1.5].forEach((ratio, i) => {
+            const y = cy - 34 + i * 40;
+            const power = relativePower(ratio, true);
+            s.text(cx - 230, y, `CLOCK ${Math.round(ratio * 100)}%`, 15);
+            s.box(cx - 140 + power * 70, y, power * 140, 22, ratio > 1, true);
+            s.text(cx - 130 + power * 140 + 60, y, `POWER ${power.toFixed(1)}x`, 15, 0.9);
+        });
+        s.text(cx, cy + 86, `settles at ${Math.round(steadyTemperature(1))}°C, ${Math.round(steadyTemperature(1.2))}°C and ${Math.round(steadyTemperature(1.5))}°C when every beat is busy`, 13, 0.8);
+    },
+    // A heavy overclock's temperature, cycle by cycle (the game's own model)
+    throttle(s, cx, cy) {
+        const chip = new Chip(4);
+        chip.setDial(1.5);
+        const cycles = 160;
+        const [left, width, top, height] = [cx - 260, 520, cy - 80, 150];
+        const x = (cycle) => left + (cycle / cycles) * width;
+        const y = (celsius) => top + height - ((celsius - 40) / 60) * height;
+        const points = [[x(0), y(chip.temperature)]];
+        const throttledAt = [];
+        for (let c = 1; c <= cycles; c++) {
+            const overheats = chip.overheats;
+            chip.cycle(true);
+            chip.setDial(1.5); // the player keeps it as high as the worn chip allows
+            points.push([x(c), y(chip.temperature)]);
+            if (chip.throttled)
+                throttledAt.push(c);
+            if (chip.overheats > overheats)
+                s.text(x(c), y(95) - 14, `MAX ${Math.round(chip.maxDial * 100)}%`, 11, 0.9);
+        }
+        for (const c of throttledAt)
+            s.hintText(x(c), top + height + 10, '■', false, 8);
+        s.polyline(points);
+        s.polyline([[left, y(95)], [left + width, y(95)]]);
+        s.polyline([[left, y(80)], [left + width, y(80)]]);
+        s.text(left - 50, y(95), '95°C', 12, 0.9);
+        s.text(left - 50, y(80), '80°C', 12, 0.7);
+        s.text(left - 50, y(40), '40°C', 12, 0.6);
+        s.hintText(cx, top + height + 28, '■ = throttled: back to the rated clock until it cools', false, 12);
+        s.text(cx, top - 30, 'DIAL AT ITS MAXIMUM, EVERY BEAT BUSY', 12, 0.8);
+    },
+    // Each overheat lowers the chip's top clock until it's repaired
+    damage(s, cx, cy) {
+        const steps = [150, 140, 130, 120, 110, 100];
+        const x = (i) => cx - 250 + i * 100;
+        steps.forEach((max, i) => {
+            const h = (max - 90) * 2.2;
+            s.box(x(i), cy + 40 - h / 2, 56, h, i === 0, i === 0);
+            s.text(x(i), cy + 58, `${max}%`, 15, 1, i === 0);
+            s.text(x(i), cy + 78, i === 0 ? 'NEW' : i === steps.length - 1 ? 'WORN OUT' : `${i} OVERHEAT${i > 1 ? 'S' : ''}`, 11, 0.7);
+        });
+        s.text(cx, cy - 92, 'TOP CLOCK AFTER EACH OVERHEAT', 13, 0.8, true);
+        s.hintText(cx + 150, cy - 64, 'REPAIR: back to 150%', true, 14);
     },
     // Perfect guesses vs always guessing not taken
     speedup4(s, cx, cy) {

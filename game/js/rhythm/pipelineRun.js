@@ -1,5 +1,6 @@
 import { unitOf } from '../sim/isa.js';
 import { Pipeline } from '../sim/pipeline.js';
+import { Chip } from '../sim/thermal.js';
 import { judge } from './judge.js';
 const CORRECT = ['issued', 'stalled'];
 const THROUGHPUT_WINDOW = 8;
@@ -24,8 +25,11 @@ export class PipelineRun {
     pipeline;
     /** Beat on which cycle 1 happens. */
     firstBeat;
-    secondsPerBeat;
+    /** Seconds per beat at the chip's rated clock. */
+    ratedSecondsPerBeat;
     windows;
+    /** Clock and temperature: each cycle heats it, and overclocking or throttling changes the tempo. */
+    chip;
     counts = {
         issued: 0, stalled: 0, 'wasted-stall': 0, violation: 0, 'wrong-unit': 0, 'off-beat': 0, missed: 0,
     };
@@ -36,11 +40,16 @@ export class PipelineRun {
     waitingSeq = null;
     /** Recent cycles: 1 if an instruction completed (reached WB), else 0. */
     completions = [];
-    constructor(cpu, options, firstBeat, secondsPerBeat, windows) {
+    constructor(cpu, options, firstBeat, secondsPerBeat, windows, chip = new Chip(1)) {
         this.pipeline = new Pipeline(cpu, options);
         this.firstBeat = firstBeat;
-        this.secondsPerBeat = secondsPerBeat;
+        this.ratedSecondsPerBeat = secondsPerBeat;
         this.windows = windows;
+        this.chip = chip;
+    }
+    /** Seconds per beat right now: one beat is one cycle, so a faster clock means a faster beat. */
+    get secondsPerBeat() {
+        return this.ratedSecondsPerBeat / this.chip.clockRatio;
     }
     get done() {
         return this.pipeline.done;
@@ -127,12 +136,14 @@ export class PipelineRun {
         // Only a correct route or a violation actually issues; every other outcome is a stall.
         const issues = decision?.outcome === 'issued' || decision?.outcome === 'violation';
         const result = this.pipeline.step(issues ? 'issue' : 'stall');
+        const { dial } = this.chip;
+        this.chip.cycle(issues);
         const id = this.pipeline.stages.ID;
         this.waitingSeq = slot && id?.seq === slot.seq ? id.seq : null;
         this.completions.push(result.committed ? 1 : 0);
         if (this.completions.length > THROUGHPUT_WINDOW)
             this.completions.shift();
-        return { ...result, decision };
+        return { ...result, decision, dial };
     }
 }
 //# sourceMappingURL=pipelineRun.js.map

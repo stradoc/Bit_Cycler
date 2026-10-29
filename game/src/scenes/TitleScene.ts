@@ -1,5 +1,7 @@
 import { Conductor } from '../audio/conductor.ts';
+import { OVERCLOCK_LESSON } from '../data/lessons.ts';
 import { TIERS, tierByNumber, type Tier } from '../data/tiers.ts';
+import { THERMAL } from '../sim/thermal.ts';
 import { keyOf, onKeyDown } from '../input/keys.ts';
 import { getSettings, updateSettings } from '../settings.ts';
 import { cssColor, ERAS, TerminalLook } from '../visual/terminal.ts';
@@ -95,6 +97,8 @@ export class TitleScene extends Phaser.Scene {
           updateSettings({ tier: next.number });
           return this.renderText();
         }
+        case 'X':
+          return this.repairChip();
         case 'C':
           return this.toggleCalibration();
         case 'R':
@@ -119,11 +123,24 @@ export class TitleScene extends Phaser.Scene {
     return tierByNumber(getSettings().tier);
   }
 
-  /** First time on a tier: the briefing teaches the concept before anything is played. */
+  /**
+   * First time on a tier: the briefing teaches the concept before anything is
+   * played. First real song on a pipelined tier: a short briefing on the clock
+   * (G / H overclock in the song) and heat, then the tier.
+   */
   private start(): void {
     const tier = this.tier();
-    if (getSettings().seenLessons.includes(tier.lessonId)) this.scene.start(tier.scene, { ...tier.options });
-    else this.scene.start('briefing', { lessonId: tier.lessonId });
+    const { seenLessons } = getSettings();
+    if (!seenLessons.includes(tier.lessonId)) this.scene.start('briefing', { lessonId: tier.lessonId });
+    else if (tier.scene === 'pipeline' && !seenLessons.includes(OVERCLOCK_LESSON.id)) {
+      this.scene.start('briefing', { lessonId: OVERCLOCK_LESSON.id, then: { scene: tier.scene, data: { ...tier.options } } });
+    } else this.scene.start(tier.scene, { ...tier.options });
+  }
+
+  /** X: repair a chip worn by overheating. Free until the shop exists; then it will cost money. */
+  private repairChip(): void {
+    updateSettings({ chipMaxDial: THERMAL.maxDial });
+    this.renderText();
   }
 
   private restyle(): void {
@@ -140,7 +157,8 @@ export class TitleScene extends Phaser.Scene {
     this.prompt.setText(`PRESS ENTER TO START${cursor}`);
     this.options.setText(
       `[T] TIER ${this.tier().number}: ${this.tier().name}   [B] BRIEFING   [P] PRACTICE\n` +
-        `[C] CALIBRATE   [R] RELAXED: ${settings.relaxed ? 'ON' : 'OFF'}   [1-4] ERA: ${this.look.era.name}`,
+        `[C] CALIBRATE   [R] RELAXED: ${settings.relaxed ? 'ON' : 'OFF'}   [1-4] ERA: ${this.look.era.name}\n` +
+        this.chipLabel(),
     );
 
     if (!this.calibration) {
@@ -152,6 +170,12 @@ export class TitleScene extends Phaser.Scene {
     this.readout.setText(
       `LATENCY ${latencyMs} MS   OFFSET ${offsetMs > 0 ? '+' : ''}${offsetMs} MS   [<-/->] ALIGN LIGHT TO CLICK`,
     );
+  }
+
+  private chipLabel(): string {
+    const max = Math.round(getSettings().chipMaxDial * 100);
+    if (max >= Math.round(THERMAL.maxDial * 100)) return `CHIP OK: OVERCLOCKS TO ${max}% (G / H IN A SONG)`;
+    return `CHIP DAMAGED BY HEAT: OVERCLOCKS TO ${max}% ONLY   [X] REPAIR (FREE FOR NOW)`;
   }
 
   private toggleCalibration(): void {

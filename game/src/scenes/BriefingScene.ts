@@ -9,13 +9,16 @@ export class BriefingScene extends Phaser.Scene {
   private look!: TerminalLook;
   private lesson: Lesson = TIER1_LESSON;
   private page = 0;
+  private then: { scene: string; data: object } | undefined;
   private layer!: Phaser.GameObjects.Container;
 
   constructor() {
     super('briefing');
   }
 
-  init(data?: { lessonId?: string }): void {
+  init(data?: { lessonId?: string; then?: { scene: string; data: object } }): void {
+    // Where to go after the last page; by default, practice of the lesson's concept.
+    this.then = data?.then;
     // ?lesson=tier2 in the URL opens a lesson directly (dev shortcut).
     const id = data?.lessonId ?? new URLSearchParams(location.search).get('lesson') ?? TIER1_LESSON.id;
     this.lesson = LESSONS[id] ?? TIER1_LESSON;
@@ -48,7 +51,8 @@ export class BriefingScene extends Phaser.Scene {
     }
     const seen = new Set(getSettings().seenLessons).add(this.lesson.id);
     updateSettings({ seenLessons: [...seen] });
-    this.scene.start(this.lesson.scene, { practice: true, ...this.lesson.options });
+    if (this.then) this.scene.start(this.then.scene, this.then.data);
+    else this.scene.start(this.lesson.scene, { practice: true, ...this.lesson.options });
   }
 
   private turn(delta: number): void {
@@ -91,7 +95,7 @@ export class BriefingScene extends Phaser.Scene {
     text(
       cx,
       508,
-      last ? '[<-] BACK      [ENTER] START PRACTICE' : '[<-] BACK      [ENTER] NEXT      [Q] SKIP',
+      last ? `[<-] BACK      [ENTER] ${this.then ? 'PLAY' : 'START PRACTICE'}` : '[<-] BACK      [ENTER] NEXT      [Q] SKIP',
       16,
       0.6,
     );
