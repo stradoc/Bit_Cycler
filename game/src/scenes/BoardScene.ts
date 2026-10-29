@@ -87,11 +87,13 @@ export class BoardScene extends Phaser.Scene {
     const line = (dy: number, content: string, size = 14) =>
       this.text(left, y - CARD_H / 2 + dy, content, size).setOrigin(0, 0.5).setAlpha(locked ? 0.5 : 0.95);
 
-    line(22, spec.name, 16).setFontStyle('bold');
+    line(22, spec.client ?? spec.name, 16).setFontStyle('bold');
     this.text(x + CARD_W / 2 - 14, y - CARD_H / 2 + 22, formatMoney(contract.pay), 16)
       .setOrigin(1, 0.5)
       .setAlpha(locked ? 0.5 : 1);
-    line(48, `${spec.verb} ${formatCount(jobItems(contract))} ${spec.unit}`);
+    // Squeezed to fit the card if the job's description is long.
+    const job = line(48, `${spec.verb} ${formatCount(jobItems(contract))} ${spec.unit}`);
+    job.setScale(Math.min(1, (CARD_W - 28) / job.width), 1);
     line(68, `= ${formatCount(contract.instructions)} INSTRUCTIONS`, 13).setAlpha(locked ? 0.4 : 0.7);
     line(94, `NEEDED IN: ${formatDuration(contract.deadline)}`, 15);
     const time = line(116, `YOUR CPU:  ${formatDuration(contractSeconds(contract, progress))}`, 15);

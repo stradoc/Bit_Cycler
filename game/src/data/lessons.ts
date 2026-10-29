@@ -326,8 +326,8 @@ export const OVERCLOCK_LESSON: Lesson = {
     {
       title: 'HEAT WEARS THE CHIP',
       diagram: 'damage',
-      lines: ['Every overheat damages the chip: its top clock drops', '10% (150% -> 140%) and stays down until you repair it.', 'Real chips wear out from heat and voltage too, just slower.'],
-      analogy: 'The flames are exaggerated: a real chip throttles long before it burns.',
+      lines: ['Every overheat damages the chip: its top clock drops 10%', '(150% -> 140%) and it overheats at a lower temperature,', 'so its new top clock is just as risky. Repair fixes both.'],
+      analogy: 'Exaggerated: real chips wear slowly and throttle long before they burn.',
     },
   ],
 };

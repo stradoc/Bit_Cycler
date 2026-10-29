@@ -1,3 +1,4 @@
+import { generateProgram, seedOf } from '../sim/generator.js';
 export const PROGRAMS = [
     {
         name: 'SUM ARRAY',
@@ -23,6 +24,10 @@ loop: lb   x4, 0(x1)
             4: 'the number just loaded from memory',
         },
         memoryNote: 'Addresses 0-3 hold the numbers to add (3, 5, 7, 2). The sum is stored at address 8.',
+        keys: [
+            { reg: 1, tag: 'NEXT', about: "NEXT BYTE'S ADDRESS, FROM 0" },
+            { reg: 2, tag: 'END', about: 'STOP WHEN x1 REACHES 4' },
+        ],
     },
     {
         name: 'SUM GRID',
@@ -52,9 +57,32 @@ col:  lb   x4, 0(x1)
             6: 'the end of the grid (12): the outer loop stops when x1 reaches it',
         },
         memoryNote: 'Addresses 0-11 hold a grid of 4 rows x 3 numbers. The sum (57) is stored at address 12.',
+        keys: [
+            { reg: 1, tag: 'NEXT', about: "NEXT BYTE'S ADDRESS, FROM 0" },
+            { reg: 2, tag: 'END', about: 'END OF THIS ROW (x1 + 3)' },
+            { reg: 6, tag: 'GRID', about: 'END OF THE GRID: STOP AT 12' },
+        ],
     },
 ];
+const generated = new Map();
+/** A fixed program by name, or a contract's generated one ("CHECKSUM #4821"), rebuilt from its seed. */
 export function programByName(name) {
-    return PROGRAMS.find((program) => program.name === name) ?? PROGRAMS[0];
+    const fixed = PROGRAMS.find((program) => program.name === name);
+    if (fixed)
+        return fixed;
+    const seed = seedOf(name);
+    if (seed === undefined)
+        return PROGRAMS[0];
+    let spec = generated.get(name);
+    if (!spec) {
+        try {
+            spec = generateProgram(seed);
+        }
+        catch {
+            spec = PROGRAMS[0]; // never expected (tests check thousands of seeds), but a song must never hang
+        }
+        generated.set(name, spec);
+    }
+    return spec;
 }
 //# sourceMappingURL=programs.js.map

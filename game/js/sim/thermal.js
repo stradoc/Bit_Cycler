@@ -10,13 +10,16 @@ export const THERMAL = {
     ambient: 40,
     /** How far above ambient a fully busy chip settles at its rated clock (°C). */
     ratedRise: 30,
-    /** Cycles to close ~63% of the gap to the steady temperature (the cooler's time constant). */
-    timeConstant: 25,
+    /**
+     * Cycles to close ~63% of the gap to the steady temperature (the cooler's time constant).
+     * At 150% a cold chip overheats in about 28 busy beats; at 140%, about 53: within one song.
+     */
+    timeConstant: 15,
     /** Extra voltage needed per extra clock: +10% clock needs +4% voltage. */
     voltageSlope: 0.4,
     /** Power on a cycle where nothing issues (stall, bubble): idle hardware switches less. */
     idlePower: 0.7,
-    /** Throttle at this temperature, and run at full clock again once cooled to `resumeAt` (°C). */
+    /** A new chip throttles at this temperature, and runs at full clock again once cooled to `resumeAt` (°C); a worn one sooner (Chip.throttleAt). */
     throttleAt: 95,
     resumeAt: 80,
     /**
@@ -50,7 +53,7 @@ export class Chip {
     config;
     temperature;
     peak;
-    /** Too hot: running at the rated clock until it cools to `resumeAt`. */
+    /** Too hot: running at the rated clock until it cools to `resumeAt` (the getter). */
     throttled = false;
     throttledCycles = 0;
     /** Real time the cycles so far took, at whatever clock each one ran (µs). */
@@ -76,6 +79,24 @@ export class Chip {
     get mhz() {
         return this.ratedMhz * this.clockRatio;
     }
+    /**
+     * Overheats (throttles) at this temperature. A worn chip takes less heat:
+     * the limit drops so its highest setting heats up to it as fast as 150% does
+     * on a new chip (the same share of the way from ambient to where it settles).
+     * With no overclock left, it's the normal limit again, so the rated clock is always safe.
+     */
+    get throttleAt() {
+        const { config } = this;
+        if (this.maxDial <= 1)
+            return config.throttleAt;
+        const share = relativePower(this.maxDial, true, config) / relativePower(config.maxDial, true, config);
+        return config.ambient + (config.throttleAt - config.ambient) * share;
+    }
+    /** Runs at full clock again once cooled to this: never below where the rated clock settles, so it always recovers. */
+    get resumeAt() {
+        const ratedSteady = this.config.ambient + this.config.ratedRise;
+        return Math.min(this.config.resumeAt, (this.throttleAt + ratedSteady) / 2);
+    }
     /** One clock cycle. `active`: an instruction issued (otherwise a stall or bubble, using less power). */
     cycle(active) {
         const { config } = this;
@@ -86,13 +107,13 @@ export class Chip {
         const target = config.ambient + config.ratedRise * relativePower(this.clockRatio, active, config);
         this.temperature += (target - this.temperature) / config.timeConstant;
         this.peak = Math.max(this.peak, this.temperature);
-        if (!this.throttled && this.temperature >= config.throttleAt) {
+        if (!this.throttled && this.temperature >= this.throttleAt) {
             this.throttled = true;
             this.overheats++;
             this.maxDial = Math.max(1, Math.round((this.maxDial - config.damagePerOverheat) * 100) / 100);
             this.setDial(this.dial);
         }
-        else if (this.throttled && this.temperature <= config.resumeAt)
+        else if (this.throttled && this.temperature <= this.resumeAt)
             this.throttled = false;
     }
 }

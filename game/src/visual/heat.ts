@@ -1,4 +1,3 @@
-import { THERMAL } from '../sim/thermal.ts';
 import type { Era } from './terminal.ts';
 
 // How hot the screen looks, building up in stages as the chip heats:
@@ -7,9 +6,10 @@ import type { Era } from './terminal.ts';
 //   critical  flames along the base and up the sides, just before throttling
 // Exaggerated on purpose: a real chip throttles long before anything burns.
 
-const WARM = 75;
-const HOT = 85;
-const CRITICAL = 91;
+// Each stage starts this many degrees below the overheat point (95°C on a new chip: 75, 85, 91).
+const WARM = 20;
+const HOT = 10;
+const CRITICAL = 4;
 const DOT = 'heat-dot';
 
 type Area = { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
@@ -110,14 +110,14 @@ export class HeatEffects {
       .setDepth(depth);
   }
 
-  /** Call every frame with the chip's temperature. */
-  update(temperature: number, throttled: boolean, now: number): void {
-    const warm = ramp(temperature, WARM, THERMAL.throttleAt);
+  /** Call every frame with the chip's temperature and the one it overheats at (lower on a worn chip). */
+  update(temperature: number, limit: number, throttled: boolean, now: number): void {
+    const warm = ramp(temperature, limit - WARM, limit);
     const flicker = 0.85 + 0.15 * Math.sin(now / 70) * Math.sin(now / 23);
     this.glow.setAlpha((throttled ? 0.22 : 0.16 * warm) * flicker);
-    this.rate(this.smoke, ramp(temperature, HOT - 3, THERMAL.throttleAt), 260, 60);
-    this.rate(this.sparks, ramp(temperature, HOT, THERMAL.throttleAt), 200, 25);
-    const blaze = throttled ? 1 : ramp(temperature, CRITICAL, THERMAL.throttleAt);
+    this.rate(this.smoke, ramp(temperature, limit - HOT - 3, limit), 260, 60);
+    this.rate(this.sparks, ramp(temperature, limit - HOT, limit), 200, 25);
+    const blaze = throttled ? 1 : ramp(temperature, limit - CRITICAL, limit);
     this.rate(this.flames, blaze, 30, 3);
     this.rate(this.sideFlames, blaze, 40, 5);
   }

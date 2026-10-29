@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { CLOCK, SECTIONS } from '../game/src/data/economy.ts';
+import { programByName } from '../game/src/data/programs.ts';
 import { formatCount, formatDuration, formatMhz, formatMoney } from '../game/src/format.ts';
 import {
   buy,
@@ -127,6 +128,14 @@ test('the board is endless: finishing a contract pays and puts a new one in its 
   assert.equal(after.board.length, board.board.length);
   assert.ok(!after.board.some((c) => c.id === done.id));
   assert.equal(after.board.filter((c) => c.section === done.section).length, 2);
+});
+
+test('the board never shows the same client twice', () => {
+  for (let seed = 1; seed <= 50; seed++) {
+    const board = fillBoard(NEW_GAME, seeded(seed)).board;
+    const clients = board.map((c) => programByName(c.program).client);
+    assert.equal(new Set(clients).size, clients.length, clients.join(', '));
+  }
 });
 
 test('withTier gives exactly the parts for a tier (for testing)', () => {

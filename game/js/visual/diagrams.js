@@ -1,6 +1,6 @@
 import { assemble } from '../sim/assembler.js';
 import { tokens } from '../sim/isa.js';
-import { Chip, relativePower, steadyTemperature } from '../sim/thermal.js';
+import { Chip, relativePower, steadyTemperature, THERMAL } from '../sim/thermal.js';
 import { branchHint, hintColor } from './branchHint.js';
 import { codeLine } from './codeLine.js';
 import { cssColor } from './terminal.js';
@@ -566,24 +566,30 @@ const DIAGRAMS = {
         const x = (cycle) => left + (cycle / cycles) * width;
         const y = (celsius) => top + height - ((celsius - 40) / 60) * height;
         const points = [[x(0), y(chip.temperature)]];
+        // The overheat and cool-down points step down as the chip wears.
+        const limits = [[x(0), y(chip.throttleAt)]];
+        const resumes = [[x(0), y(chip.resumeAt)]];
         const throttledAt = [];
         for (let c = 1; c <= cycles; c++) {
             const overheats = chip.overheats;
+            const [limit, resume] = [chip.throttleAt, chip.resumeAt];
             chip.cycle(true);
             chip.setDial(1.5); // the player keeps it as high as the worn chip allows
             points.push([x(c), y(chip.temperature)]);
             if (chip.throttled)
                 throttledAt.push(c);
             if (chip.overheats > overheats)
-                s.text(x(c), y(95) - 14, `MAX ${Math.round(chip.maxDial * 100)}%`, 11, 0.9);
+                s.text(x(c), y(limit) - 14, `MAX ${Math.round(chip.maxDial * 100)}%`, 11, 0.9);
+            limits.push([x(c), y(limit)], [x(c), y(chip.throttleAt)]);
+            resumes.push([x(c), y(resume)], [x(c), y(chip.resumeAt)]);
         }
         for (const c of throttledAt)
             s.hintText(x(c), top + height + 10, '■', false, 8);
         s.polyline(points);
-        s.polyline([[left, y(95)], [left + width, y(95)]]);
-        s.polyline([[left, y(80)], [left + width, y(80)]]);
-        s.text(left - 50, y(95), '95°C', 12, 0.9);
-        s.text(left - 50, y(80), '80°C', 12, 0.7);
+        s.polyline(limits);
+        s.polyline(resumes);
+        s.text(left - 50, y(THERMAL.throttleAt), `${THERMAL.throttleAt}°C`, 12, 0.9);
+        s.text(left - 50, y(THERMAL.resumeAt), `${THERMAL.resumeAt}°C`, 12, 0.7);
         s.text(left - 50, y(40), '40°C', 12, 0.6);
         s.hintText(cx, top + height + 28, '■ = throttled: back to the rated clock until it cools', false, 12);
         s.text(cx, top - 30, 'DIAL AT ITS MAXIMUM, EVERY BEAT BUSY', 12, 0.8);
@@ -597,6 +603,8 @@ const DIAGRAMS = {
             s.box(x(i), cy + 40 - h / 2, 56, h, i === 0, i === 0);
             s.text(x(i), cy + 58, `${max}%`, 15, 1, i === 0);
             s.text(x(i), cy + 78, i === 0 ? 'NEW' : i === steps.length - 1 ? 'WORN OUT' : `${i} OVERHEAT${i > 1 ? 'S' : ''}`, 11, 0.7);
+            // Where it overheats now (the game's own model); with no overclock left, the normal limit is back.
+            s.text(x(i), cy + 96, `HOT AT ${Math.round(new Chip(4, max / 100).throttleAt)}°C`, 11, i === steps.length - 1 ? 0.5 : 0.9);
         });
         s.text(cx, cy - 92, 'TOP CLOCK AFTER EACH OVERHEAT', 13, 0.8, true);
         s.hintText(cx + 150, cy - 64, 'REPAIR: back to 150%', true, 14);

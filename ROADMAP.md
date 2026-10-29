@@ -38,7 +38,7 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 - [x] Relaxed mode toggle (wider windows, slower tempo)
 - [ ] Relaxed mode: pipeline waits for input instead of stalling
 - [ ] Playtest in a real browser and tune timing windows
-- [ ] Full-length song (~60 s): longer program or several programs back to back
+- [ ] Full-length song (~60 s): longer program or several programs back to back (contract songs now run 60-150 cycles, median 94 on tier 2: ~65 s at 87 BPM, ~40 s at 147; longer needs more memory, with the cache work)
 
 **Done when:** a 60-second tier 1 song is playable, instructions visibly execute on the beat, and registers update correctly. (Currently ~15 s.)
 
@@ -49,7 +49,10 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 - [x] RAW hazard detection and stall (bubble insertion)
 - [x] Forwarding unit (simulator option; still needs the upgrade in the shop)
 - [x] Branch handling: flush on mispredict; predictors none (tiers 2-3) → player guesses (tier 4) → 1-bit (tier 5) → 2-bit (tier 6)
-- [ ] L1 cache: hit/miss model with miss penalty
+- [ ] Memory wall: RAM access in fixed ns (~80, check the textbook), so cycles per access grow with the clock; an access longer than a cycle freezes the pipeline (single-cycle too)
+- [ ] L1 cache: 16 bytes, direct-mapped, 4 lines × 4 bytes, write-through + write buffer; a miss freezes the pipeline, 1-3 beats on a log scale, real cycles in the CPU-time math
+- [ ] Miss kinds for replays: first use / conflict / too small (compare with a fully associative cache of the same size)
+- [ ] Tests: hit/miss counts and miss penalties match hand-worked examples (SUM, ADD ARRAYS colliding vs not)
 - [ ] Word size: multi-chunk add-with-carry chains on narrow CPUs
 - [ ] Performance tracking: instruction count, cycles, CPI, clock period, CPU time
 - [x] Tests: CPI matches hand-calculated examples for each hazard type (pipeline; SUM ARRAY 43 / 35 cycles)
@@ -58,14 +61,27 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 - [ ] Five stage lanes with instructions scrolling in, registers highlighted
 - [ ] Event notes: hazard (stall/forward), branch fork, cache-miss hold, wide-arithmetic chain
 - [ ] Wrong or missed input → slow path (extra stall), never a fail state
-- [x] Clock speed sets the tempo: 75 BPM at 1 MHz, +12 BPM per 10× clock (`rhythm/tempo.ts`)
+- [x] Clock speed sets the tempo: 75 BPM at 1 MHz, +12 BPM per 10× clock (`rhythm/tempo.ts`; now +20, see below)
+- [x] Clock upgrades raise the tempo again, steeper: +20 BPM per 10× clock (pipelined 87 → ~147 BPM, single-cycle 75 → ~135); songs use the rated clock
+- [x] Bus stops at the panel's box edge (the row lights up; a stored byte gets an outline) instead of running over the text
+- [x] Heat builds faster (time constant 25 → 15 cycles): 150% overheats in ~28 busy beats, 140% in ~53, within one song
+- [x] A worn chip overheats sooner (88°C at 140% ... 70°C at 110%), so its top clock stays as risky as 150% on a new chip
+- [x] Key registers (NEXT, END, GRID) tagged in the REGISTERS box and introduced in a ~4 s count-in before each song and practice
+- [ ] Cache miss in the song: load shows `MISS → RAM`, the bus carries the block to its line, a counter rolls up the real cycles; presses during the freeze are ignored
+- [ ] CACHE box in the panel (valid, tag, data per line; each lookup shown as `0000 01 10 → line 1, tag 0 → HIT`); MEMORY box grows to addresses 0-63
 - [x] Clock dial in the song (`G` / `H`, 50–150% of the rated clock, tiers 2–6); results show average clock, peak temperature, overheats and real CPU time. Overclocking past 100% is a shop upgrade; every tier has it
 - [x] Underclocking down to 50% (slower tempo to think, more CPU time, cooler)
 - [x] **Overclock red zone:** the dial goes past the rated clock; heat builds every beat; overheating **throttles** (clock drops to rated mid-song until it cools) and **wears the chip** (maximum clock -10% until repaired). Still to do with the shop: better pay when overclocked, paid repairs, cooling upgrades that widen the safe zone
 - [x] Heat meter and thermal throttling (`sim/thermal.ts`), with fire effects building up with heat (`visual/heat.ts`)
 
 ### Memory and storage
-- [ ] RAM as page frames; page fault plays as a long hold note
+- [ ] Generator: data in addresses 0-63, bigger than the cache; ADD ARRAYS sometimes placed so its arrays collide in the cache
+- [ ] Contract cards show the access pattern (sequential, two arrays, grid by column ...)
+- [ ] Results: "waiting on memory" bar, hits / misses / hit rate, a "no cache" bar
+- [ ] Shop: L1 cache (a memory part, separate from the CPU tiers)
+- [ ] L2 cache, then L3 (shop upgrades; a miss checks each level; results show average memory access time)
+- [ ] Later: choosing the cache's shape (block size, associativity)
+- [ ] RAM as page frames; a page fault pauses the song for its own view
 - [ ] Page replacement: player picks the frame to evict, each frame shows its last-used beat
 - [ ] HDD platter mode: move the head (seek), tap as the sector passes (rotation)
 - [ ] Access time breakdown shown after each read (seek + rotation + transfer + controller)
@@ -73,10 +89,11 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 - [ ] Latency figures checked against the textbook and labeled approximate
 
 ### Economy and UI
+- [x] Contracts for made-up clients ("FAIRVIEW SAVINGS: TOTAL 107 BILLION DEPOSITS"), never the same client twice on the board
 - [x] Contract board (endless): random jobs in STARTER / STANDARD / ADVANCED, each with its whole-job time on your CPU and its own deadline; locked if your CPU can't make it, half pay if your run's pace is late. Later: instruction mix, access pattern
 - [ ] Pay formula: base × speed bonus × accuracy bonus (flat pay for now; overclocking bonus)
 - [x] Shop: CPU parts (tiers 2–6), clock upgrades (to 4 GHz), cooling, chip repair. Later: cache, RAM, HDD
-- [ ] **Debt deadline (next; contract deadlines are done):** a calendar (each contract costs setup time + its CPU time) and one far debt deadline; possibly quarterly installments. Original idea: pay off a debt before an in-game deadline. Each contract costs game time = its CPU time (instructions × CPI × period), where the song is a sample of a much bigger job and your song CPI applies to the rest. The board shows each contract's estimate at your current CPU ("317 years" at 1 MHz → days late game; keep the numbers real, roughly a 10^4–10^5× total speedup). Clock upgrades shorten the time but **don't change the tempo; only overclocking does** (replaces the tempo-follows-clock rule above). Open: what missing the deadline does; fixed tempo per tier or a small step per tier
+- [ ] **Debt deadline (next; contract deadlines are done):** a calendar (each contract costs setup time + its CPU time) and one far debt deadline; possibly quarterly installments. Original idea: pay off a debt before an in-game deadline. Each contract costs game time = its CPU time (instructions × CPI × period), where the song is a sample of a much bigger job and your song CPI applies to the rest. The board shows each contract's estimate at your current CPU ("317 years" at 1 MHz → days late game; keep the numbers real, roughly a 10^4–10^5× total speedup). Clock upgrades shorten the time and raise the tempo (decided again: steeper curve, see above). Open: what missing the deadline does; fixed tempo per tier or a small step per tier
 - [x] Results screen: instructions, cycles, CPI, clock period, CPU time, the whole contract's time, pay
 - [x] All prices and balance numbers in one data file (`data/economy.ts`)
 - [x] Save/load progress (browser storage; `N` twice on the title for a new game)
@@ -96,6 +113,7 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 - [x] Tier 2 lesson: pipelining (laundry analogy), data hazards, stalls (+ tier 2 practice)
 - [x] Tier 3 lesson: forwarding
 - [x] Branch prediction lesson (tier 4)
+- [ ] Cache lesson: the memory wall (chart of RAM cycles vs clock), what a cache is (a desk next to the library), lines and tags, hit vs miss, locality; practice narrates each lookup
 - [ ] Storage lessons: RAM / page faults, HDD
 - [ ] Track hazard-decision accuracy (learning objective 1) and show it after each contract
 
@@ -123,5 +141,6 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 
 ## Later (not part of the MVP)
 
-- Stretch, in priority order: SSD flash mode → pipeline designer → dual-issue → NVMe mode → out-of-order + renaming, report card, before/after check
+- Pipeline designer (cut the datapath; stalls stay manual at every depth; open: hold Space until the hazard clears), after L2 / L3 and pages + HDD
+- Stretch, in priority order: SSD flash mode → dual-issue → NVMe mode → out-of-order + renaming, report card, before/after check
 - Submission: README, 800×450 thumbnail (≤ 500 KB), `games.yml` entry, size check (≤ 35 MB), GitHub Pages test, pull request

@@ -13,28 +13,28 @@ import { BASE_MHZ } from '../data/economy.js';
 import { formatCount, formatDuration, formatMhz, formatMoney } from '../format.js';
 import { getProgress, updateProgress } from '../save.js';
 import { getSettings } from '../settings.js';
-import { completeContract, jobItems, payFor, ratedMhzFor, thermalConfig } from '../sim/progress.js';
+import { completeContract, payFor, ratedMhzFor, thermalConfig } from '../sim/progress.js';
 import { assemble } from '../sim/assembler.js';
 import { Cpu } from '../sim/cpu.js';
 import { describe, format, tokens, UNIT_ROLES, UNITS, unitOf } from '../sim/isa.js';
 import { perfectCycles, STAGES } from '../sim/pipeline.js';
 import { Chip, THERMAL } from '../sim/thermal.js';
 import { branchHint, hintColor } from '../visual/branchHint.js';
+import { bar, deadlineBar } from '../visual/asciiChart.js';
 import { codeLine } from '../visual/codeLine.js';
 import { HeatEffects } from '../visual/heat.js';
 import { panelBox } from '../visual/panelBox.js';
 import { cssColor, ERAS, TerminalLook } from '../visual/terminal.js';
-// Pipelining shortens each stage, so the clock can run 4x faster than tier 1's.
-/** The song's tempo is set by the pipeline's base clock; clock upgrades shorten CPU time, not the beat. */
-const TEMPO_MHZ = BASE_MHZ.pipelined;
 /** The clock and temperature gauge, top left above the stage names. */
 const GAUGE_X = 54;
 const GAUGE_TOP = 76;
 const GAUGE_BOTTOM = 214;
 const GAUGE_MIN_C = 40;
 const GAUGE_MAX_C = 100;
-/** Cycle c happens on beat FIRST_BEAT + c, so the first decision lands on beat 4. */
+/** Cycle c happens on beat firstBeat + c: FIRST_BEAT, plus the count-in in a song, so the first decision lands 2 beats later. */
 const FIRST_BEAT = 2;
+/** Before a song, a count-in of about this long introduces the loop's key registers (NEXT, END). */
+const COUNT_IN_SECONDS = 4;
 const REGISTER_COUNT = 8;
 const LOOKAHEAD = 6;
 /** Replay speeds, chosen with the arrow keys; starts at 1x. */
@@ -184,6 +184,10 @@ export class PipelineScene extends Phaser.Scene {
     music;
     /** Tempo of the CPU's clock; the conductor runs at this times the replay speed. */
     baseBpm = 0;
+    /** Beat of cycle 0: later than FIRST_BEAT when the song opens with a count-in. */
+    firstBeat = FIRST_BEAT;
+    /** The count-in's text (key registers and beats left); gone once the song starts. */
+    countIn;
     // Replay: its own clock, so it can change speed and pause.
     replayBeat = 0;
     speedIndex = 1;
@@ -242,6 +246,7 @@ export class PipelineScene extends Phaser.Scene {
         this.transfers = [];
         this.storesSent = new Set();
         this.regTexts = [];
+        this.countIn = undefined;
         this.memTexts = [];
         this.listing = [];
         this.listingParts = [];
@@ -270,28 +275,32 @@ export class PipelineScene extends Phaser.Scene {
         const spec = programByName(this.programName);
         this.spec = spec;
         const easy = settings.relaxed || this.practice;
-        const bpm = tempoForClock(this.singleCycle ? BASE_MHZ.singleCycle : TEMPO_MHZ, easy);
+        const progress = getProgress();
+        this.ratedMhz = ratedMhzFor(progress, !this.singleCycle);
+        // The song's tempo follows the rated clock, so clock upgrades speed it up.
+        const bpm = tempoForClock(this.ratedMhz, easy);
         this.baseBpm = bpm;
         const program = assemble(spec.source, REGISTER_COUNT);
         const cpu = new Cpu(program, 8, spec.memory, REGISTER_COUNT);
         this.listing = this.buildListing(program);
         this.freshCpu = cpu.clone();
-        const progress = getProgress();
-        this.ratedMhz = ratedMhzFor(progress, !this.singleCycle);
         const chip = new Chip(this.ratedMhz, this.startMaxDial, thermalConfig(progress));
         // ?clock=150 starts the song overclocked (dev shortcut). Practice always runs at the rated clock.
         const clockParam = Number(new URLSearchParams(location.search).get('clock')) / 100;
         if (clockParam && !this.practice && !this.watching)
             chip.setDial(clockParam);
         const options = { forwarding: this.forwarding, predictor: this.predictor, singleCycle: this.singleCycle };
-        this.run = new PipelineRun(cpu, options, FIRST_BEAT, 60 / bpm, easy ? RELAXED_WINDOWS : NORMAL_WINDOWS, chip);
+        // Songs (and practice) open with a count-in naming the key registers; replays go straight in.
+        const countBeats = spec.keys && !this.watching ? Math.ceil((COUNT_IN_SECONDS * bpm * chip.clockRatio) / 60) : 0;
+        this.firstBeat = FIRST_BEAT + countBeats;
+        this.run = new PipelineRun(cpu, options, this.firstBeat, 60 / bpm, easy ? RELAXED_WINDOWS : NORMAL_WINDOWS, chip);
         this.tempoRatio = chip.clockRatio;
         this.shownRegs = [...this.run.pipeline.regs];
         this.shownMemory = cpu.memory.slice();
         this.drawHighway();
         this.heat = new HeatEffects(this, this.look.era, { x: LANE_X0, y: 0, width: LANES_W, height: this.rows.WB + ROW_GAP / 2 });
         this.drawGauge();
-        this.drawPanel(spec.name);
+        this.drawPanel(spec);
         this.drawBus();
         this.drawCallout();
         if (this.watching)
@@ -322,6 +331,8 @@ export class PipelineScene extends Phaser.Scene {
             this.replayBeat += (Math.min(elapsed, 250) / 1000) * (this.tempo() / 60);
         }
         let beat = this.chartBeat();
+        if (this.countIn)
+            this.updateCountIn(this.countIn, beat);
         if (this.practice)
             beat = this.holdForPlayer(beat);
         if (this.autoplay || this.watching)
@@ -582,7 +593,7 @@ export class PipelineScene extends Phaser.Scene {
         this.tempoRatio = chip.clockRatio;
         this.conductor?.setTempo(this.tempo());
         if (cooled && !this.watching)
-            this.feedback.setText(`COOLED TO ${THERMAL.resumeAt}°C:\nBACK TO ${chip.mhz.toFixed(1)} MHz`);
+            this.feedback.setText(`COOLED TO ${Math.round(chip.resumeAt)}°C:\nBACK TO ${chip.mhz.toFixed(1)} MHz`);
     }
     buzz() {
         blip(this.ctx, 110, this.ctx.currentTime, 0.15, 'sawtooth', 0.08);
@@ -752,14 +763,14 @@ export class PipelineScene extends Phaser.Scene {
         const tube = this.add.rectangle(x, (GAUGE_TOP + GAUGE_BOTTOM) / 2, 18, GAUGE_BOTTOM - GAUGE_TOP).setStrokeStyle(1, fg, 0.6);
         this.clickable(tube, () => GLOSSARY.HEAT);
         const fill = this.add.rectangle(x, GAUGE_BOTTOM - 2, 12, 0, fg).setOrigin(0.5, 1);
-        const markY = this.gaugeY(THERMAL.throttleAt);
-        this.add.graphics().lineStyle(1, fg, 0.8).lineBetween(x - 12, markY, x + 12, markY);
-        this.text(x + 14, markY, `${THERMAL.throttleAt}`, 10).setOrigin(0, 0.5).setAlpha(0.7);
+        // The overheat mark: moves down as the chip wears (updateHeat).
+        const mark = this.add.graphics().lineStyle(1, fg, 0.8).lineBetween(x - 12, 0, x + 12, 0);
+        const markText = this.text(x + 14, 0, '', 10).setOrigin(0, 0.5).setAlpha(0.7);
         const temp = this.text(x, GAUGE_BOTTOM + 6, '', 15).setOrigin(0.5, 0);
         this.clickable(temp, () => GLOSSARY.HEAT);
         // A chip worn by overheating can't reach the full overclock.
         const worn = this.text(x, GAUGE_BOTTOM + 24, '', 11).setOrigin(0.5, 0);
-        this.gauge = { clock, mode, fill, temp, worn };
+        this.gauge = { clock, mode, fill, temp, worn, mark, markText };
     }
     gaugeY(celsius) {
         const t = Phaser.Math.Clamp((celsius - GAUGE_MIN_C) / (GAUGE_MAX_C - GAUGE_MIN_C), 0, 1);
@@ -770,7 +781,11 @@ export class PipelineScene extends Phaser.Scene {
         const { chip } = this.run;
         const { fg, fire } = this.look.era;
         const t = chip.temperature;
-        const color = t >= 90 ? fire[2] : t >= 75 ? fire[1] : fg;
+        const limit = chip.throttleAt;
+        const markY = this.gaugeY(limit);
+        this.gauge.mark.setY(markY);
+        this.gauge.markText.setY(markY).setText(`${Math.round(limit)}`);
+        const color = t >= limit - 5 ? fire[2] : t >= limit - 20 ? fire[1] : fg;
         const blink = chip.throttled && Math.floor(now / 250) % 2 === 0;
         this.gauge.fill.setFillStyle(color).setSize(12, GAUGE_BOTTOM - 2 - this.gaugeY(t)).setAlpha(blink ? 0.5 : 1);
         this.gauge.temp.setText(`${Math.round(t)}°C`).setColor(cssColor(color));
@@ -783,30 +798,37 @@ export class PipelineScene extends Phaser.Scene {
             .setText(chip.throttled ? 'THROTTLED' : chip.dial > 1 ? `OVERCLOCK ${percent}%` : chip.dial < 1 ? `UNDERCLOCK ${percent}%` : 'RATED')
             .setColor(cssColor(chip.throttled || chip.dial > 1 ? fire[1] : fg));
         if (!this.finished)
-            this.heat.update(t, chip.throttled, now);
+            this.heat.update(t, limit, chip.throttled, now);
     }
-    drawPanel(name) {
+    tierTitle() {
+        if (this.singleCycle)
+            return 'TIER 1: SINGLE-CYCLE';
+        if (this.predictor)
+            return `TIER ${this.predictor === '1-bit' ? 5 : 6}: ${this.predictor.toUpperCase()} PREDICTOR`;
+        if (this.guessing)
+            return 'TIER 4: BRANCH PREDICTION';
+        return this.forwarding ? 'TIER 3: FORWARDING' : 'TIER 2: PIPELINE';
+    }
+    drawPanel(spec) {
         const mode = this.watching ? '   REPLAY' : '';
-        const tier = this.singleCycle
-            ? 'TIER 1: SINGLE-CYCLE'
-            : this.predictor
-                ? `TIER ${this.predictor === '1-bit' ? 5 : 6}: ${this.predictor.toUpperCase()} PREDICTOR`
-                : this.guessing
-                    ? 'TIER 4: BRANCH PREDICTION'
-                    : this.forwarding
-                        ? 'TIER 3: FORWARDING'
-                        : 'TIER 2: PIPELINE';
-        this.text(PANEL_X, 4, `${tier}   ${name}${mode}`, 14).setAlpha(0.7);
+        // A contract's client goes on top; the program's own name labels its listing.
+        this.text(PANEL_X, 4, `${this.tierTitle()}   ${spec.client ?? spec.name}${mode}`, 14).setAlpha(0.7);
         const { era } = this.look;
-        const programTitle = panelBox(this, BOX_X, LISTING_TOP - 10, BOX_W, LISTING_ROWS * LISTING_LINE + 16, 'PROGRAM', era);
+        const listingTitle = spec.client ? `PROGRAM: ${spec.name}` : 'PROGRAM';
+        const programTitle = panelBox(this, BOX_X, LISTING_TOP - 10, BOX_W, LISTING_ROWS * LISTING_LINE + 16, listingTitle, era);
         this.clickable(programTitle, () => GLOSSARY.PROGRAM);
         let y = LISTING_TOP + LISTING_ROWS * LISTING_LINE + 18;
         const registersTitle = panelBox(this, BOX_X, y, BOX_W, 4 * LINE + 20, 'REGISTERS  (<- STILL COMPUTING)', era);
         this.clickable(registersTitle, () => GLOSSARY.REGISTERS);
         y += 12;
+        // A size smaller than the rest of the panel, so a key register's tag fits beside "<-MEM".
+        const keyRegs = new Set((this.spec.keys ?? []).map((key) => key.reg));
         for (let r = 0; r < REGISTER_COUNT; r++) {
             const column = Math.floor(r / 4);
-            this.regTexts.push(this.clickable(this.text(PANEL_X + column * 210, y + (r % 4) * LINE, '').setAlpha(0.8), () => this.registerEntry(r)));
+            const row = this.text(PANEL_X + column * 210, y + (r % 4) * LINE, '', 14).setAlpha(0.8);
+            if (keyRegs.has(r))
+                row.setFontStyle('bold');
+            this.regTexts.push(this.clickable(row, () => this.registerEntry(r)));
         }
         y += 4 * LINE + 18;
         this.clickable(panelBox(this, BOX_X, y, BOX_W, 2 * LINE + 20, 'MEMORY', era), () => this.memoryEntry());
@@ -821,6 +843,14 @@ export class PipelineScene extends Phaser.Scene {
         y += 48;
         const intro = this.watching ? 'WATCHING YOUR RUN' : this.practice ? 'PRACTICE:\nNOTES WAIT FOR YOU' : 'GET READY...';
         this.feedback = this.text(PANEL_X, y, intro, 20).setLineSpacing(6);
+        if (this.firstBeat > FIRST_BEAT) {
+            // The count-in: the key registers pulse in the panel while the text says what they do.
+            this.feedback.setVisible(false);
+            this.countIn = this.text(PANEL_X, y, this.countInText(this.firstBeat), 14).setLineSpacing(4);
+            for (const { reg } of this.spec.keys ?? []) {
+                this.tweens.add({ targets: this.regTexts[reg], alpha: 0.35, duration: 30000 / this.tempo(), yoyo: true, repeat: -1 });
+            }
+        }
         if (this.watching) {
             // The program listing as one click target.
             this.clickable(this.add.zone(PANEL_X, LISTING_TOP, 400, LISTING_ROWS * LISTING_LINE).setOrigin(0), () => GLOSSARY.PROGRAM);
@@ -830,6 +860,27 @@ export class PipelineScene extends Phaser.Scene {
             .setAlpha(0.5)
             .setInteractive({ useHandCursor: true })
             .on('pointerdown', () => this.scene.start('title'));
+    }
+    countInText(beatsLeft) {
+        const keys = (this.spec.keys ?? []).map((key) => `x${key.reg} = ${key.tag}: ${key.about}`);
+        return [`GET READY: ${beatsLeft}`, ...keys].join('\n');
+    }
+    /** Counts the beats down, then hands the panel over to the song. */
+    updateCountIn(countIn, beat) {
+        const left = Math.ceil(this.firstBeat - beat);
+        if (left > 0) {
+            countIn.setText(this.countInText(left));
+            return;
+        }
+        countIn.destroy();
+        this.countIn = undefined;
+        for (const { reg } of this.spec.keys ?? []) {
+            this.tweens.killTweensOf(this.regTexts[reg]);
+            this.regTexts[reg].setAlpha(1);
+        }
+        if (!this.practice)
+            this.feedback.setText('GO!');
+        this.feedback.setVisible(true);
     }
     buildListing(program) {
         const lines = [];
@@ -948,11 +999,13 @@ export class PipelineScene extends Phaser.Scene {
             if (wrote !== undefined)
                 pending.set(wrote, stage); // EX overrides MEM: it's newer
         }
+        const tags = new Map((this.spec.keys ?? []).map((key) => [key.reg, key.tag]));
         this.shownRegs.forEach((value, r) => {
             const where = pending.get(r);
+            const tag = tags.get(r);
             this.regTexts[r]
-                .setText(`x${r}`.padEnd(4) + `0x${hex(value)} ${String(value).padStart(3)}` + (where ? ` <-${where}` : ''))
-                .setAlpha(where ? 1 : 0.8);
+                .setText(`x${r}`.padEnd(4) + `0x${hex(value)} ${String(value).padStart(3)}` + (tag ? ` ${tag}` : '') + (where ? ` <-${where}` : ''))
+                .setAlpha(where || tag ? 1 : 0.8);
         });
         this.memTexts.forEach((row, i) => {
             const bytes = Array.from(this.shownMemory.subarray(i * 8, i * 8 + 8), hex);
@@ -968,7 +1021,10 @@ export class PipelineScene extends Phaser.Scene {
             return;
         this.tweens.killTweensOf(text);
         text.setAlpha(1);
-        this.tweens.add({ targets: text, alpha: 0.8, duration: 400 });
+        // Key registers stay bright; everything else settles back to dim.
+        const keyRow = this.spec.keys?.some(({ reg }) => this.regTexts[reg] === text);
+        if (!keyRow)
+            this.tweens.add({ targets: text, alpha: 0.8, duration: 400 });
     }
     // ---- results on notes, and the bus ----
     /** What an instruction did, in a few characters. */
@@ -991,7 +1047,7 @@ export class PipelineScene extends Phaser.Scene {
         if (committed && rd !== undefined && committed.value !== undefined) {
             const value = committed.value;
             const target = this.regTexts[rd];
-            this.transfer(committed, this.rows.WB, `x${rd}=${value}`, [target.x + 60, target.y + 9], () => {
+            this.transfer(committed, this.rows.WB, `x${rd}=${value}`, target.y + 9, () => {
                 this.shownRegs[rd] = value;
                 this.refreshPanel();
                 this.highlight(target);
@@ -1004,23 +1060,33 @@ export class PipelineScene extends Phaser.Scene {
             this.storesSent.add(store.seq);
             const value = this.run.pipeline.cpu.memory[address];
             const target = this.memTexts[Math.floor(address / 8)];
-            const point = [target.x + 48 + (address % 8) * 29, target.y + 9];
-            this.transfer(store, this.singleCycle ? this.rows.WB : this.rows.MEM, `[${address}]=${value}`, point, () => {
+            this.transfer(store, this.singleCycle ? this.rows.WB : this.rows.MEM, `[${address}]=${value}`, target.y + 9, () => {
                 this.shownMemory[address] = value;
                 this.refreshPanel();
                 this.highlight(target);
+                this.markByte(target, address % 8);
             });
         }
     }
-    /** Starts a value along the bus: right along its row, up the bus, then into its line. */
-    transfer(slot, rowY, label, to, land) {
+    /**
+     * Starts a value along the bus: right along its row, up the bus, then to the
+     * box's edge beside its line. It stops there, so it never covers the panel's
+     * text; the line lights up as the value lands.
+     */
+    transfer(slot, rowY, label, toY, land) {
         const startX = laneCenter(unitOf(slot.instr)) + NOTE_W / 2;
-        const path = [[startX, rowY], [BUS_X, rowY], [BUS_X, to[1]], [BOX_X, to[1]], to];
-        // Label rides up and to the left of the moving point, clear of the panel text.
+        const path = [[startX, rowY], [BUS_X, rowY], [BUS_X, toY], [BOX_X, toY]];
+        // Label rides up and to the left of the moving point, outside the panel.
         const text = this.text(startX, rowY, label, 14).setOrigin(1, 1).setDepth(700);
         // Fits inside one beat, so values never pile up on the bus.
         const duration = Math.min(600, this.beatSeconds() * 1000 * 0.8);
         this.transfers.push({ text, path, start: performance.now(), duration, land });
+    }
+    /** Outlines the byte a store just wrote in a memory row, fading out. */
+    markByte(row, column) {
+        const x = row.x + 48 + column * 29;
+        const mark = this.add.rectangle(x, row.y + 9, 26, 18).setStrokeStyle(1, this.look.era.fg).setDepth(690);
+        this.fades.push({ parts: [mark], start: performance.now(), duration: 700 });
     }
     /**
      * Tier 3: when an instruction issues with a value forwarded from EX or MEM,
@@ -1275,8 +1341,8 @@ export class PipelineScene extends Phaser.Scene {
         conductor.offset = getSettings().offset;
         conductor.clickVolume = this.paused ? 0 : 0.04;
         conductor.onBeat = (beat, time) => {
-            if (beat > FIRST_BEAT && !this.finished && !this.paused) {
-                this.music.playBeat(beat - FIRST_BEAT - 1, time, 60 / conductor.bpm, this.run.pipeline.occupancy);
+            if (beat > this.firstBeat && !this.finished && !this.paused) {
+                this.music.playBeat(beat - this.firstBeat - 1, time, 60 / conductor.bpm, this.run.pipeline.occupancy);
             }
         };
         conductor.start();
@@ -1453,29 +1519,12 @@ export class PipelineScene extends Phaser.Scene {
      */
     baseline() {
         if (this.predictor) {
-            return {
-                label: 'PREDICTOR ALONE:',
-                cycles: perfectCycles(this.freshCpu, { forwarding: true, predictor: this.predictor }, 'hardware'),
-                saved: 'CYCLES VS. JUST FOLLOWING THE PREDICTOR',
-                slower: 'NO BETTER THAN JUST FOLLOWING THE PREDICTOR',
-            };
+            return { label: 'PREDICTOR ALONE', cycles: perfectCycles(this.freshCpu, { forwarding: true, predictor: this.predictor }, 'hardware') };
         }
-        if (this.guessing) {
-            return {
-                label: 'ALWAYS NOT TAKEN:',
-                cycles: perfectCycles(this.freshCpu, { forwarding: true }, 'hardware'),
-                saved: 'CYCLES VS. ALWAYS GUESSING NOT TAKEN',
-                slower: 'NO BETTER THAN ALWAYS GUESSING NOT TAKEN',
-            };
-        }
-        if (this.forwarding) {
-            return {
-                label: 'NO FORWARDING (BEST):',
-                cycles: perfectCycles(this.freshCpu, { forwarding: false }),
-                saved: 'CYCLES VS. A PERFECT TIER 2 RUN',
-                slower: 'STILL SLOWER THAN A PERFECT RUN WITHOUT FORWARDING',
-            };
-        }
+        if (this.guessing)
+            return { label: 'NEVER GUESSING', cycles: perfectCycles(this.freshCpu, { forwarding: true }, 'hardware') };
+        if (this.forwarding)
+            return { label: 'NO FORWARDING', cycles: perfectCycles(this.freshCpu, { forwarding: false }) };
         return undefined;
     }
     /** Feedback when a branch is decided; tiers 2-3 always guess "not taken". */
@@ -1530,53 +1579,12 @@ export class PipelineScene extends Phaser.Scene {
                 : 'PREDICTOR MISSED: a row ended. That\nonly weakens its counter. Watch x1\nreach x2 to see it coming, then override.');
         }
     }
-    /** CPU-time lines: this run, the tier's baseline (tiers 3-4), and single-cycle. */
-    timeLines(pipelined, single, base) {
-        const p = this.run.pipeline;
-        const n = p.instructions;
-        const time = (micros) => formatDuration(micros / 1e6);
-        const singleLabel = `SINGLE-CYCLE (${formatMhz(this.ratedMhz / 4)}):`;
-        // Labels padded to one width so the numbers line up.
-        const width = Math.max(21, singleLabel.length);
-        const yours = (this.singleCycle
-            ? `SINGLE-CYCLE (${formatMhz(this.ratedMhz)}):`
-            : this.guessing
-                ? 'YOUR GUESSES:'
-                : this.forwarding
-                    ? 'WITH FORWARDING:'
-                    : `PIPELINED (${formatMhz(this.ratedMhz)}):`).padEnd(width);
-        // The clock may have changed during the run (overclocking, throttling): use its average period.
-        const lines = [`${yours} ${n} x ${p.cpi.toFixed(2)} x ${time(pipelined / p.cycles)} = ${time(pipelined)}`];
-        if (base) {
-            const rated = 1 / this.ratedMhz;
-            lines.push(`${base.label.padEnd(width)} ${n} x ${(base.cycles / n).toFixed(2)} x ${time(rated)} = ${time(base.cycles * rated)}`);
-        }
-        // The single-cycle CPU is the baseline the pipelined tiers compare against; it doesn't compare with itself.
-        if (!this.singleCycle)
-            lines.push(`${singleLabel.padEnd(width)} ${n} x 1.00 x ${time(4 / this.ratedMhz)} = ${time(single)}`);
-        return lines;
-    }
-    /** With a contract: the whole job at this run's pace (CPI and average clock), and the pay. */
     /** The whole contract's time at this run's pace: its CPI and the clocks it actually ran at. */
     jobSeconds(contract) {
         const p = this.run.pipeline;
         const { chip } = this.run;
         const micros = (chip.micros / Math.max(1, chip.cycles)) * p.cycles;
         return (contract.instructions * (micros / Math.max(1, p.instructions))) / 1e6;
-    }
-    /** With a contract: the whole job at this run's pace against its deadline, and the pay. */
-    contractLines() {
-        const { contract } = this;
-        if (!contract)
-            return [];
-        const spec = this.spec;
-        const verdict = this.late ? `LATE! HALF PAY: ${formatMoney(payFor(contract, true))}` : `ON TIME! PAID ${formatMoney(contract.pay)}`;
-        return [
-            '',
-            `CONTRACT: ${spec.verb} ${formatCount(jobItems(contract))} ${spec.unit} (${formatCount(contract.instructions)} INSTR.)`,
-            `NEEDED IN ${formatDuration(contract.deadline)}. AT THIS PACE IT TAKES ${formatDuration(this.jobSeconds(contract))}.`,
-            ...(this.paid ? [`${verdict}   MONEY: ${formatMoney(getProgress().money)}`] : []),
-        ];
     }
     /**
      * The program is done once its last instruction reaches WB. Let it finish
@@ -1617,13 +1625,6 @@ export class PipelineScene extends Phaser.Scene {
         }
         this.showingResults = true;
         const p = this.run.pipeline;
-        const { chip } = this.run;
-        // Real time at the clocks actually used, scaled to the cycle count the results show.
-        const pipelined = (chip.micros / Math.max(1, chip.cycles)) * p.cycles;
-        // A single-cycle CPU on the same chip technology: its long cycle runs at a quarter of the pipeline's clock.
-        const single = p.instructions / (this.ratedMhz / 4);
-        const ratio = single / pipelined;
-        const base = this.baseline();
         const lines = this.practice
             ? [
                 'PRACTICE COMPLETE',
@@ -1635,41 +1636,76 @@ export class PipelineScene extends Phaser.Scene {
                 '',
                 this.returnTo ? '[ENTER] CONTRACT BOARD' : '[ENTER] PLAY    [Q] TITLE',
             ]
-            : [
-                'YOUR RUN',
-                '',
-                `INSTRUCTIONS ${p.instructions}   CYCLES ${p.cycles}   CPI ${p.cpi.toFixed(2)}`,
-                `STALLS ${p.stalls}   FLUSHED ${p.flushed}   BEST STREAK ${this.run.bestStreak}`,
-                ...(this.predictor
-                    ? [
-                        `GUESSES ${p.branches - p.mispredicted}/${p.branches} RIGHT   PREDICTOR ${p.branches - p.predictorMisses}/${p.branches}   ` +
-                            `OVERRIDES ${p.overridesRight}/${p.overrides} RIGHT`,
-                    ]
-                    : this.guessing
-                        ? [`BRANCH GUESSES: ${p.branches - p.mispredicted} OF ${p.branches} RIGHT`]
-                        : []),
-                '',
-                `AVG CLOCK ${formatMhz(Number((p.cycles / pipelined).toPrecision(3)))}   PEAK ${Math.round(chip.peak)}°C   OVERHEATED ${chip.overheats}x` +
-                    (chip.overheats > 0 ? `: MAX CLOCK NOW ${Math.round(chip.maxDial * 100)}%` : ''),
-                'CPU TIME = INSTRUCTIONS x CPI x CLOCK PERIOD',
-                ...this.timeLines(pipelined, single, base),
-                ...this.contractLines(),
-                '',
-                this.singleCycle
-                    ? `EVERY INSTRUCTION TAKES ONE LONG CYCLE: CPI ${p.cpi.toFixed(2)}${p.cpi > 1 ? ' (MISSED NOTES COST CYCLES)' : ''}`
-                    : ratio >= 1
-                        ? `${ratio.toFixed(1)}x FASTER THAN SINGLE-CYCLE, EVEN WITH A HIGHER CPI`
-                        : `${(1 / ratio).toFixed(1)}x SLOWER: TOO MANY STALLS AND FLUSHES`,
-                ...(base === undefined
-                    ? []
-                    : [p.cycles < base.cycles ? `${this.predictor ? 'OVERRIDES' : this.guessing ? 'GUESSING' : 'FORWARDING'} SAVED ${base.cycles - p.cycles} ${base.saved}` : base.slower]),
-                '',
-                this.contract && this.paid ? '[ENTER] CONTRACT BOARD    [W] WATCH AGAIN    [Q] TITLE' : '[ENTER] PLAY AGAIN    [W] WATCH AGAIN    [Q] TITLE',
-            ];
+            : this.resultLines();
         const { width, height } = this.scale;
         const { fg, bg } = this.look.era;
-        this.add.rectangle(width / 2, height / 2, 800, Math.min(520, lines.length * 22 + 36), bg).setStrokeStyle(1, fg).setDepth(500);
-        this.text(width / 2, height / 2, lines.join('\n')).setOrigin(0.5).setDepth(501).setLineSpacing(4);
+        this.add.rectangle(width / 2, height / 2, 820, Math.min(524, lines.length * 21 + 36), bg).setStrokeStyle(1, fg).setDepth(500);
+        // Left-aligned so the charts' columns line up.
+        this.text(width / 2, height / 2, lines.join('\n'), 15).setOrigin(0.5).setAlign('left').setDepth(501).setLineSpacing(4);
+    }
+    /**
+     * The results of a real run, as charts: where the cycles went (which gives
+     * the CPI), the time per instruction (CPI x clock period) next to the CPU
+     * you upgraded from, and the whole contract at that pace against its deadline.
+     */
+    resultLines() {
+        const p = this.run.pipeline;
+        const { chip } = this.run;
+        const n = Math.max(1, p.instructions);
+        const time = (micros) => formatDuration(micros / 1e6);
+        // Time per instruction at the clocks actually run (overclocking, throttling), in µs.
+        const perInstruction = (chip.micros / Math.max(1, chip.cycles)) * (p.cycles / n);
+        const avgPeriod = perInstruction / p.cpi;
+        const lines = [`RESULTS: ${this.spec.client ?? this.spec.name} ON ${this.tierTitle()}`];
+        // Extra lines only when they apply: branch guessing, and a clock that wasn't the rated one.
+        if (this.predictor) {
+            lines.push(`BRANCH GUESSES ${p.branches - p.mispredicted}/${p.branches} RIGHT (PREDICTOR ALONE: ${p.branches - p.predictorMisses}/${p.branches})`);
+        }
+        else if (this.guessing) {
+            lines.push(`BRANCH GUESSES ${p.branches - p.mispredicted}/${p.branches} RIGHT`);
+        }
+        if (chip.cycles > 0 && (this.dialRecording.some((d) => d !== 1) || this.watchDials.some((d) => d !== 1) || chip.overheats > 0)) {
+            lines.push(`CLOCK: AVERAGE ${formatMhz(Number((1 / avgPeriod).toPrecision(3)))}, PEAK ${Math.round(chip.peak)}°C` +
+                (chip.overheats > 0 ? `, OVERHEATED ${chip.overheats}x: MAX CLOCK NOW ${Math.round(chip.maxDial * 100)}%` : ''));
+        }
+        // Where the cycles went: every cycle either finished an instruction or was lost.
+        const fill = Math.max(0, p.cycles - p.instructions - p.stalls - p.flushed);
+        const rows = this.singleCycle
+            ? [['FINISHED AN INSTRUCTION', p.instructions], ['LOST (MISSED OR WRONG KEY)', p.stalls]]
+            : [
+                ['FINISHED AN INSTRUCTION', p.instructions],
+                ['STALLED (WAITING / MISSED)', p.stalls],
+                ['FLUSHED (WRONG PATH)', p.flushed],
+                ['FILLING AND EMPTYING', fill],
+            ];
+        lines.push('', `WHERE THE ${p.cycles} CYCLES WENT`);
+        for (const [label, count] of rows)
+            lines.push(`  ${label.padEnd(27)} ${bar(count, p.cycles, 24)} ${String(count).padStart(3)}`);
+        lines.push(`  CPI = ${p.cycles} CYCLES / ${p.instructions} INSTRUCTIONS = ${p.cpi.toFixed(2)}`);
+        // Time per instruction: CPI x clock period, next to the CPU this tier improved on.
+        const compare = [['YOU', p.cpi, avgPeriod]];
+        const base = this.baseline();
+        if (base)
+            compare.push([`${base.label} (BEST)`, base.cycles / n, 1 / this.ratedMhz]);
+        if (!this.singleCycle)
+            compare.push(['SINGLE-CYCLE', 1, 4 / this.ratedMhz]);
+        const slowest = Math.max(...compare.map(([, cpi, period]) => cpi * period));
+        lines.push('', 'TIME PER INSTRUCTION = CPI x CLOCK PERIOD');
+        for (const [label, cpi, period] of compare) {
+            const sum = `${cpi.toFixed(2)} x ${time(period)} = ${time(cpi * period)}`;
+            lines.push(`  ${label.padEnd(20)} ${sum.padEnd(27)} ${bar(cpi * period, slowest, 18)}`);
+        }
+        // The whole contract at this pace: the song is the first part of the job.
+        const { contract } = this;
+        if (contract) {
+            const seconds = (contract.instructions * perInstruction) / 1e6;
+            const verdict = this.late ? `LATE: HALF PAY ${formatMoney(payFor(contract, true))}` : `ON TIME: PAID ${formatMoney(contract.pay)}`;
+            lines.push('', `WHOLE CONTRACT = ${formatCount(contract.instructions)} INSTRUCTIONS x YOUR ${time(perInstruction)} = ${formatDuration(seconds)}`, `  NEEDED IN ${formatDuration(contract.deadline).padEnd(12)} ${deadlineBar(seconds, contract.deadline, 24)}  ${this.paid ? verdict : ''}`);
+            if (this.paid)
+                lines.push(`  MONEY NOW ${formatMoney(getProgress().money)}`);
+        }
+        lines.push('', this.contract && this.paid ? '[ENTER] CONTRACT BOARD    [W] WATCH AGAIN    [Q] TITLE' : '[ENTER] PLAY AGAIN    [W] WATCH AGAIN    [Q] TITLE');
+        return lines;
     }
 }
 //# sourceMappingURL=PipelineScene.js.map

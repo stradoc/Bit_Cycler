@@ -60,8 +60,8 @@ export const OVERCLOCKING_PRICE = 400;
 /** Coolers: how far above ambient a busy chip settles at its rated clock (°C; 30 with the stock cooler). */
 export const COOLING = [
   { name: 'STOCK COOLER', ratedRise: 30, price: 0, about: 'The cooler the chip came with.' },
-  { name: 'HEATSINK', ratedRise: 27, price: 250, about: 'A bigger block of metal: 140% no longer overheats.' },
-  { name: 'FAN', ratedRise: 24, price: 600, about: 'Moves heat away faster: even 150% stays below the throttle point.' },
+  { name: 'HEATSINK', ratedRise: 27, price: 250, about: 'A bigger block of metal: on an undamaged chip, 140% no longer overheats.' },
+  { name: 'FAN', ratedRise: 24, price: 600, about: 'Moves heat away faster: even the top clock stays below the throttle point, worn chip or not.' },
 ] as const;
 
 /** Repairing a chip worn by overheating: per 10% of maximum clock restored. */
@@ -90,5 +90,3 @@ export const CONTRACTS_PER_SECTION = 2;
 export const LATE_PAY_FACTOR = 0.5;
 /** A job your CPU would finish within this share of its deadline (playing perfectly) is tight: a sloppy run could be late. */
 export const TIGHT_SHARE = 0.8;
-/** Programs contracts are drawn from (see data/programs.ts). */
-export const CONTRACT_PROGRAMS = ['SUM ARRAY', 'SUM GRID'] as const;

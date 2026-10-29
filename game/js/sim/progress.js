@@ -1,14 +1,16 @@
 // The player's progress: money, CPU parts, clock and cooling upgrades, chip
 // wear, and the contract board. Pure functions over a plain object, so the
 // rules are testable; game/src/save.ts stores it.
-import { BASE_MHZ, CLOCK, CONTRACT_PROGRAMS, CONTRACTS_PER_SECTION, COOLING, CPU_PARTS, LATE_PAY_FACTOR, OVERCLOCKING_PRICE, REPAIR_PRICE_PER_STEP, SECTIONS, TIGHT_SHARE, } from '../data/economy.js';
+import { BASE_MHZ, CLOCK, CONTRACTS_PER_SECTION, COOLING, CPU_PARTS, LATE_PAY_FACTOR, OVERCLOCKING_PRICE, REPAIR_PRICE_PER_STEP, SECTIONS, TIGHT_SHARE, } from '../data/economy.js';
 import { programByName } from '../data/programs.js';
+import { generateProgram } from './generator.js';
 import { formatMhz } from '../format.js';
 import { tierByNumber } from '../data/tiers.js';
 import { assemble } from './assembler.js';
 import { Cpu, trace } from './cpu.js';
 import { perfectRun } from './pipeline.js';
 import { THERMAL } from './thermal.js';
+import { tempoForClock } from '../rhythm/tempo.js';
 export const NEW_GAME = {
     money: 0,
     parts: [],
@@ -95,7 +97,7 @@ const logLerp = (low, high, t) => low * (high / low) ** t;
  * A random job for a section: size and deadline log-uniform in their ranges.
  * Pay rises with the size and with the urgency (a shorter deadline).
  */
-export function newContract(section, id, random) {
+export function newContract(section, id, random, busyClients = new Set()) {
     const spec = SECTIONS.find((s) => s.id === section) ?? SECTIONS[0];
     const size = random();
     const urgency = random();
@@ -103,8 +105,13 @@ export function newContract(section, id, random) {
     const deadline = Number(logLerp(spec.deadline[1], spec.deadline[0], urgency).toPrecision(2));
     const worth = 0.6 * size + 0.4 * urgency;
     const pay = Math.round((spec.pay[0] + (spec.pay[1] - spec.pay[0]) * worth) / 5) * 5;
-    const program = CONTRACT_PROGRAMS[Math.floor(random() * CONTRACT_PROGRAMS.length)];
-    return { id, section, program, instructions, deadline, pay };
+    // Each contract gets its own randomly generated program (sim/generator.ts), named after its seed,
+    // for a client who isn't already on the board (if one turns up within a few tries).
+    let generated = generateProgram(Math.floor(random() * 1_000_000));
+    for (let tries = 0; tries < 10 && busyClients.has(generated.client ?? ''); tries++) {
+        generated = generateProgram(Math.floor(random() * 1_000_000));
+    }
+    return { id, section, program: generated.name, instructions, deadline, pay };
 }
 /** Tops the board up to CONTRACTS_PER_SECTION in every section. */
 export function fillBoard(progress, random) {
@@ -112,7 +119,8 @@ export function fillBoard(progress, random) {
     let { nextId } = progress;
     for (const section of SECTIONS) {
         while (board.filter((c) => c.section === section.id).length < CONTRACTS_PER_SECTION) {
-            board.push(newContract(section.id, nextId++, random));
+            const clients = new Set(board.map((c) => programByName(c.program).client ?? ''));
+            board.push(newContract(section.id, nextId++, random, clients));
         }
     }
     return { ...progress, board, nextId };
@@ -151,7 +159,7 @@ export function shopItems(progress) {
         state: next === undefined ? 'max' : 'buy',
         about: next === undefined
             ? 'Your clock is fully upgraded.'
-            : `Rated clock ${formatMhz(mhzAt(level))} -> ${formatMhz(mhzAt(next))}: a shorter clock period, so every contract takes less time. The song's tempo stays the same.`,
+            : `Rated clock ${formatMhz(mhzAt(level))} -> ${formatMhz(mhzAt(next))}: a shorter clock period, so every contract takes less time, and the song's beat speeds up (${Math.round(tempoForClock(mhzAt(level)))} -> ${Math.round(tempoForClock(mhzAt(next)))} BPM).`,
         apply: (p) => ({ ...p, clockLevel: Math.min(CLOCK.factors.length - 1, p.clockLevel + 1) }),
     });
     items.push({

@@ -107,7 +107,7 @@ export class ShopScene extends Phaser.Scene {
             item.lessonId !== undefined
                 ? 'FITTED! NOW ITS BRIEFING...'
                 : item.group === 'CLOCK'
-                    ? `CLOCK NOW ${formatMhz(ratedMhz(bought))}: EVERY CONTRACT TAKES LESS TIME.`
+                    ? `CLOCK NOW ${formatMhz(ratedMhz(bought))}: CONTRACTS TAKE LESS TIME AND THE BEAT IS FASTER.`
                     : 'FITTED!';
         this.render();
         // New hardware comes with a briefing you have to read: it starts once the chip stops shaking.

@@ -78,10 +78,11 @@ test('tier 1: CPI reflects lost cycles: 20 instructions with 5 misses = 25 cycle
   assert.equal(run.pipeline.cpi, 25 / 20);
 });
 
-test('tempo grows 12 BPM per 10x clock, from 75 BPM at 1 MHz', () => {
+test('tempo grows 20 BPM per 10x clock, from 75 BPM at 1 MHz', () => {
   assert.equal(tempoForClock(1), 75);
-  assert.equal(tempoForClock(10), 87);
-  assert.equal(tempoForClock(1000), 111);
-  assert.ok(Math.abs(tempoForClock(4000) - 118.2) < 0.1);
+  assert.equal(tempoForClock(10), 95);
+  assert.equal(tempoForClock(1000), 135);
+  assert.ok(Math.abs(tempoForClock(4) - 87.0) < 0.1); // pipelined, no clock upgrades
+  assert.ok(Math.abs(tempoForClock(4000) - 147.0) < 0.1); // pipelined, fully upgraded
   assert.equal(tempoForClock(1, true), 60); // relaxed / practice
 });

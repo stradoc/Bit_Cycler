@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Chip, relativePower, steadyTemperature, THERMAL } from '../game/src/sim/thermal.ts';
+import { Chip, relativePower, steadyTemperature, THERMAL, type ThermalConfig } from '../game/src/sim/thermal.ts';
 
 test('power grows faster than the clock: +50% clock costs about 2.2x the power', () => {
   assert.equal(relativePower(1, true), 1);
@@ -36,10 +36,44 @@ test('a heavy overclock heats up, throttles back to the rated clock, cools, and 
     }
     if (firstThrottle > 0 && !chip.throttled) resumed = true;
   }
-  // Gentle enough to react to: about 45 busy beats at 150%.
-  assert.ok(firstThrottle > 35 && firstThrottle < 60, `throttled after ${firstThrottle} cycles`);
+  // Fast enough to happen within a song, slow enough to react to: about 28 busy beats at 150%.
+  assert.ok(firstThrottle > 20 && firstThrottle < 40, `throttled after ${firstThrottle} cycles`);
   assert.ok(resumed);
   assert.ok(chip.micros < 300 / 4); // still faster than the rated clock overall
+});
+
+test('a worn chip overheats sooner: its top clock is as risky as 150% on a new chip, and it always recovers', () => {
+  const beatsToOverheat = (maxDial: number, cooler: ThermalConfig = THERMAL) => {
+    const chip = new Chip(4, maxDial, cooler);
+    chip.setDial(maxDial);
+    for (let i = 1; i <= 400; i++) {
+      chip.cycle(true);
+      if (chip.throttled) return i;
+    }
+    return Infinity;
+  };
+  const fresh = beatsToOverheat(1.5);
+  for (const worn of [1.4, 1.3, 1.2, 1.1]) {
+    assert.ok(Math.abs(beatsToOverheat(worn) - fresh) <= 1, `top clock ${worn}: ${beatsToOverheat(worn)} vs ${fresh} beats`);
+    const chip = new Chip(4, worn);
+    assert.ok(chip.throttleAt < THERMAL.throttleAt);
+    assert.ok(chip.resumeAt < chip.throttleAt && chip.resumeAt > THERMAL.ambient + THERMAL.ratedRise, `resume ${chip.resumeAt}`);
+  }
+  assert.equal(Math.round(new Chip(4, 1.4).throttleAt), 88);
+  // Throttled back to rated, a worn chip still cools enough to run again.
+  const chip = new Chip(4, 1.2);
+  chip.setDial(1.2);
+  let resumed = false;
+  for (let i = 0; i < 300; i++) {
+    chip.cycle(true);
+    if (chip.overheats > 0 && !chip.throttled) resumed = true;
+  }
+  assert.ok(resumed);
+  // A chip with no overclock left is back to the normal limit: the rated clock never overheats.
+  assert.equal(new Chip(4, 1).throttleAt, THERMAL.throttleAt);
+  assert.equal(beatsToOverheat(1), Infinity);
+  // The fan keeps even a worn chip's top clock safe.
+  for (const worn of [1.5, 1.4, 1.3, 1.2, 1.1]) assert.equal(beatsToOverheat(worn, { ...THERMAL, ratedRise: 24 }), Infinity);
 });
 
 test('each overheat wears the chip: the maximum clock drops 10%, never below rated', () => {
