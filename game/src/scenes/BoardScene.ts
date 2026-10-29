@@ -1,12 +1,12 @@
 import { playMenuMusic, toggleMenuMusic, uiSound } from '../audio/menu.ts';
-import { SECTIONS, TIME_LIMIT_SECONDS } from '../data/economy.ts';
+import { SECTIONS } from '../data/economy.ts';
 import { programByName } from '../data/programs.ts';
 import { playContract } from '../flow.ts';
 import { formatCount, formatDuration, formatMhz, formatMoney } from '../format.ts';
 import { keyOf, onKeyDown } from '../input/keys.ts';
 import { getProgress } from '../save.ts';
 import { getSettings } from '../settings.ts';
-import { contractSeconds, isLocked, jobItems, ratedMhz, tierOf, type Contract } from '../sim/progress.ts';
+import { contractSeconds, isLocked, isTight, jobItems, ratedMhz, tierOf, type Contract } from '../sim/progress.ts';
 import { THERMAL } from '../sim/thermal.ts';
 import { cssColor, ERAS, TerminalLook } from '../visual/terminal.ts';
 
@@ -49,8 +49,8 @@ export class BoardScene extends Phaser.Scene {
 
     SECTIONS.forEach((section, column) => {
       this.text(COLUMN_X[column], 104, section.name, 18).setFontStyle('bold');
-      const [low, high] = section.instructions;
-      this.text(COLUMN_X[column], 126, `${formatCount(low)} - ${formatCount(high)} INSTRUCTIONS`, 12).setAlpha(0.6);
+      const [soon, late] = section.deadline;
+      this.text(COLUMN_X[column], 126, `NEEDED IN ${formatDuration(soon)} TO ${formatDuration(late)}`, 12).setAlpha(0.6);
       progress.board
         .filter((c) => c.section === section.id)
         .forEach((contract, row) => this.drawCard(contract, COLUMN_X[column], ROW_Y[row]));
@@ -58,7 +58,7 @@ export class BoardScene extends Phaser.Scene {
 
     this.message = this.text(480, 474, '', 15).setColor(cssColor(era.fire[1]));
     this.text(480, 506, '[ARROWS] CHOOSE    [ENTER] TAKE CONTRACT    [S] SHOP    [M] HUM    [Q] TITLE', 15).setAlpha(0.7);
-    this.text(480, 528, `TIME = INSTRUCTIONS x CPI x CLOCK PERIOD. OVER ${TIME_LIMIT_SECONDS / 86400} DAYS: TOO SLOW TO TAKE.`, 12).setAlpha(0.5);
+    this.text(480, 528, 'TIME = INSTRUCTIONS x CPI x CLOCK PERIOD. MISS THE DEADLINE (A SLOPPY RUN RAISES CPI): HALF PAY.', 12).setAlpha(0.5);
 
     // Start on the first contract that can be taken.
     this.selected = Math.max(0, this.cards.findIndex((c) => !c.locked));
@@ -91,12 +91,16 @@ export class BoardScene extends Phaser.Scene {
     this.text(x + CARD_W / 2 - 14, y - CARD_H / 2 + 22, formatMoney(contract.pay), 16)
       .setOrigin(1, 0.5)
       .setAlpha(locked ? 0.5 : 1);
-    line(52, `${spec.verb} ${formatCount(jobItems(contract))} ${spec.unit}`);
-    line(74, `= ${formatCount(contract.instructions)} INSTRUCTIONS`, 13).setAlpha(locked ? 0.4 : 0.7);
-    const time = line(104, `YOUR CPU: ${formatDuration(contractSeconds(contract, progress))}`, 15);
+    line(48, `${spec.verb} ${formatCount(jobItems(contract))} ${spec.unit}`);
+    line(68, `= ${formatCount(contract.instructions)} INSTRUCTIONS`, 13).setAlpha(locked ? 0.4 : 0.7);
+    line(94, `NEEDED IN: ${formatDuration(contract.deadline)}`, 15);
+    const time = line(116, `YOUR CPU:  ${formatDuration(contractSeconds(contract, progress))}`, 15);
     if (locked) {
       time.setColor(cssColor(era.fire[2])).setAlpha(1);
-      line(128, 'NEEDS A FASTER CPU', 13).setColor(cssColor(era.fire[1])).setAlpha(1);
+      line(138, 'TOO SLOW: NEEDS A FASTER CPU', 13).setColor(cssColor(era.fire[1])).setAlpha(1);
+    } else if (isTight(contract, progress)) {
+      time.setColor(cssColor(era.fire[1]));
+      line(138, 'TIGHT: PLAY CLEANLY OR BE LATE', 13).setColor(cssColor(era.fire[1]));
     }
 
     const index = this.cards.length;

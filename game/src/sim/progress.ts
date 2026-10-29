@@ -9,10 +9,11 @@ import {
   CONTRACTS_PER_SECTION,
   COOLING,
   CPU_PARTS,
+  LATE_PAY_FACTOR,
   OVERCLOCKING_PRICE,
   REPAIR_PRICE_PER_STEP,
   SECTIONS,
-  TIME_LIMIT_SECONDS,
+  TIGHT_SHARE,
   type PartId,
   type SectionId,
 } from '../data/economy.ts';
@@ -31,6 +32,8 @@ export type Contract = {
   readonly program: string;
   /** Instructions the whole job executes. */
   readonly instructions: number;
+  /** How soon it's needed, in seconds of game time from when it's taken. */
+  readonly deadline: number;
   readonly pay: number;
 };
 
@@ -117,9 +120,20 @@ export function contractSeconds(contract: Contract, progress: Progress): number 
   return (contract.instructions * cpiFor(contract.program, progress)) / (ratedMhz(progress) * 1e6);
 }
 
-/** Too slow to take: your CPU wouldn't finish within the time limit. */
+/** Too slow to take: your CPU couldn't meet the deadline even playing perfectly. */
 export function isLocked(contract: Contract, progress: Progress): boolean {
-  return contractSeconds(contract, progress) > TIME_LIMIT_SECONDS;
+  return contractSeconds(contract, progress) > contract.deadline;
+}
+
+/** Your CPU can make it, but only just: a sloppy run (higher CPI) could be late. */
+export function isTight(contract: Contract, progress: Progress): boolean {
+  const seconds = contractSeconds(contract, progress);
+  return seconds <= contract.deadline && seconds > contract.deadline * TIGHT_SHARE;
+}
+
+/** What a contract pays: the full amount, or LATE_PAY_FACTOR of it if the job ran past its deadline. */
+export function payFor(contract: Contract, late: boolean): number {
+  return late ? Math.round(contract.pay * LATE_PAY_FACTOR) : contract.pay;
 }
 
 /** How many items (e.g. bytes) the job works through, from its program's instructions per item. */
@@ -137,15 +151,23 @@ export function withTier(progress: Progress, tier: number): Progress {
 
 // ---- the board ----
 
-/** A random job for a section: size log-uniform in its range, pay rising with size. */
+/** `low` to `high` on a log scale: t = 0 gives low, t = 1 gives high. */
+const logLerp = (low: number, high: number, t: number) => low * (high / low) ** t;
+
+/**
+ * A random job for a section: size and deadline log-uniform in their ranges.
+ * Pay rises with the size and with the urgency (a shorter deadline).
+ */
 export function newContract(section: SectionId, id: number, random: Random): Contract {
   const spec = SECTIONS.find((s) => s.id === section) ?? SECTIONS[0];
-  const t = random();
-  const [low, high] = spec.instructions;
-  const instructions = Number((low * (high / low) ** t).toPrecision(2));
-  const pay = Math.round((spec.pay[0] + (spec.pay[1] - spec.pay[0]) * t) / 5) * 5;
+  const size = random();
+  const urgency = random();
+  const instructions = Number(logLerp(spec.instructions[0], spec.instructions[1], size).toPrecision(2));
+  const deadline = Number(logLerp(spec.deadline[1], spec.deadline[0], urgency).toPrecision(2));
+  const worth = 0.6 * size + 0.4 * urgency;
+  const pay = Math.round((spec.pay[0] + (spec.pay[1] - spec.pay[0]) * worth) / 5) * 5;
   const program = CONTRACT_PROGRAMS[Math.floor(random() * CONTRACT_PROGRAMS.length)];
-  return { id, section, program, instructions, pay };
+  return { id, section, program, instructions, deadline, pay };
 }
 
 /** Tops the board up to CONTRACTS_PER_SECTION in every section. */
@@ -160,11 +182,11 @@ export function fillBoard(progress: Progress, random: Random): Progress {
   return { ...progress, board, nextId };
 }
 
-/** A contract was played: it pays, and a new one takes its place (the board never runs out). */
-export function completeContract(progress: Progress, id: number, random: Random): Progress {
+/** A contract was played: it pays (half if `late`), and a new one takes its place (the board never runs out). */
+export function completeContract(progress: Progress, id: number, random: Random, late = false): Progress {
   const contract = progress.board.find((c) => c.id === id);
   if (!contract) return progress;
-  const paid = { ...progress, money: progress.money + contract.pay, board: progress.board.filter((c) => c.id !== id) };
+  const paid = { ...progress, money: progress.money + payFor(contract, late), board: progress.board.filter((c) => c.id !== id) };
   return fillBoard(paid, random);
 }
 

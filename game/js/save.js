@@ -13,7 +13,9 @@ export function getProgress() {
         }
         // ?money=5000 in the URL sets the money (dev shortcut, for trying the shop).
         const money = Number(new URLSearchParams(location.search).get('money'));
-        current = fillBoard(money ? { ...loaded, money } : loaded, Math.random);
+        // Contracts saved before deadlines existed are dropped; fillBoard replaces them.
+        const board = loaded.board.filter((c) => typeof c.deadline === 'number');
+        current = fillBoard({ ...loaded, board, ...(money ? { money } : {}) }, Math.random);
     }
     return current;
 }

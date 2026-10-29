@@ -59,17 +59,25 @@ export const COOLING = [
 /** Repairing a chip worn by overheating: per 10% of maximum clock restored. */
 export const REPAIR_PRICE_PER_STEP = 60;
 /**
- * Contract board sections. A job's size is its instruction count (log-uniform
- * in the range); bigger jobs pay more. Advanced jobs are locked until your CPU
- * would finish them within TIME_LIMIT_SECONDS.
+ * Contract board sections. A job's size is its instruction count and its
+ * deadline how soon it's needed (both log-uniform in their ranges). Pay grows
+ * with size and with urgency. A job is locked if your CPU couldn't meet its
+ * deadline even playing perfectly; a run sloppy enough to miss it pays
+ * LATE_PAY_FACTOR of the pay.
  */
+const MINUTE = 60;
+const DAY = 86400;
 export const SECTIONS = [
-    { id: 'starter', name: 'STARTER', instructions: [1e4, 1e6], pay: [40, 80] },
-    { id: 'standard', name: 'STANDARD', instructions: [1e9, 1e12], pay: [120, 250] },
-    { id: 'advanced', name: 'ADVANCED', instructions: [1e14, 5e15], pay: [400, 900] },
+    { id: 'starter', name: 'STARTER', instructions: [1e4, 1e6], deadline: [1 * MINUTE, 10 * MINUTE], pay: [40, 80] },
+    { id: 'standard', name: 'STANDARD', instructions: [1e11, 3e13], deadline: [1 * DAY, 7 * DAY], pay: [150, 400] },
+    // Sized so a fully upgraded CPU can take every advanced job, even the biggest, most urgent one.
+    { id: 'advanced', name: 'ADVANCED', instructions: [1e14, 1e15], deadline: [7 * DAY, 60 * DAY], pay: [500, 1200] },
 ];
 export const CONTRACTS_PER_SECTION = 2;
-export const TIME_LIMIT_SECONDS = 30 * 86400;
+/** Finishing after the deadline pays this much of the pay. */
+export const LATE_PAY_FACTOR = 0.5;
+/** A job your CPU would finish within this share of its deadline (playing perfectly) is tight: a sloppy run could be late. */
+export const TIGHT_SHARE = 0.8;
 /** Programs contracts are drawn from (see data/programs.ts). */
 export const CONTRACT_PROGRAMS = ['SUM ARRAY', 'SUM GRID'];
 //# sourceMappingURL=economy.js.map

@@ -72,7 +72,7 @@ Open the browser's developer console (F12, then Console) while the game is runni
 ## Controls
 
 Title: `Enter` contract board · `B` briefing / `P` practice for your CPU · `N` twice: new game · `M` computer hum on/off · `C` calibrate (then `←/→` to line the light up with the click) · `R` relaxed mode · `1–4` era.
-Contract board: arrows choose · `Enter` take a contract (a new part gets its briefing → practice first) · `S` shop · `M` hum · `Q` title. Shop: `↑/↓` choose · `Enter` buy (new parts and overclocking play their briefing straight away) · `B` board · `M` hum.
+Contract board (each job shows its deadline and your CPU's time; late = half pay): arrows choose · `Enter` take a contract (a new part gets its briefing → practice first) · `S` shop · `M` hum · `Q` title. Shop: `↑/↓` choose · `Enter` buy (new parts and overclocking play their briefing straight away) · `B` board · `M` hum.
 Briefing: `Enter`/`→` next · `←` back · `Q` or `Esc` title.
 Play: `D` ALU · `F` MEM · `J` BRANCH (tier 4: guess not taken) · `K` BRANCH, guess taken (tier 4; a branch note glows in the color of the key matching what it did last time; tiers 5–6: the glow is the predictor's guess, and pressing the other key overrides it) · `Space` stall (tiers 2–6) · `G` / `H` clock down / up 10% (G down to 50% always; H past 100% needs the overclocking upgrade) · `Q` or `Esc` quit (Vimium swallows `Esc`, so the game also accepts `Q`) · `Enter` after the results: back to the board (contracts) or play again.
 Replay (every tier, after every run): `←`/`→` speed (0.5×–4×) · `Space` pause / resume · click anything to learn what it is · `W` watch again from the results.

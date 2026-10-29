@@ -22,7 +22,7 @@ import { BASE_MHZ } from '../data/economy.ts';
 import { formatCount, formatDuration, formatMhz, formatMoney } from '../format.ts';
 import { getProgress, updateProgress } from '../save.ts';
 import { getSettings } from '../settings.ts';
-import { completeContract, jobItems, ratedMhzFor, thermalConfig, type Contract } from '../sim/progress.ts';
+import { completeContract, jobItems, payFor, ratedMhzFor, thermalConfig, type Contract } from '../sim/progress.ts';
 import { assemble } from '../sim/assembler.ts';
 import { Cpu } from '../sim/cpu.ts';
 import { describe, format, tokens, UNIT_ROLES, UNITS, unitOf, type Instruction, type Program, type Unit } from '../sim/isa.ts';
@@ -206,6 +206,8 @@ export class PipelineScene extends Phaser.Scene {
   private contract: Contract | undefined;
   /** This contract has been paid (shown on the results after the replay). */
   private paid = false;
+  /** The run's pace would have finished the whole contract after its deadline: half pay. */
+  private late = false;
   private returnTo: string | undefined;
   /** Rated clock in MHz, from the clock upgrades owned; the dial over- or underclocks it. */
   private ratedMhz: number = BASE_MHZ.pipelined;
@@ -261,6 +263,7 @@ export class PipelineScene extends Phaser.Scene {
       maxDial?: number;
       contract?: Contract;
       paid?: boolean;
+      late?: boolean;
       /** Practice right after buying a part: its results go back here (the board). */
       returnTo?: string;
     },
@@ -285,6 +288,7 @@ export class PipelineScene extends Phaser.Scene {
     this.contract = data?.contract ?? getProgress().board.find((c) => c.section === devSection);
     if (!data?.program && this.contract) this.programName = this.contract.program;
     this.paid = data?.paid ?? false;
+    this.late = data?.late ?? false;
     // Without the overclocking unlock, the dial stops at the rated clock (?clock=150, a dev shortcut, allows it).
     const progress = getProgress();
     const devClock = new URLSearchParams(location.search).has('clock');
@@ -423,7 +427,7 @@ export class PipelineScene extends Phaser.Scene {
       if (this.contract && this.paid) this.scene.start('board');
       else this.scene.restart({ practice: false, ...this.hardware() });
     } else if (key === 'W' && this.showingResults && this.watching) {
-      this.scene.restart({ watch: this.watching, watchDials: this.watchDials, ...this.hardware(), maxDial: this.startMaxDial, paid: this.paid });
+      this.scene.restart({ watch: this.watching, watchDials: this.watchDials, ...this.hardware(), maxDial: this.startMaxDial, paid: this.paid, late: this.late });
     }
   }
 
@@ -1634,17 +1638,25 @@ export class PipelineScene extends Phaser.Scene {
   }
 
   /** With a contract: the whole job at this run's pace (CPI and average clock), and the pay. */
-  private contractLines(pipelined: number): string[] {
+  /** The whole contract's time at this run's pace: its CPI and the clocks it actually ran at. */
+  private jobSeconds(contract: Contract): number {
+    const p = this.run.pipeline;
+    const { chip } = this.run;
+    const micros = (chip.micros / Math.max(1, chip.cycles)) * p.cycles;
+    return (contract.instructions * (micros / Math.max(1, p.instructions))) / 1e6;
+  }
+
+  /** With a contract: the whole job at this run's pace against its deadline, and the pay. */
+  private contractLines(): string[] {
     const { contract } = this;
     if (!contract) return [];
-    const p = this.run.pipeline;
     const spec = this.spec;
-    const seconds = (contract.instructions * (pipelined / p.instructions)) / 1e6;
+    const verdict = this.late ? `LATE! HALF PAY: ${formatMoney(payFor(contract, true))}` : `ON TIME! PAID ${formatMoney(contract.pay)}`;
     return [
       '',
-      `CONTRACT: ${spec.verb} ${formatCount(jobItems(contract))} ${spec.unit} (${formatCount(contract.instructions)} INSTRUCTIONS)`,
-      `AT THIS PACE THE WHOLE JOB TAKES ${formatDuration(seconds)}` +
-        (this.paid ? `   PAID ${formatMoney(contract.pay)}, NOW ${formatMoney(getProgress().money)}` : ''),
+      `CONTRACT: ${spec.verb} ${formatCount(jobItems(contract))} ${spec.unit} (${formatCount(contract.instructions)} INSTR.)`,
+      `NEEDED IN ${formatDuration(contract.deadline)}. AT THIS PACE IT TAKES ${formatDuration(this.jobSeconds(contract))}.`,
+      ...(this.paid ? [`${verdict}   MONEY: ${formatMoney(getProgress().money)}`] : []),
     ];
   }
 
@@ -1674,10 +1686,12 @@ export class PipelineScene extends Phaser.Scene {
     if (!this.practice && !this.watching) {
       // The contract pays as soon as the run is done (once: replays don't pay again).
       const { contract } = this;
-      if (contract) updateProgress((p) => completeContract(p, contract.id, Math.random));
+      // On time or late is judged by this run's pace: its CPI and the clocks it actually ran at.
+      this.late = contract ? this.jobSeconds(contract) > contract.deadline : false;
+      if (contract) updateProgress((p) => completeContract(p, contract.id, Math.random, this.late));
       // Every real run is followed by its replay; the results come at the end of it.
       this.showCallout('RUN COMPLETE!\nNOW WATCH YOUR REPLAY.\nCLICK ANYTHING IN IT TO LEARN WHAT IT IS.');
-      const replay = { watch: this.recording, watchDials: this.dialRecording, ...this.hardware(), maxDial: this.startMaxDial, paid: Boolean(contract) };
+      const replay = { watch: this.recording, watchDials: this.dialRecording, ...this.hardware(), maxDial: this.startMaxDial, paid: Boolean(contract), late: this.late };
       this.time.delayedCall(2000, () => this.scene.restart(replay));
       return;
     }
@@ -1720,7 +1734,7 @@ export class PipelineScene extends Phaser.Scene {
             (chip.overheats > 0 ? `: MAX CLOCK NOW ${Math.round(chip.maxDial * 100)}%` : ''),
           'CPU TIME = INSTRUCTIONS x CPI x CLOCK PERIOD',
           ...this.timeLines(pipelined, single, base),
-          ...this.contractLines(pipelined),
+          ...this.contractLines(),
           '',
           this.singleCycle
             ? `EVERY INSTRUCTION TAKES ONE LONG CYCLE: CPI ${p.cpi.toFixed(2)}${p.cpi > 1 ? ' (MISSED NOTES COST CYCLES)' : ''}`

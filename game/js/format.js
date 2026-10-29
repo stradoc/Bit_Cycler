@@ -29,7 +29,9 @@ export function formatDuration(seconds) {
         if (seconds >= unit) {
             const value = seconds / unit;
             // Thousands of years read better as a count: "3.2 THOUSAND YEARS".
-            return `${value >= 1000 ? formatCount(value) : trim(value)} ${word}`;
+            const amount = value >= 1000 ? formatCount(value) : trim(value);
+            // "1 MINUTE", not "1 MINUTES" (MS and µs stay as they are).
+            return `${amount} ${amount === '1' && word.length > 2 ? word.slice(0, -1) : word}`;
         }
     }
     return `${trim(seconds * 1e9)} ns`;

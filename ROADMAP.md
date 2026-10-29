@@ -73,10 +73,10 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 - [ ] Latency figures checked against the textbook and labeled approximate
 
 ### Economy and UI
-- [x] Contract board (endless): random jobs in STARTER / STANDARD / ADVANCED, each with its whole-job time on your CPU; over 30 days is locked. Later: instruction mix, access pattern, deadline
+- [x] Contract board (endless): random jobs in STARTER / STANDARD / ADVANCED, each with its whole-job time on your CPU and its own deadline; locked if your CPU can't make it, half pay if your run's pace is late. Later: instruction mix, access pattern
 - [ ] Pay formula: base × speed bonus × accuracy bonus (flat pay for now; overclocking bonus)
 - [x] Shop: CPU parts (tiers 2–6), clock upgrades (to 4 GHz), cooling, chip repair. Later: cache, RAM, HDD
-- [ ] **Debt deadline (after the shop; proposed 2026-10-28):** pay off a debt before an in-game deadline. Each contract costs game time = its CPU time (instructions × CPI × period), where the song is a sample of a much bigger job and your song CPI applies to the rest. The board shows each contract's estimate at your current CPU ("317 years" at 1 MHz → days late game; keep the numbers real, roughly a 10^4–10^5× total speedup). Clock upgrades shorten the time but **don't change the tempo; only overclocking does** (replaces the tempo-follows-clock rule above). Open: what missing the deadline does; fixed tempo per tier or a small step per tier
+- [ ] **Debt deadline (next; contract deadlines are done):** a calendar (each contract costs setup time + its CPU time) and one far debt deadline; possibly quarterly installments. Original idea: pay off a debt before an in-game deadline. Each contract costs game time = its CPU time (instructions × CPI × period), where the song is a sample of a much bigger job and your song CPI applies to the rest. The board shows each contract's estimate at your current CPU ("317 years" at 1 MHz → days late game; keep the numbers real, roughly a 10^4–10^5× total speedup). Clock upgrades shorten the time but **don't change the tempo; only overclocking does** (replaces the tempo-follows-clock rule above). Open: what missing the deadline does; fixed tempo per tier or a small step per tier
 - [x] Results screen: instructions, cycles, CPI, clock period, CPU time, the whole contract's time, pay
 - [x] All prices and balance numbers in one data file (`data/economy.ts`)
 - [x] Save/load progress (browser storage; `N` twice on the title for a new game)
