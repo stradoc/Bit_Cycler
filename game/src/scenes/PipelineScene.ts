@@ -1,7 +1,8 @@
 import { Conductor } from '../audio/conductor.ts';
 import { LayeredMusic } from '../audio/music.ts';
 import { blip } from '../audio/sfx.ts';
-import { PROGRAMS } from '../data/programs.ts';
+import { GLOSSARY, type Entry } from '../data/glossary.ts';
+import { PROGRAMS, type ProgramSpec } from '../data/programs.ts';
 import { keyOf, onKeyDown } from '../input/keys.ts';
 import type { Judgment } from '../rhythm/judge.ts';
 import { NORMAL_WINDOWS, RELAXED_WINDOWS } from '../rhythm/judge.ts';
@@ -17,8 +18,8 @@ import { tempoForClock } from '../rhythm/tempo.ts';
 import { getSettings } from '../settings.ts';
 import { assemble } from '../sim/assembler.ts';
 import { Cpu } from '../sim/cpu.ts';
-import { describe, tokens, UNIT_ROLES, UNITS, unitOf, type Instruction, type Program, type Unit } from '../sim/isa.ts';
-import { perfectCycles, STAGES, type Hazard, type Slot } from '../sim/pipeline.ts';
+import { describe, format, tokens, UNIT_ROLES, UNITS, unitOf, type Instruction, type Program, type Unit } from '../sim/isa.ts';
+import { perfectCycles, STAGES, type Hazard, type Slot, type Stage } from '../sim/pipeline.ts';
 import { codeLine } from '../visual/codeLine.ts';
 import { cssColor, ERAS, TerminalLook } from '../visual/terminal.ts';
 
@@ -29,8 +30,9 @@ const SINGLE_CYCLE_MHZ = 1;
 const FIRST_BEAT = 2;
 const REGISTER_COUNT = 8;
 const LOOKAHEAD = 6;
-/** Replays play the recorded run at this multiple of the normal tempo. */
-const REPLAY_SPEED = 2;
+/** Replay speeds, chosen with the arrow keys; starts at 1x. */
+const REPLAY_SPEEDS = [0.5, 1, 2, 4] as const;
+const STAGE_NAMES: Record<Stage, string> = { IF: 'FETCH', ID: 'DECODE', EX: 'EXECUTE', MEM: 'MEMORY', WB: 'WRITE BACK' };
 
 // The highway IS the pipeline: notes fall to the hit line (ID), and once
 // routed they step down through the EX, MEM and WB rows, one row per beat.
@@ -151,6 +153,21 @@ export class PipelineScene extends Phaser.Scene {
   private forwarding = false;
   /** The CPU as the program starts, for best-case comparisons on the results screen. */
   private freshCpu!: Cpu;
+  private spec!: ProgramSpec;
+  private music!: LayeredMusic;
+  /** Tempo of the CPU's clock; the conductor runs at this times the replay speed. */
+  private baseBpm = 0;
+  // Replay: its own clock, so it can change speed and pause.
+  private replayBeat = 0;
+  private speedIndex = 1;
+  private paused = false;
+  private speedText!: Phaser.GameObjects.Text;
+  private speedValue!: Phaser.GameObjects.Text;
+  private info!: Phaser.GameObjects.Container;
+  private infoTitle!: Phaser.GameObjects.Text;
+  private infoBody!: Phaser.GameObjects.Text;
+  /** The results box is up (Enter / W work). */
+  private showingResults = false;
 
   constructor() {
     super('pipeline');
@@ -176,7 +193,11 @@ export class PipelineScene extends Phaser.Scene {
     this.flashAt = { ALU: -Infinity, MEM: -Infinity, BRANCH: -Infinity, STALL: -Infinity };
     this.lastFrameMs = performance.now();
     this.finished = false;
+    this.showingResults = false;
     this.endBeat = undefined;
+    this.replayBeat = -0.5;
+    this.speedIndex = 1;
+    this.paused = false;
     this.chartOffset = 0;
     this.explained = new Set();
   }
@@ -191,8 +212,10 @@ export class PipelineScene extends Phaser.Scene {
     this.ctx = this.sound.context;
 
     const spec = PROGRAMS[0];
+    this.spec = spec;
     const easy = settings.relaxed || this.practice;
-    const bpm = tempoForClock(CLOCK_MHZ, easy) * (this.watching ? REPLAY_SPEED : 1);
+    const bpm = tempoForClock(CLOCK_MHZ, easy);
+    this.baseBpm = bpm;
     const program = assemble(spec.source, REGISTER_COUNT);
     const cpu = new Cpu(program, 8, spec.memory, REGISTER_COUNT);
     this.listing = this.buildListing(program);
@@ -205,18 +228,11 @@ export class PipelineScene extends Phaser.Scene {
     this.drawPanel(spec.name);
     this.drawBus();
     this.drawCallout();
+    if (this.watching) this.drawReplayControls();
     onKeyDown(this, (event) => this.onKey(event));
 
-    const music = new LayeredMusic(this.ctx);
-    this.conductor = new Conductor(this.ctx, bpm);
-    this.conductor.offset = settings.offset;
-    this.conductor.clickVolume = 0.04;
-    this.conductor.onBeat = (beat, time) => {
-      if (beat > FIRST_BEAT && !this.finished) {
-        music.playBeat(beat - FIRST_BEAT - 1, time, 60 / bpm, this.run.pipeline.occupancy);
-      }
-    };
-    this.conductor.start();
+    this.music = new LayeredMusic(this.ctx);
+    this.startConductor(bpm);
     this.events.once('shutdown', () => this.conductor?.stop());
     this.refreshPanel();
   }
@@ -234,6 +250,10 @@ export class PipelineScene extends Phaser.Scene {
     this.updateTransfers(now);
     if (!this.conductor || this.finished) return;
 
+    if (this.watching && !this.paused) {
+      // Capped so a backgrounded tab doesn't jump the replay ahead.
+      this.replayBeat += (Math.min(elapsed, 250) / 1000) * ((this.baseBpm * this.speed()) / 60);
+    }
     let beat = this.chartBeat();
     if (this.practice) beat = this.holdForPlayer(beat);
     if (this.autoplay || this.watching) this.playItself(beat);
@@ -248,6 +268,15 @@ export class PipelineScene extends Phaser.Scene {
 
   private onKey(event: KeyboardEvent): void {
     const key = keyOf(event);
+    if (this.watching && !this.finished) {
+      if (key === 'ArrowLeft') this.setSpeed(this.speedIndex - 1);
+      else if (key === 'ArrowRight') this.setSpeed(this.speedIndex + 1);
+      else if (key === ' ') {
+        event.preventDefault();
+        if (this.paused) this.resume();
+        else this.pause();
+      }
+    }
     const unit = KEY_UNITS[key];
     if ((unit || key === ' ') && !this.watching) {
       event.preventDefault();
@@ -255,10 +284,10 @@ export class PipelineScene extends Phaser.Scene {
       this.act(action, this.chartBeat(event.timeStamp));
     } else if (key === 'Escape' || key === 'Q') {
       this.scene.start('title');
-    } else if (key === 'Enter' && this.finished) {
+    } else if (key === 'Enter' && this.showingResults) {
       this.scene.restart({ practice: false, forwarding: this.forwarding });
-    } else if (key === 'W' && this.finished && !this.practice) {
-      this.scene.restart({ watch: this.watching ?? this.recording, forwarding: this.forwarding });
+    } else if (key === 'W' && this.showingResults && this.watching) {
+      this.scene.restart({ watch: this.watching, forwarding: this.forwarding });
     }
   }
 
@@ -340,6 +369,7 @@ export class PipelineScene extends Phaser.Scene {
 
   /** Beat of the chart (conductor beat minus practice holds) at a performance.now() time. */
   private chartBeat(performanceMs = performance.now()): number {
+    if (this.watching) return this.replayBeat;
     return (this.conductor?.beatAt(performanceMs) ?? 0) - this.chartOffset;
   }
 
@@ -487,29 +517,31 @@ export class PipelineScene extends Phaser.Scene {
     lines.lineStyle(2, fg).lineBetween(LANE_X0, HIT_Y, LANE_X0 + LANES_W, HIT_Y);
 
     // Each stage's plain name, with the textbook abbreviation underneath.
-    const stageLabel = (y: number, name: string, short: string, alpha: number) => {
-      this.text(LANE_X0 - 10, y - 7, name, 13).setOrigin(1, 0.5).setAlpha(alpha);
-      this.text(LANE_X0 - 10, y + 8, short, 11).setOrigin(1, 0.5).setAlpha(alpha * 0.6);
+    const stageLabel = (y: number, stage: Stage, alpha: number) => {
+      const entry = () => this.stageEntry(stage);
+      this.clickable(this.text(LANE_X0 - 10, y - 7, STAGE_NAMES[stage], 13).setOrigin(1, 0.5).setAlpha(alpha), entry);
+      this.clickable(this.text(LANE_X0 - 10, y + 8, stage, 11).setOrigin(1, 0.5).setAlpha(alpha * 0.6), entry);
     };
-    stageLabel(HIT_Y - PX_PER_BEAT, 'FETCH', 'IF', 0.6); // where the next note waits, one beat out
-    stageLabel(HIT_Y, 'DECODE', 'ID', 1);
-    stageLabel(ROWS.EX, 'EXECUTE', 'EX', 0.8);
-    stageLabel(ROWS.MEM, 'MEMORY', 'MEM', 0.8);
-    stageLabel(ROWS.WB, 'WRITE BACK', 'WB', 0.8);
+    stageLabel(HIT_Y - PX_PER_BEAT, 'IF', 0.6); // where the next note waits, one beat out
+    stageLabel(HIT_Y, 'ID', 1);
+    stageLabel(ROWS.EX, 'EX', 0.8);
+    stageLabel(ROWS.MEM, 'MEM', 0.8);
+    stageLabel(ROWS.WB, 'WB', 0.8);
 
     for (const unit of UNITS) {
       this.laneFlash[unit] = this.add.rectangle(laneCenter(unit), HIT_Y, LANE_W - 4, 30, fg).setAlpha(0);
-      this.text(laneCenter(unit), bottom + 18, `${unit} [${LANE_KEYS[unit]}]`).setOrigin(0.5);
+      const entry = unit === 'ALU' ? GLOSSARY.ALU : unit === 'MEM' ? GLOSSARY.MEMORY_UNIT : GLOSSARY.BRANCH;
+      this.clickable(this.text(laneCenter(unit), bottom + 18, `${unit} [${LANE_KEYS[unit]}]`).setOrigin(0.5), () => entry);
     }
     this.laneFlash.STALL = this.add.rectangle(LANE_X0 + LANES_W / 2, bottom + 44, LANES_W - 4, 22, fg).setAlpha(0);
-    this.text(LANE_X0 + LANES_W / 2, bottom + 44, 'STALL [SPACE]').setOrigin(0.5);
+    this.clickable(this.text(LANE_X0 + LANES_W / 2, bottom + 44, 'STALL [SPACE]').setOrigin(0.5), () => GLOSSARY.STALL);
 
     this.hazardLink = this.add.graphics().setDepth(20);
     this.hazardTag = this.text(0, 0, '', 14).setOrigin(0.5).setDepth(21);
   }
 
   private drawPanel(name: string): void {
-    const mode = this.watching ? '   REPLAY (2x SPEED)' : '';
+    const mode = this.watching ? '   REPLAY' : '';
     const tier = this.forwarding ? 'TIER 3: FORWARDING' : 'TIER 2: PIPELINE';
     this.text(PANEL_X, 10, `${tier}   ${name}${mode}`, 14).setAlpha(0.7);
     let y = LISTING_TOP + LISTING_ROWS * LISTING_LINE + 10;
@@ -517,19 +549,28 @@ export class PipelineScene extends Phaser.Scene {
     y += 22;
     for (let r = 0; r < REGISTER_COUNT; r++) {
       const column = Math.floor(r / 4);
-      this.regTexts.push(this.text(PANEL_X + column * 210, y + (r % 4) * LINE, '').setAlpha(0.8));
+      this.regTexts.push(
+        this.clickable(this.text(PANEL_X + column * 210, y + (r % 4) * LINE, '').setAlpha(0.8), () => this.registerEntry(r)),
+      );
     }
     y += 4 * LINE + 10;
     this.text(PANEL_X, y, 'MEMORY').setAlpha(0.7);
     y += 20;
-    for (let row = 0; row < 2; row++) this.memTexts.push(this.text(PANEL_X, y + row * LINE, '').setAlpha(0.8));
+    for (let row = 0; row < 2; row++) {
+      this.memTexts.push(this.clickable(this.text(PANEL_X, y + row * LINE, '').setAlpha(0.8), () => this.memoryEntry()));
+    }
     y += 2 * LINE + 12;
-    this.throughputText = this.text(PANEL_X, y, '');
+    this.throughputText = this.clickable(this.text(PANEL_X, y, ''), () => GLOSSARY.THROUGHPUT);
     y += 26;
-    this.statsText = this.text(PANEL_X, y, '').setLineSpacing(4);
+    this.statsText = this.clickable(this.text(PANEL_X, y, '').setLineSpacing(4), () => GLOSSARY.STATS);
     y += 50;
     const intro = this.watching ? 'WATCHING YOUR RUN' : this.practice ? 'PRACTICE:\nNOTES WAIT FOR YOU' : 'GET READY...';
     this.feedback = this.text(PANEL_X, y, intro, 20).setLineSpacing(6);
+    if (this.watching) {
+      // The program listing as one click target.
+      this.clickable(this.add.zone(PANEL_X, LISTING_TOP, 400, LISTING_ROWS * LISTING_LINE).setOrigin(0), () => GLOSSARY.PROGRAM);
+      return; // replay controls go where QUIT is
+    }
     this.text(PANEL_X, 512, '[Q] QUIT')
       .setAlpha(0.5)
       .setInteractive({ useHandCursor: true })
@@ -596,6 +637,8 @@ export class PipelineScene extends Phaser.Scene {
     wires.lineBetween(BUS_X, Math.min(...rows), BUS_X, ROWS.WB);
     for (const y of rows) wires.lineBetween(BUS_X, y, PANEL_X - 4, y);
     this.busGlow = this.add.graphics().setDepth(690);
+    const top = Math.min(...rows);
+    this.clickable(this.add.zone(BUS_X - 8, top, 16, ROWS.WB - top).setOrigin(0), () => GLOSSARY.BUS);
   }
 
   private drawCallout(): void {
@@ -693,7 +736,7 @@ export class PipelineScene extends Phaser.Scene {
     // Label rides up and to the left of the moving point, clear of the panel text.
     const text = this.text(startX, rowY, label, 14).setOrigin(1, 1).setDepth(700);
     // Fits inside one beat, so values never pile up on the bus.
-    const duration = Math.min(600, this.run.secondsPerBeat * 1000 * 0.8);
+    const duration = Math.min(600, this.beatSeconds() * 1000 * 0.8);
     this.transfers.push({ text, path, start: performance.now(), duration, land });
   }
 
@@ -717,7 +760,7 @@ export class PipelineScene extends Phaser.Scene {
         [x, note.box.y + NOTE_H / 2],
       ];
       const text = this.text(path[0][0], path[0][1], `x${reg}=${producer.value}`, 14).setOrigin(1, 1).setDepth(700);
-      const duration = Math.min(350, this.run.secondsPerBeat * 1000 * 0.45);
+      const duration = Math.min(350, this.beatSeconds() * 1000 * 0.45);
       this.transfers.push({ text, path, start: performance.now(), duration, land: () => {} });
     }
     if (this.practice && forwarded.length > 0 && !this.explained.has('forward')) {
@@ -734,7 +777,8 @@ export class PipelineScene extends Phaser.Scene {
       const t = Math.min(1, (now - transfer.start) / transfer.duration);
       const travelled = alongPath(transfer.path, 1 - (1 - t) ** 2);
       const [x, y] = travelled.at(-1) ?? transfer.path[0];
-      transfer.text.setPosition(x - 4, y - 2);
+      // Hidden until it has left its note, so it doesn't sit on top of the note's result.
+      transfer.text.setPosition(x - 4, y - 2).setVisible(t > 0.15);
       this.busGlow.lineStyle(2, this.look.era.fg, 0.9 * (1 - t * 0.5));
       this.busGlow.strokePoints(travelled.map(([px, py]) => new Phaser.Math.Vector2(px, py)));
       if (t < 1) return true;
@@ -860,6 +904,7 @@ export class PipelineScene extends Phaser.Scene {
     const x = laneCenter(unitOf(slot.instr));
     const box = this.add.rectangle(x, y, NOTE_W, NOTE_H, bg).setStrokeStyle(1, fg, 0.6);
     const label = codeLine(this, x, y, tokens(slot.instr, true), syntax, { maxWidth: NOTE_W - 8, center: true });
+    this.clickable(box, () => this.noteEntry(slot));
     return { box, label };
   }
 
@@ -890,6 +935,125 @@ export class PipelineScene extends Phaser.Scene {
   private strikeOut(view: NoteBlock): void {
     const strike = this.add.rectangle(view.box.x, view.box.y, NOTE_W + 6, 2, this.look.era.fg).setDepth(10);
     this.fade([view.box, view.label, strike], 600);
+  }
+
+  // ---- replay: speed, pause, and click-to-learn ----
+
+  private speed(): number {
+    return this.watching ? REPLAY_SPEEDS[this.speedIndex] : 1;
+  }
+
+  /** Seconds per beat as currently played (replays may run faster or slower). */
+  private beatSeconds(): number {
+    return this.run.secondsPerBeat / this.speed();
+  }
+
+  /** (Re)starts the beat clock and music at `bpm`; replays restart it when the speed changes. */
+  private startConductor(bpm: number): void {
+    this.conductor?.stop();
+    const conductor = new Conductor(this.ctx, bpm);
+    conductor.offset = getSettings().offset;
+    conductor.clickVolume = this.paused ? 0 : 0.04;
+    conductor.onBeat = (beat, time) => {
+      if (beat > FIRST_BEAT && !this.finished && !this.paused) {
+        this.music.playBeat(beat - FIRST_BEAT - 1, time, 60 / bpm, this.run.pipeline.occupancy);
+      }
+    };
+    conductor.start();
+    this.conductor = conductor;
+  }
+
+  private setSpeed(index: number): void {
+    const next = Phaser.Math.Clamp(index, 0, REPLAY_SPEEDS.length - 1);
+    if (next === this.speedIndex) return;
+    this.speedIndex = next;
+    this.startConductor(this.baseBpm * this.speed());
+    this.renderReplayControls();
+  }
+
+  private pause(): void {
+    this.paused = true;
+    if (this.conductor) this.conductor.clickVolume = 0;
+    this.renderReplayControls();
+  }
+
+  private resume(): void {
+    this.paused = false;
+    if (this.conductor) this.conductor.clickVolume = 0.04;
+    this.info.setVisible(false);
+    this.renderReplayControls();
+  }
+
+  /** In replays, clicking `target` pauses and explains what it is. */
+  private clickable<T extends Phaser.GameObjects.GameObject>(target: T, entry: () => Entry): T {
+    if (!this.watching) return target;
+    target.setInteractive({ useHandCursor: true }).on('pointerdown', () => this.explain(entry()));
+    return target;
+  }
+
+  private explain(entry: Entry): void {
+    if (this.finished) return;
+    this.pause();
+    this.infoTitle.setText(entry.title);
+    this.infoBody.setText(entry.body);
+    this.info.setVisible(true);
+  }
+
+  private drawReplayControls(): void {
+    const { fg, bg } = this.look.era;
+    // [<] 2x [>]   SPEED   [SPACE] PAUSE
+    const slower = this.text(PANEL_X, 498, '[<]', 15).setInteractive({ useHandCursor: true });
+    slower.on('pointerdown', () => this.setSpeed(this.speedIndex - 1));
+    this.speedValue = this.text(PANEL_X + 54, 498, '', 15).setOrigin(0.5, 0);
+    const faster = this.text(PANEL_X + 80, 498, '[>]', 15).setInteractive({ useHandCursor: true });
+    faster.on('pointerdown', () => this.setSpeed(this.speedIndex + 1));
+    this.speedText = this.text(PANEL_X + 124, 498, '', 15);
+    this.text(PANEL_X, 520, 'CLICK ANYTHING TO LEARN WHAT IT IS   [Q] QUIT', 13).setAlpha(0.6);
+
+    const box = this.add.rectangle(0, 0, LANES_W - 8, 200, bg).setStrokeStyle(2, fg);
+    this.infoTitle = this.text(0, -80, '', 17).setOrigin(0.5).setFontStyle('bold');
+    this.infoBody = this.text(0, -54, '', 15).setOrigin(0.5, 0).setAlign('center').setLineSpacing(6);
+    this.infoBody.setWordWrapWidth(LANES_W - 40);
+    const hint = this.text(0, 82, 'CLICK OR PRESS SPACE TO CONTINUE', 13).setOrigin(0.5).setAlpha(0.6);
+    this.info = this.add
+      .container(LANE_X0 + LANES_W / 2, 180, [box, this.infoTitle, this.infoBody, hint])
+      .setDepth(650)
+      .setVisible(false);
+    box.setInteractive().on('pointerdown', () => this.resume());
+    // A click on empty space also resumes.
+    this.input.on('pointerdown', (_pointer: Phaser.Input.Pointer, over: Phaser.GameObjects.GameObject[]) => {
+      if (over.length === 0 && this.paused) this.resume();
+    });
+    this.renderReplayControls();
+  }
+
+  private renderReplayControls(): void {
+    this.speedValue?.setText(`${REPLAY_SPEEDS[this.speedIndex]}x`);
+    this.speedText?.setText(`SPEED   [SPACE] ${this.paused ? 'RESUME' : 'PAUSE'}`);
+  }
+
+  private stageEntry(stage: Stage): Entry {
+    const entry = GLOSSARY[stage];
+    if (stage === 'EX' && this.forwarding) return { title: entry.title, body: `${entry.body} ${GLOSSARY.FORWARDING.body}` };
+    return entry;
+  }
+
+  private noteEntry(slot: Slot): Entry {
+    const stage = this.run.pipeline.stageOf(slot.seq);
+    const where = stage ? `Now in ${STAGE_NAMES[stage]} (${stage}).` : 'Coming up: it will be fetched soon.';
+    return { title: format(slot.instr), body: `${describe(slot.instr)}. ${where}` };
+  }
+
+  private registerEntry(r: number): Entry {
+    const role = this.spec.roles?.[r];
+    const job = r === 0 ? 'x0 is wired to zero: writing to it does nothing.' : role ? `In this program: ${role}.` : 'Not used by this program.';
+    const pending = (['EX', 'MEM'] as const).some((stage) => this.run.pipeline.stages[stage]?.step?.wrote === r);
+    const note = pending ? ' A new value for it is still in the pipeline.' : '';
+    return { title: `REGISTER x${r} = ${this.shownRegs[r]}`, body: `${job}${note} ${GLOSSARY.REGISTERS.body}` };
+  }
+
+  private memoryEntry(): Entry {
+    return { title: GLOSSARY.MEMORY.title, body: `${GLOSSARY.MEMORY.body} ${this.spec.memoryNote ?? ''}` };
   }
 
   // ---- results ----
@@ -929,6 +1093,14 @@ export class PipelineScene extends Phaser.Scene {
     this.hazardLink.clear();
     this.hazardTag.setVisible(false);
     this.callout.setVisible(false);
+    this.info?.setVisible(false);
+    if (!this.practice && !this.watching) {
+      // Every real run is followed by its replay; the results come at the end of it.
+      this.showCallout('RUN COMPLETE!\nNOW WATCH YOUR REPLAY.\nCLICK ANYTHING IN IT TO LEARN WHAT IT IS.');
+      this.time.delayedCall(2000, () => this.scene.restart({ watch: this.recording, forwarding: this.forwarding }));
+      return;
+    }
+    this.showingResults = true;
     const p = this.run.pipeline;
     const pipelined = p.cycle / CLOCK_MHZ;
     const single = p.instructions / SINGLE_CYCLE_MHZ;
@@ -947,7 +1119,7 @@ export class PipelineScene extends Phaser.Scene {
           '[ENTER] PLAY    [Q] TITLE',
         ]
       : [
-          this.watching ? 'REPLAY COMPLETE' : 'PROGRAM COMPLETE',
+          'YOUR RUN',
           '',
           `INSTRUCTIONS ${p.instructions}   CYCLES ${p.cycle}   CPI ${p.cpi.toFixed(2)}`,
           `STALLS ${p.stalls}   FLUSHED ${p.flushed}   BEST STREAK ${this.run.bestStreak}`,
@@ -966,7 +1138,7 @@ export class PipelineScene extends Phaser.Scene {
                   : 'STILL SLOWER THAN A PERFECT RUN WITHOUT FORWARDING',
               ]),
           '',
-          `[ENTER] ${this.watching ? 'PLAY' : 'RETRY'}    [W] WATCH REPLAY    [Q] TITLE`,
+          '[ENTER] PLAY AGAIN    [W] WATCH AGAIN    [Q] TITLE',
         ];
     const { width, height } = this.scale;
     const { fg, bg } = this.look.era;

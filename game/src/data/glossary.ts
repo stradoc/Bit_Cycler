@@ -1,0 +1,71 @@
+// Short explanations shown when part of the screen is clicked during a replay.
+// One idea each, in plain words; keep bodies under ~180 characters so they fit the box.
+
+export type Entry = { readonly title: string; readonly body: string };
+
+export const GLOSSARY = {
+  IF: {
+    title: 'FETCH (IF)',
+    body: 'The CPU reads the next instruction from memory. The program counter (PC) says which one comes next.',
+  },
+  ID: {
+    title: 'DECODE (ID)',
+    body: 'The instruction is decoded and its registers are read. Hazards are caught here: if a value it needs is not ready, it stalls in DECODE.',
+  },
+  EX: {
+    title: 'EXECUTE (EX)',
+    body: 'The ALU does the work: adds, subtracts, compares, or works out the memory address for a load or store.',
+  },
+  MEM: {
+    title: 'MEMORY (MEM)',
+    body: 'Loads read a byte from memory and stores write one. Other instructions just pass through this stage.',
+  },
+  WB: {
+    title: 'WRITE BACK (WB)',
+    body: 'The result is written into its register. Only now does the register file hold the new value.',
+  },
+  ALU: {
+    title: 'ALU',
+    body: 'The Arithmetic Logic Unit does math and logic: add, sub, addi, and, or, xor.',
+  },
+  MEMORY_UNIT: {
+    title: 'MEMORY UNIT',
+    body: 'Moves bytes between registers and memory: lb loads a byte into a register, sb stores one back.',
+  },
+  BRANCH: {
+    title: 'BRANCH UNIT',
+    body: 'Compares two registers and decides where the program goes next: beq jumps if they are equal, bne if they are not.',
+  },
+  STALL: {
+    title: 'STALL',
+    body: 'A stall holds the instruction in DECODE for one cycle and sends an empty bubble down the pipeline, giving a missing value time to arrive.',
+  },
+  REGISTERS: {
+    title: 'REGISTERS',
+    body: 'Tiny, instant storage inside the CPU. Instructions read and write them directly.',
+  },
+  MEMORY: {
+    title: 'MEMORY',
+    body: 'Main memory: 256 bytes here, shown 8 per row in hex. Much bigger than the registers, but slower to reach.',
+  },
+  BUS: {
+    title: 'WRITE-BACK BUS',
+    body: 'Wires carrying results out of the pipeline: register results from WRITE BACK, stored bytes from MEMORY. The panel only changes when a value arrives.',
+  },
+  PROGRAM: {
+    title: 'PROGRAM',
+    body: "The instructions in order. '>' marks the one in DECODE, and the tags show which stage each line is in.",
+  },
+  THROUGHPUT: {
+    title: 'THROUGHPUT',
+    body: 'Instructions finished per cycle over the last 8 cycles. 1.00 means the pipeline is full and one instruction finishes every cycle.',
+  },
+  STATS: {
+    title: 'CYCLES AND CPI',
+    body: 'CPI = cycles per instruction so far. Filling the pipeline, stalls and flushes all push it above 1.00.',
+  },
+  FORWARDING: {
+    title: 'FORWARDING',
+    body: 'With forwarding, a result leaving EXECUTE or MEMORY is handed straight to the next instruction instead of waiting for WRITE BACK.',
+  },
+} as const satisfies Record<string, Entry>;

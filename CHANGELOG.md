@@ -61,7 +61,15 @@ All Step 0 decisions are made.
 - Design doc scope section: removed fixed internal dates; replaced the dated timeline with a four-phase sequence.
 - Design doc superscalar section: corrected pairing rules. WAR is safe in in-order dual-issue; WAW and RAW block pairing; renaming matters once instructions can be reordered.
 
-### Tier 3: forwarding (uncommitted)
+### Replays you learn from (uncommitted)
+- **Every tier 2/3 run is followed by its replay** ("RUN COMPLETE! NOW WATCH YOUR REPLAY"), and the results come at the end of it. `W` on the results watches again.
+- **Speed and pause:** `←`/`→` or clickable `[<]` `[>]` for 0.5x / 1x / 2x / 4x; `Space` pauses. The replay runs on its own clock, so speed changes and pauses don't disturb it; the music restarts at the new tempo.
+- **Click anything to learn what it is:** stage names, lanes (ALU / MEM / BRANCH), STALL, notes (the instruction in plain English and which stage it's in), each register (its job in this program, e.g. "x3: the running sum"), memory (what addresses 0-3 and 8 hold), the bus, the program listing, throughput and CPI. A click pauses and opens an explanation box; Space or another click resumes.
+- Explanations live in `game/src/data/glossary.ts`; register jobs and the memory note in the program data (`roles`, `memoryNote`).
+- Verified on the real clock: run → replay handover, speed change, explanations for DECODE and register x3.
+- Size check: `game/` is 1.8 MB of the 35 MB limit (Phaser 1.2 MB).
+
+### Tier 3: forwarding (committed in 2ba193e)
 - **Tier 3** (`T` on the title cycles 1 → 2 → 3): the tier 2 pipeline with the forwarding unit on. ALU results reach the next instruction with no stall; a load used right away still stalls once (load-use); a branch needs a brand-new ALU value one beat early. Tier options (`forwarding`) travel from the tier list / lesson to the scene and survive retry and replay.
 - **Forwarding on screen:** when an instruction issues with a forwarded value, the value (`x4=3`) jumps up a lit wire from the producer's note in EXECUTE or MEMORY into it.
 - **Lesson 3** (4 cards): hand it over (ALU → ALU timing chart), loads still wait (load-use timing chart), how it plays, your score. Practice explains the first forward and the first load-use stall.

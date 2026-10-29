@@ -13,6 +13,13 @@ loop: lb   x4, 0(x1)
       sb   x3, 8(x0)
     `,
         memory: [3, 5, 7, 2],
+        roles: {
+            1: 'the address of the next number to add',
+            2: 'the end address (4): the loop stops when x1 reaches it',
+            3: 'the running sum',
+            4: 'the number just loaded from memory',
+        },
+        memoryNote: 'Addresses 0-3 hold the numbers to add (3, 5, 7, 2). The sum is stored at address 8.',
     },
 ];
 //# sourceMappingURL=programs.js.map

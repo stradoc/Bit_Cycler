@@ -110,6 +110,8 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 - [x] Results on notes, a bus carrying results to registers / memory, and a 2x replay (picked from five views tried in playtest)
 - [x] Tier 2 program listing that scrolls with the instruction in ID and tags each line with its stage
 - [x] Plain-English stage labels (FETCH / DECODE / EXECUTE / MEMORY / WRITE BACK); results wait until the last instruction leaves WB
+- [x] Replay after every run, with speed control, pause, and click-anything explanations (`data/glossary.ts`)
+- [ ] Tier 1 replay and explanations (tier 1 has no replay yet)
 - [ ] Run logic accepts several presses per beat (ready for superscalar chords later)
 
 **Done when:** a new player can go from tier 1 to tier 3 and buy an HDD in one ~30-minute session, the CPI numbers are verified by tests, and the game runs from a plain static server.

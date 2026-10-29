@@ -48,7 +48,8 @@ Add these to the URL, e.g. `http://localhost:8000/?scene=play&autoplay`:
 
 Title: `Enter` play (first time on a tier: briefing → practice → play) · `T` switch tier (1 single-cycle, 2 pipeline, 3 forwarding) · `B` briefing · `P` practice · `C` calibrate (then `←/→` to line the light up with the click) · `R` relaxed mode · `1–4` era.
 Briefing: `Enter`/`→` next · `←` back · `Q` or `Esc` title.
-Play: `D` ALU · `F` MEM · `J` BRANCH · `Space` stall (tier 2) · `Q` or `Esc` quit (Vimium swallows `Esc`, so the game also accepts `Q`) · `Enter` retry after the results screen · `W` watch a 2× replay of your run (tiers 2–3).
+Play: `D` ALU · `F` MEM · `J` BRANCH · `Space` stall (tier 2) · `Q` or `Esc` quit (Vimium swallows `Esc`, so the game also accepts `Q`) · `Enter` play again after the results.
+Replay (tiers 2–3, after every run): `←`/`→` speed (0.5×–4×) · `Space` pause / resume · click anything to learn what it is · `W` watch again from the results.
 
 ## Layout
 
