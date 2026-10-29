@@ -1,6 +1,7 @@
 import type { DiagramId } from '../data/lessons.ts';
 import { assemble } from '../sim/assembler.ts';
 import { tokens } from '../sim/isa.ts';
+import { branchHint, hintColor } from './branchHint.ts';
 import { codeLine } from './codeLine.ts';
 import { cssColor, type Era } from './terminal.ts';
 
@@ -49,9 +50,26 @@ class Sketch {
     return text;
   }
 
+  /** Text in a tier 4 hint color: the color of the key that guesses `taken`. */
+  hintText(x: number, y: number, content: string, taken: boolean, size = 16): void {
+    this.text(x, y, content, size, 1, true).setColor(cssColor(hintColor(this.era, taken)));
+  }
+
+  /** A tier 4 branch hint (glowing ring and badge) around a w x h note at (x, y). */
+  hint(x: number, y: number, w: number, h: number, taken: boolean): void {
+    this.parts.push(branchHint(this.scene, w, h, taken, true, this.era).setPosition(x, y));
+  }
+
   /** One instruction, syntax-highlighted. `source` may define its own label. */
   code(x: number, y: number, source: string, maxWidth?: number, compact = false): void {
-    const [instr] = assemble(source).instructions;
+    let instr;
+    try {
+      [instr] = assemble(source).instructions;
+    } catch {
+      // A typo in a diagram shows as plain text instead of blanking the whole briefing.
+      this.text(x, y, source, 14);
+      return;
+    }
     this.parts.push(codeLine(this.scene, x, y, tokens(instr, compact), this.era.syntax, { center: true, maxWidth }));
   }
 
@@ -331,5 +349,64 @@ const DIAGRAMS: Record<DiagramId, (s: Sketch, cx: number, cy: number) => void> =
     s.text(cx, cy + 6, 'NO FORWARDING (TIER 2): 20 x 2.15 x 0.25 µs = 10.8 µs', 16, 0.7);
     s.text(cx, cy + 38, 'WITH FORWARDING:        20 x 1.75 x 0.25 µs =  8.8 µs', 16);
     s.text(cx, cy + 74, '1.2x FASTER, SAME CLOCK', 16, 1, true);
+  },
+
+  // A branch with two possible next instructions
+  fork(s, cx, cy) {
+    s.backing(cx - 150, cy, 200, 30);
+    s.box(cx - 150, cy, 200, 30, true, false);
+    s.code(cx - 150, cy, 'loop: bne x1, x2, loop', 184);
+    s.arrow(cx - 40, cy - 8, cx + 90, cy - 60);
+    s.arrow(cx - 40, cy + 8, cx + 90, cy + 60);
+    s.box(cx + 200, cy - 60, 200, 30);
+    s.code(cx + 200, cy - 60, 'lb x4, 0(x1)', 184);
+    s.text(cx + 200, cy - 90, 'TAKEN: jump back to loop:', 13, 0.8);
+    s.box(cx + 200, cy + 60, 200, 30);
+    s.code(cx + 200, cy + 60, 'sb x3, 8(x0)', 184);
+    s.text(cx + 200, cy + 90, 'NOT TAKEN: carry on', 13, 0.8);
+    s.text(cx - 150, cy + 40, 'which one to fetch next?', 13, 0.8);
+  },
+
+  // A wrong guess: the fetched instruction is thrown away, costing a cycle
+  guess(s, cx, cy) {
+    const col = (c: number) => cx - 140 + c * 68;
+    for (let c = 0; c < 7; c++) s.text(col(c), cy - 92, `C${c + 1}`, 12, 0.6);
+    s.code(cx - 330, cy - 56, 'loop: bne x1, x2, loop');
+    s.text(cx - 330, cy - 14, 'sb: wrong guess', 13, 0.8);
+    s.text(cx - 330, cy + 28, 'lb: right path', 13, 0.8);
+    ['IF', 'ID', 'EX', 'MEM', 'WB'].forEach((stage, j) => s.cell(col(j), cy - 56, stage, j === 1, 62));
+    s.cell(col(1), cy - 14, 'IF', false, 62);
+    s.text(col(1), cy - 14, '----', 14, 1, true);
+    ['IF', 'ID', 'EX', 'MEM', 'WB'].forEach((stage, j) => s.cell(col(2 + j), cy + 28, stage, false, 62));
+    s.text(cx, cy + 72, 'decided in C2: sb was the wrong guess, flushed; lb starts a cycle late', 13);
+  },
+
+  // The tier 4 screen in miniature: a branch on the line asking for a guess
+  guessplay(s, cx, cy) {
+    const laneW = 130;
+    const left = cx - 330;
+    const hitY = cy;
+    const lane = (i: number) => left + (i + 0.5) * laneW;
+    for (let i = 0; i <= 3; i++) s.polyline([[left + i * laneW, cy - 100], [left + i * laneW, hitY + 40]]);
+    s.polyline([[left, hitY], [left + 3 * laneW, hitY]]);
+    ['ALU', 'MEM', 'BRANCH J/K'].forEach((label, i) => s.text(lane(i), hitY + 58, label, 12, 0.8));
+    s.backing(lane(2), hitY, laneW - 10, 24);
+    s.box(lane(2), hitY, laneW - 10, 24, true, false);
+    s.code(lane(2), hitY, 'loop: bne x1, x2, loop', laneW - 18, true);
+    s.hint(lane(2), hitY, laneW - 10, 24, true);
+    s.hintText(lane(2) - 34, hitY - 32, 'J: NOT', false, 12);
+    s.hintText(lane(2) + 30, hitY - 32, 'K: TAKEN', true, 12);
+    s.text(cx + 250, hitY - 40, 'its glow = what it did last time', 14, 0.8);
+    s.hintText(cx + 250, hitY - 4, 'J = NOT TAKEN', false, 20);
+    s.hintText(cx + 250, hitY + 28, 'K = TAKEN', true, 20);
+  },
+
+  // Perfect guesses vs always guessing not taken
+  speedup4(s, cx, cy) {
+    s.box(cx, cy - 56, 640, 46, true);
+    s.text(cx, cy - 56, 'CPU TIME = INSTRUCTIONS x CPI x CLOCK PERIOD', 20, 1, true);
+    s.text(cx, cy + 6, 'ALWAYS NOT TAKEN (TIER 3): 20 x 1.75 x 0.25 µs = 8.8 µs', 16, 0.7);
+    s.text(cx, cy + 38, 'EVERY GUESS RIGHT:         20 x 1.60 x 0.25 µs = 8.0 µs', 16);
+    s.text(cx, cy + 74, '3 LOOP BRANCHES GUESSED RIGHT = 3 CYCLES SAVED', 16, 1, true);
   },
 };

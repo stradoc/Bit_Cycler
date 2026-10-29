@@ -24,6 +24,7 @@ Technology and design decisions, with the reason for each (see `RULES.md` rule 3
 | 2026-10-28 | **Tempo follows the clock on a log scale:** 75 BPM at 1 MHz, +12 BPM per 10× clock (~118 BPM at 4 GHz); relaxed/practice at 80% | Real clocks grow ~4000×; a gentle, capped curve keeps the late game playable. CPU-time math uses the real period |
 | 2026-10-28 | **Clock is a dial** set before each program: upgrades raise the maximum, players may underclock | Makes CPU time = IC × CPI × period a player choice (faster clock vs. more stalls), like real overclocking instability; players control difficulty |
 | 2026-10-28 | **Overclock red zone** above the rated clock: faster and better-paid, but builds heat; overheating throttles mid-song; cooling widens the zone | Matches real overclocking (performance traded for heat and stability); ties the clock dial, heat meter and cooling upgrades together |
+| 2026-10-28 | Tier 4 hint: a branch note **glows in the color of the key matching what it did last time**, with an arrow badge as a non-color backup; J (not taken) left, K (taken) right | Text like "LAST: T T T" is too slow to read mid-song; a colored glow is seen at a glance. Showing only the last outcome teaches what a 1-bit predictor knows, and its miss at loop exit sets up the 2-bit predictor |
 | 2026-10-28 | Tier 2 layout: **EX / MEM / WB rows below the hit line**, with a link from a waiting note to the instruction computing its register | Playtest: the corner pipeline strip was too far from the notes to use while playing |
 | 2026-10-28 | Tier 2 shows **results on notes**, a **bus** carrying results to registers/memory, and a **2x replay**; breathers and a view selector were tried and dropped | Playtest of five views: these let players see what the CPU did without looking away from the notes |
 | 2026-10-28 | All keyboard input via `game/src/input/keys.ts`; Phaser's keyboard plugin disabled | Phaser re-processes its per-frame key queue on every new key event, so two key events in one frame fired handlers twice (found when briefing pages skipped) |
@@ -61,7 +62,29 @@ All Step 0 decisions are made.
 - Design doc scope section: removed fixed internal dates; replaced the dated timeline with a four-phase sequence.
 - Design doc superscalar section: corrected pairing rules. WAR is safe in in-order dual-issue; WAW and RAW block pairing; renaming matters once instructions can be reordered.
 
-### Replays you learn from (uncommitted)
+### Tier 4: branch hints (uncommitted)
+- **A branch note glows in the color of what it did last time** (the information a 1-bit predictor keeps): a ring and soft halo around the note, plus a small badge on its corner (loop arrow = taken, down arrow = not taken) so the hint never relies on color alone. Before any history, a backward branch shows a dimmer "taken" hint (it's probably a loop). The ring updates if the branch is decided while the next round's note is already on screen, and goes away once the branch issues.
+- **Keys match the colors:** `BRANCH J/K` under the lane and the guess tag over a waiting branch (`J: NOT  K: TAKEN`, now in keyboard order, the hinted guess brighter) use the same two colors. Monochrome eras (8/16-bit) tell them apart by brightness; 32/64-bit use colorblind-safe blue (taken) / orange (not taken). New `taken` / `notTaken` colors on each era.
+- Following the hint misses once per loop, at the exit, which is exactly where a real 1-bit predictor misses; players who watch the loop counter can beat it.
+- **History in the listing:** after a branch, its last 4 outcomes (`T` / `N`, colored), clickable in replays (`HISTORY` glossary entry). Clicking a branch note explains its glow.
+- Simulator: `Pipeline.history` (each branch's outcomes by pc) and `Pipeline.hint(pc)`; 1 new test (42 total). Drawing in `game/src/visual/branchHint.ts`, shared by the game and lesson 4's "how it plays" card, which now shows the glow and J before K. Practice callout and README updated.
+- Verified on the real clock in the green and color eras: ring, badge and tag over a waiting branch, listing history.
+
+### Panel boxes and replay hover (uncommitted)
+- **Titled boxes:** the side panel is split into PROGRAM, REGISTERS and MEMORY boxes, each a thin frame with its title set into the top edge (`game/src/visual/panelBox.ts`), on tier 1 and tiers 2-4. The REGISTERS title carries the `<-` key ("<- STILL COMPUTING"); the bus wires now end at the box edge. In replays the box titles are clickable.
+- **Hover highlight in replays:** anything clickable gets a lit outline while the mouse is over it, so players can see what an explanation will be about before clicking.
+- Verified: boxes on tiers 1 and 2 (screenshots); on the real clock, hovering register x3 in a tier 4 replay outlines that row.
+- Playtest fixes: the PROGRAM box title overlapped the "TIER N" header (box moved down 6 px); long explanations (DECODE) ran past their box, which now grows to fit its text. Verified by clicking DECODE in a real-time tier 4 replay.
+
+### Tier 4: branch prediction (uncommitted)
+- Model (unchanged for tiers 2-3): branches are decided in DECODE while the next instruction is fetched in the same beat, so fetch follows a guess. Tiers 2-3 always guess not taken (taken branches flush 1). **Tier 4: the player guesses**: `K` routes a branch guessing TAKEN (fetch redirects to the target immediately, so the right next note appears), `J` guesses NOT TAKEN. Right guess: nothing lost. Wrong guess: the fetched instruction is flushed (1 cycle).
+- Simulator: `Pipeline.predict()`, `branchOutcome()`, `branches` / `mispredicted` counters, `CycleResult.mispredicted`; `perfectCycles(..., 'perfect')`. Actions carry `guessTaken`; replays reproduce guesses. 4 new tests (41 total): right guesses cost nothing, wrong ones 1 cycle each, the program's answer never changes, SUM ARRAY 35 → 32 cycles with perfect guesses.
+- Screen: `BRANCH J/K` lane, a "TAKEN? K  NOT? J" tag on a branch waiting on the line, "GOOD GUESS / WRONG GUESS" feedback, practice callouts for the first branch, first right and first wrong guess. Results: "BRANCH GUESSES: N OF M RIGHT" and a comparison with always guessing not taken ("GUESSING SAVED 3 CYCLES").
+- Lesson 4 (4 cards): a fork in the road, guess right / guess wrong (timing chart with a flushed instruction), how it plays, your score. `PREDICTION` glossary entry; the BRANCH lane explanation mentions guessing on tier 4.
+- Found while checking: lesson 4 rendered black because two diagrams passed `bne ..., loop` without defining `loop:`; fixed, and diagram code now falls back to plain text instead of crashing the briefing.
+- Verified on the real clock: guess tag, "GOOD GUESS: TAKEN" with the loop's `lb` already fetched, results 32 cycles / 4 of 4 right after a 4x replay.
+
+### Replays you learn from (committed in fd319cd)
 - **Every tier 2/3 run is followed by its replay** ("RUN COMPLETE! NOW WATCH YOUR REPLAY"), and the results come at the end of it. `W` on the results watches again.
 - **Speed and pause:** `←`/`→` or clickable `[<]` `[>]` for 0.5x / 1x / 2x / 4x; `Space` pauses. The replay runs on its own clock, so speed changes and pauses don't disturb it; the music restarts at the new tempo.
 - **Click anything to learn what it is:** stage names, lanes (ALU / MEM / BRANCH), STALL, notes (the instruction in plain English and which stage it's in), each register (its job in this program, e.g. "x3: the running sum"), memory (what addresses 0-3 and 8 hold), the bus, the program listing, throughput and CPI. A click pauses and opens an explanation box; Space or another click resumes.

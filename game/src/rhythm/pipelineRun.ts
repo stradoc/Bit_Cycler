@@ -3,8 +3,10 @@ import { unitOf, type Unit } from '../sim/isa.ts';
 import { Pipeline, type CycleResult, type Hazard, type Slot } from '../sim/pipeline.ts';
 import { judge, type Judgment, type Windows } from './judge.ts';
 
-/** What the player can do with the instruction in ID. */
-export type Action = { readonly kind: 'route'; readonly unit: Unit } | { readonly kind: 'stall' };
+/** What the player can do with the instruction in ID. Routing a branch can carry a guess: taken or not. */
+export type Action =
+  | { readonly kind: 'route'; readonly unit: Unit; readonly guessTaken?: boolean }
+  | { readonly kind: 'stall' };
 
 /** How a choice turned out. Only `issued` and `stalled` are correct. */
 export type Outcome =
@@ -109,7 +111,14 @@ export class PipelineRun {
     }
     const outcome = judgment === 'MISS' ? 'off-beat' : (evaluate(this.pipeline, action) ?? 'missed');
     this.pending = { slot, action, outcome, judgment, hazard: this.pipeline.hazard(), waited };
+    this.applyGuess(action, outcome);
     return this.pending;
+  }
+
+  /** A branch routed with a guess fetches down the guessed path right away. */
+  private applyGuess(action: Action | null, outcome: Outcome): void {
+    if (action?.kind !== 'route' || action.guessTaken === undefined) return;
+    if (outcome === 'issued' || outcome === 'violation') this.pipeline.predict(action.guessTaken);
   }
 
   /** Sets this cycle's decision directly (replaying a recorded run). */
@@ -117,6 +126,7 @@ export class PipelineRun {
     const slot = this.pipeline.stages.ID;
     if (!slot || this.done) return null;
     this.pending = { slot, action, outcome, judgment, hazard: this.pipeline.hazard(), waited: this.waitingSeq === slot.seq };
+    this.applyGuess(action, outcome);
     return this.pending;
   }
 

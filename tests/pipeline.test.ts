@@ -165,3 +165,57 @@ test('perfectCycles gives the best possible run, without changing the CPU passed
   assert.equal(perfectCycles(cpu, { forwarding: true }), 35);
   assert.equal(cpu.pc, 0);
 });
+
+test('guessing a branch right costs nothing; guessing wrong flushes one instruction', () => {
+  const loop = 'addi x1, x0, 0\naddi x2, x0, 2\nloop: addi x1, x1, 1\naddi x5, x0, 0\nbne x1, x2, loop\nsb x1, 8(x0)';
+  // Plays perfectly, guessing each branch with `guess(taken)`.
+  const play = (guess: (taken: boolean) => boolean) => {
+    const p = pipeline(loop, true);
+    while (!p.done) {
+      const action = p.bestAction();
+      const taken = p.branchOutcome();
+      if (action === 'issue' && taken !== undefined) p.predict(guess(taken));
+      p.step(action);
+    }
+    return p;
+  };
+  const right = play((taken) => taken);
+  const notTaken = play(() => false);
+  const wrong = play((taken) => !taken);
+  for (const p of [right, notTaken, wrong]) assert.equal(p.cpu.memory[8], 2); // always the right answer
+  assert.deepEqual([right.branches, right.mispredicted, right.flushed], [2, 0, 0]);
+  assert.deepEqual([notTaken.mispredicted, notTaken.flushed], [1, 1]); // only the taken branch was wrong
+  assert.deepEqual([wrong.mispredicted, wrong.flushed], [2, 2]);
+  assert.equal(notTaken.cycle - right.cycle, 1);
+  assert.equal(wrong.cycle - right.cycle, 2);
+});
+
+test('a taken guess fetches the branch target straight away', () => {
+  const p = pipeline('loop: addi x1, x1, 1\nbne x1, x0, loop\nsb x1, 8(x0)', true);
+  p.step('issue'); // addi into ID
+  p.step('issue'); // addi into EX; bne into ID, sb fetched behind it
+  p.step('stall'); // bne waits one cycle for the fresh x1 (branch compares in ID)
+  assert.equal(p.stages.IF?.instr.op, 'sb');
+  p.predict(true);
+  assert.equal(p.stages.IF?.instr.op, 'addi'); // fetch redirected to loop:
+  const result = p.step('issue');
+  assert.equal(result.mispredicted, false);
+  assert.equal(result.flushed.length, 0);
+  assert.equal(p.stages.ID?.instr.op, 'addi');
+});
+
+test('perfect guesses remove every branch flush from SUM ARRAY: 35 -> 32 cycles', () => {
+  const spec = PROGRAMS[0];
+  const cpu = new Cpu(assemble(spec.source, 8), 8, spec.memory);
+  assert.equal(perfectCycles(cpu, { forwarding: true }, 'not-taken'), 35);
+  assert.equal(perfectCycles(cpu, { forwarding: true }, 'perfect'), 32);
+});
+
+test('branch history: the hint is what the branch did last time, or "taken" for a backward branch never seen', () => {
+  const p = pipeline('addi x1, x0, 0\naddi x2, x0, 2\nloop: addi x1, x1, 1\nbne x1, x2, loop\nsb x1, 8(x0)', true);
+  assert.equal(p.hint(0), undefined); // not a branch
+  assert.deepEqual(p.hint(3), { taken: true, seen: false }); // jumps back to loop:
+  playPerfectly(p);
+  assert.deepEqual(p.history.get(3), [true, false]); // loops once, then falls through
+  assert.deepEqual(p.hint(3), { taken: false, seen: true });
+});

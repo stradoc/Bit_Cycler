@@ -93,7 +93,7 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 - [x] Tier 1 lesson: what a CPU does, the clock, functional units, registers vs memory, how it plays, scoring
 - [x] Tier 2 lesson: pipelining (laundry analogy), data hazards, stalls (+ tier 2 practice)
 - [x] Tier 3 lesson: forwarding
-- [ ] Branch prediction lesson
+- [x] Branch prediction lesson (tier 4)
 - [ ] Storage lessons: RAM / page faults, HDD
 - [ ] Track hazard-decision accuracy (learning objective 1) and show it after each contract
 
@@ -103,7 +103,9 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 - [x] STALL key (Space) inserts a bubble; stall rules follow the textbook 5-stage pipeline (distance 1 → 2 stalls, distance 2 → 1)
 - [x] Routing into a hazard shows the stale value read next to the correct one, then flushes
 - [x] Forwarding (tier 3): ALU→ALU needs 0 stalls, load-use needs 1; forwarded values shown jumping up a wire; results compare with/without forwarding
-- [ ] Branch prediction keys: J = predict not taken, K = predict taken; mispredict strikes out wrong-path notes
+- [x] Branch prediction keys (tier 4): J = guess not taken, K = guess taken; a wrong guess strikes out the fetched instruction
+- [x] Branch hint (tier 4): note glows in the color of what the branch did last time; history in the listing
+- [ ] Hardware predictors (1-bit, 2-bit) that guess for you, shown with their state; a nested-loop program where 2-bit beats 1-bit
 - [x] Results compare single-cycle vs pipelined CPU time (CPI up, period down, faster overall)
 - [x] Tier switch on the title screen (`T`) until the shop exists
 - [ ] Playtest tier 2 in a real browser: timing, music mix, readability
@@ -111,6 +113,7 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 - [x] Tier 2 program listing that scrolls with the instruction in ID and tags each line with its stage
 - [x] Plain-English stage labels (FETCH / DECODE / EXECUTE / MEMORY / WRITE BACK); results wait until the last instruction leaves WB
 - [x] Replay after every run, with speed control, pause, and click-anything explanations (`data/glossary.ts`)
+- [x] Panel split into titled PROGRAM / REGISTERS / MEMORY boxes; hover outline on clickable things in replays
 - [ ] Tier 1 replay and explanations (tier 1 has no replay yet)
 - [ ] Run logic accepts several presses per beat (ready for superscalar chords later)
 

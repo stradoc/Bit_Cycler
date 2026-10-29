@@ -137,3 +137,29 @@ test('forcing recorded decisions replays a run exactly', () => {
   assert.equal(replay.pipeline.cycle, original.pipeline.cycle);
   assert.deepEqual(replay.counts, original.counts);
 });
+
+test('routing a branch with a guess: right costs nothing, wrong flushes, and replays repeat it', () => {
+  const source = 'addi x1, x0, 0\naddi x2, x0, 2\nloop: addi x1, x1, 1\naddi x5, x0, 0\nbne x1, x2, loop\nsb x1, 8(x0)';
+  const record: { action: Action | null; outcome: Parameters<PipelineRun['force']>[1]; judgment: 'PERFECT' | 'GOOD' | 'MISS' }[] = [];
+  const run = new PipelineRun(new Cpu(assemble(source), 8, []), true, 3, SPB, NORMAL_WINDOWS);
+  while (!run.done) {
+    let action = best(run);
+    // Always guess TAKEN: right the first time round the loop, wrong the last.
+    if (action?.kind === 'route' && action.unit === 'BRANCH') action = { ...action, guessTaken: true };
+    if (action) run.press(action, run.dueBeat);
+    for (const r of endCycle(run)) if (r.decision) record.push({ action: r.decision.action, outcome: r.decision.outcome, judgment: r.decision.judgment });
+  }
+  assert.deepEqual([run.pipeline.branches, run.pipeline.mispredicted], [2, 1]);
+
+  const replay = new PipelineRun(new Cpu(assemble(source), 8, []), true, 3, SPB, NORMAL_WINDOWS);
+  let next = 0;
+  while (!replay.done) {
+    if (replay.pipeline.stages.ID) {
+      const r = record[next++];
+      replay.force(r.action, r.outcome, r.judgment);
+    }
+    endCycle(replay);
+  }
+  assert.equal(replay.pipeline.cycle, run.pipeline.cycle);
+  assert.equal(replay.pipeline.mispredicted, 1);
+});

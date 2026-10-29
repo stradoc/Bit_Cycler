@@ -137,9 +137,42 @@ export const TIER3_LESSON = {
         },
     ],
 };
+export const TIER4_LESSON = {
+    id: 'tier4',
+    title: 'LESSON 4: BRANCH PREDICTION',
+    scene: 'pipeline',
+    options: { forwarding: true, guessing: true },
+    pages: [
+        {
+            title: 'A FORK IN THE ROAD',
+            diagram: 'fork',
+            lines: ['A branch is decided in DECODE, but the next', 'instruction is fetched in that same beat.'],
+            analogy: 'So the CPU has to guess which way the road goes.',
+        },
+        {
+            title: 'GUESS RIGHT, GUESS WRONG',
+            diagram: 'guess',
+            lines: ['Right guess: nothing is lost.', 'Wrong guess: the fetched instruction is flushed.'],
+            analogy: 'Until now the CPU always guessed NOT TAKEN.',
+        },
+        {
+            title: 'HOW IT PLAYS',
+            diagram: 'guessplay',
+            lines: ['Route a branch with J (guess NOT TAKEN) or K (guess TAKEN).', 'Its glow shows what it did last time.'],
+            analogy: 'Loops jump back every time except the last.',
+        },
+        {
+            title: 'YOUR SCORE',
+            diagram: 'speedup4',
+            lines: ['Each right guess on a taken branch', 'saves the cycle a flush would cost.'],
+            analogy: 'Results show how many guesses you got right.',
+        },
+    ],
+};
 export const LESSONS = {
     [TIER1_LESSON.id]: TIER1_LESSON,
     [TIER2_LESSON.id]: TIER2_LESSON,
     [TIER3_LESSON.id]: TIER3_LESSON,
+    [TIER4_LESSON.id]: TIER4_LESSON,
 };
 //# sourceMappingURL=lessons.js.map

@@ -79,7 +79,15 @@ export class PipelineRun {
         }
         const outcome = judgment === 'MISS' ? 'off-beat' : (evaluate(this.pipeline, action) ?? 'missed');
         this.pending = { slot, action, outcome, judgment, hazard: this.pipeline.hazard(), waited };
+        this.applyGuess(action, outcome);
         return this.pending;
+    }
+    /** A branch routed with a guess fetches down the guessed path right away. */
+    applyGuess(action, outcome) {
+        if (action?.kind !== 'route' || action.guessTaken === undefined)
+            return;
+        if (outcome === 'issued' || outcome === 'violation')
+            this.pipeline.predict(action.guessTaken);
     }
     /** Sets this cycle's decision directly (replaying a recorded run). */
     force(action, outcome, judgment) {
@@ -87,6 +95,7 @@ export class PipelineRun {
         if (!slot || this.done)
             return null;
         this.pending = { slot, action, outcome, judgment, hazard: this.pipeline.hazard(), waited: this.waitingSeq === slot.seq };
+        this.applyGuess(action, outcome);
         return this.pending;
     }
     /** Call every frame: advances the pipeline for each cycle whose window has closed. */

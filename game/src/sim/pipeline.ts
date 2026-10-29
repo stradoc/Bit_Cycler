@@ -57,6 +57,8 @@ export type CycleResult = {
   readonly flushed: readonly Slot[];
   /** Instruction that reached WB this cycle. */
   readonly committed?: Slot;
+  /** A branch was decided this cycle: was the guess about it wrong? */
+  readonly mispredicted?: boolean;
 };
 
 /**
@@ -94,6 +96,13 @@ export class Pipeline {
   stalls = 0;
   /** Instructions thrown away by flushes. */
   flushed = 0;
+  /** Branches decided, and how many of them were guessed wrong. */
+  branches = 0;
+  mispredicted = 0;
+  /** What each branch (by pc) did each time it was decided, oldest first: true = taken. */
+  readonly history = new Map<number, boolean[]>();
+  /** The guess made for the branch in ID, if any (otherwise it's guessed not taken). */
+  private prediction: { seq: number; taken: boolean } | null = null;
   private fetchPc = 0;
   private nextSeq = 0;
 
@@ -135,6 +144,44 @@ export class Pipeline {
       }
     }
     return worst;
+  }
+
+  /**
+   * The hint shown on a branch: what it did last time it was decided (what a
+   * 1-bit predictor remembers). Before any history, a branch jumping backward
+   * is probably a loop, so it suggests taken. Undefined if `pc` isn't a branch.
+   */
+  hint(pc: number): { taken: boolean; seen: boolean } | undefined {
+    const instr = this.cpu.program.instructions[pc];
+    if (!instr || !('target' in instr)) return undefined;
+    const last = this.history.get(pc)?.at(-1);
+    return last === undefined ? { taken: instr.target <= pc, seen: false } : { taken: last, seen: true };
+  }
+
+  /** Whether the branch in ID will be taken (undefined if ID holds no branch). */
+  branchOutcome(): boolean | undefined {
+    const instr = this.stages.ID?.instr;
+    if (!instr || (instr.op !== 'beq' && instr.op !== 'bne')) return undefined;
+    // Older instructions have all executed already, so the CPU's registers hold the values it compares.
+    const equal = this.cpu.regs[instr.rs1] === this.cpu.regs[instr.rs2];
+    return instr.op === 'beq' ? equal : !equal;
+  }
+
+  /**
+   * Guess the branch in ID. The next instruction is fetched in this same cycle,
+   * so a "taken" guess fetches from the branch target instead of the next line.
+   * Without a guess, fetch assumes not taken.
+   */
+  predict(taken: boolean): void {
+    const branch = this.stages.ID;
+    if (!branch || this.branchOutcome() === undefined || this.prediction?.seq === branch.seq) return;
+    this.prediction = { seq: branch.seq, taken };
+    if (!taken || (branch.instr.op !== 'beq' && branch.instr.op !== 'bne')) return;
+    const target = branch.instr.target;
+    const instr = this.cpu.program.instructions[target];
+    // Redirect fetch: the slot behind the branch now holds the target instruction.
+    this.stages.IF = { seq: this.stages.IF?.seq ?? this.nextSeq++, pc: target, instr };
+    this.fetchPc = target + 1;
   }
 
   /**
@@ -186,6 +233,7 @@ export class Pipeline {
     const flushed: Slot[] = [];
     let event: CycleEvent;
     let nextEX: Slot | null = null; // a bubble unless something issues
+    let mispredicted: boolean | undefined;
     let nextID: Slot | null;
     let nextIF: Slot | null;
 
@@ -220,10 +268,19 @@ export class Pipeline {
         const issued = this.issue(ID);
         event = { kind: 'issued', slot: issued };
         nextEX = issued;
-        if (issued.step?.taken) {
-          // Fetch assumed not-taken; the instruction fetched behind the branch is wrong.
+        const taken = issued.step?.taken;
+        if (taken !== undefined) {
+          // A branch is decided here. Fetch followed the guess (not taken unless predicted).
+          const guessedTaken = this.prediction?.seq === issued.seq ? this.prediction.taken : false;
+          mispredicted = guessedTaken !== taken;
+          this.branches++;
+          if (mispredicted) this.mispredicted++;
+          this.history.set(issued.pc, [...(this.history.get(issued.pc) ?? []), taken]);
+        }
+        if (mispredicted) {
+          // The instruction fetched behind the branch is on the wrong path.
           if (IF) flushed.push(IF);
-          this.fetchPc = this.cpu.pc;
+          this.fetchPc = taken ? this.cpu.pc : issued.pc + 1;
           nextID = null;
           nextIF = this.fetch();
         } else {
@@ -237,8 +294,9 @@ export class Pipeline {
     if (committed) this.commit(committed);
     this.flushed += flushed.length;
     this.stages = { IF: nextIF, ID: nextID, EX: nextEX, MEM: EX, WB: MEM };
+    if (this.prediction && this.prediction.seq !== nextID?.seq) this.prediction = null;
     this.cycle++;
-    return { event, flushed, committed };
+    return { event, flushed, committed, mispredicted };
   }
 
   private fetch(): Slot | null {
@@ -261,9 +319,17 @@ export class Pipeline {
   }
 }
 
-/** Cycles a perfectly played run takes (stalling exactly when needed); for comparisons. */
-export function perfectCycles(cpu: Cpu, options: PipelineOptions): number {
+/**
+ * Cycles a perfectly played run takes (stalling exactly when needed); for
+ * comparisons. Branches are guessed not taken, or always right with 'perfect'.
+ */
+export function perfectCycles(cpu: Cpu, options: PipelineOptions, guesses: 'not-taken' | 'perfect' = 'not-taken'): number {
   const pipeline = new Pipeline(cpu.clone(), options);
-  while (!pipeline.done) pipeline.step(pipeline.bestAction());
+  while (!pipeline.done) {
+    const action = pipeline.bestAction();
+    const taken = pipeline.branchOutcome();
+    if (action === 'issue' && guesses === 'perfect' && taken !== undefined) pipeline.predict(taken);
+    pipeline.step(action);
+  }
   return pipeline.cycle;
 }

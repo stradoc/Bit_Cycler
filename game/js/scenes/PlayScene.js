@@ -10,6 +10,7 @@ import { assemble } from '../sim/assembler.js';
 import { Cpu } from '../sim/cpu.js';
 import { describe, format, tokens, UNIT_ROLES, UNITS, unitOf } from '../sim/isa.js';
 import { codeLine } from '../visual/codeLine.js';
+import { panelBox } from '../visual/panelBox.js';
 import { cssColor, ERAS, TerminalLook } from '../visual/terminal.js';
 // Tier 1 clock. Clock-speed upgrades will raise it (and the tempo with it).
 const CLOCK_MHZ = 1;
@@ -168,9 +169,11 @@ export class PlayScene extends Phaser.Scene {
     }
     drawPanel(program, name) {
         const { syntax } = this.look.era;
-        let y = 16;
-        this.text(PANEL_X, y, `PROGRAM: ${name}`);
-        y += 24;
+        const boxX = PANEL_X - 8;
+        const boxW = 950 - boxX;
+        const listingLines = program.instructions.length + program.labels.size;
+        panelBox(this, boxX, 14, boxW, listingLines * LINE + 18, `PROGRAM: ${name}`, this.look.era);
+        let y = 24;
         program.instructions.forEach((instr, pc) => {
             for (const [label, target] of program.labels) {
                 if (target !== pc)
@@ -183,19 +186,19 @@ export class PlayScene extends Phaser.Scene {
             this.listing[pc] = { marker, code };
             y += LINE;
         });
+        y += 18;
+        panelBox(this, boxX, y, boxW, 4 * LINE + 20, 'REGISTERS', this.look.era);
         y += 12;
-        this.text(PANEL_X, y, 'REGISTERS');
-        y += 24;
         for (let r = 0; r < REGISTER_COUNT; r++) {
             const column = Math.floor(r / 4);
             this.regTexts.push(this.text(PANEL_X + column * 220, y + (r % 4) * LINE, '').setAlpha(0.75));
         }
-        y += 4 * LINE + 12;
-        this.text(PANEL_X, y, 'MEMORY');
-        y += 24;
+        y += 4 * LINE + 18;
+        panelBox(this, boxX, y, boxW, 2 * LINE + 20, 'MEMORY', this.look.era);
+        y += 12;
         for (let row = 0; row < 2; row++)
             this.memTexts.push(this.text(PANEL_X, y + row * LINE, '').setAlpha(0.75));
-        y += 2 * LINE + 12;
+        y += 2 * LINE + 20;
         this.statsText = this.text(PANEL_X, y, '');
         y += 28;
         this.feedback = this.text(PANEL_X, y, this.practice ? 'PRACTICE: NOTES WAIT\nFOR YOU' : 'GET READY...', 20);

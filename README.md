@@ -40,16 +40,17 @@ Add these to the URL, e.g. `http://localhost:8000/?scene=play&autoplay`:
 | `?scene=play` / `?scene=pipeline` | Skip the title and start tier 1 / tier 2 |
 | `?practice` | Start that scene in practice mode |
 | `?scene=pipeline&forwarding` | Tier 3 (pipeline with forwarding) |
+| `?scene=pipeline&forwarding&guessing` | Tier 4 (branch prediction) |
 | `?scene=briefing&lesson=tier2` | Open a lesson directly |
 | `?autoplay` | The game plays every note perfectly (demos, checking the results screen) |
 | `?era=1` … `?era=4` | Start in a given terminal era (8/16/32/64-bit look) |
 
 ## Controls
 
-Title: `Enter` play (first time on a tier: briefing → practice → play) · `T` switch tier (1 single-cycle, 2 pipeline, 3 forwarding) · `B` briefing · `P` practice · `C` calibrate (then `←/→` to line the light up with the click) · `R` relaxed mode · `1–4` era.
+Title: `Enter` play (first time on a tier: briefing → practice → play) · `T` switch tier (1 single-cycle, 2 pipeline, 3 forwarding, 4 branch prediction) · `B` briefing · `P` practice · `C` calibrate (then `←/→` to line the light up with the click) · `R` relaxed mode · `1–4` era.
 Briefing: `Enter`/`→` next · `←` back · `Q` or `Esc` title.
-Play: `D` ALU · `F` MEM · `J` BRANCH · `Space` stall (tier 2) · `Q` or `Esc` quit (Vimium swallows `Esc`, so the game also accepts `Q`) · `Enter` play again after the results.
-Replay (tiers 2–3, after every run): `←`/`→` speed (0.5×–4×) · `Space` pause / resume · click anything to learn what it is · `W` watch again from the results.
+Play: `D` ALU · `F` MEM · `J` BRANCH (tier 4: guess not taken) · `K` BRANCH, guess taken (tier 4; a branch note glows in the color of the key matching what it did last time) · `Space` stall (tiers 2–4) · `Q` or `Esc` quit (Vimium swallows `Esc`, so the game also accepts `Q`) · `Enter` play again after the results.
+Replay (tiers 2–4, after every run): `←`/`→` speed (0.5×–4×) · `Space` pause / resume · click anything to learn what it is · `W` watch again from the results.
 
 ## Layout
 

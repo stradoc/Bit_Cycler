@@ -68,4 +68,12 @@ export const GLOSSARY = {
     title: 'FORWARDING',
     body: 'With forwarding, a result leaving EXECUTE or MEMORY is handed straight to the next instruction instead of waiting for WRITE BACK.',
   },
+  PREDICTION: {
+    title: 'BRANCH PREDICTION',
+    body: 'The next instruction is fetched while a branch is still being decided, so the CPU guesses: right costs nothing, wrong flushes one instruction.',
+  },
+  HISTORY: {
+    title: 'BRANCH HISTORY',
+    body: 'What this branch did each time: T = taken (jumped back), N = not taken. Real CPUs remember this; guessing whatever it did last time is a 1-bit predictor.',
+  },
 } as const satisfies Record<string, Entry>;
