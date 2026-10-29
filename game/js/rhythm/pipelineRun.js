@@ -36,8 +36,8 @@ export class PipelineRun {
     waitingSeq = null;
     /** Recent cycles: 1 if an instruction completed (reached WB), else 0. */
     completions = [];
-    constructor(cpu, forwarding, firstBeat, secondsPerBeat, windows) {
-        this.pipeline = new Pipeline(cpu, { forwarding });
+    constructor(cpu, options, firstBeat, secondsPerBeat, windows) {
+        this.pipeline = new Pipeline(cpu, options);
         this.firstBeat = firstBeat;
         this.secondsPerBeat = secondsPerBeat;
         this.windows = windows;

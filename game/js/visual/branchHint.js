@@ -4,12 +4,12 @@ export function hintColor(era, taken) {
 }
 /**
  * A branch note's hint, centered on (0, 0) around a `width` x `height` note: a
- * glowing ring in the color of what the branch did last time, and a badge on
+ * glowing ring in the color of its guess (the key that makes that guess), a badge on
  * its top-right corner (a loop arrow for taken, a down arrow for not taken) so
- * the hint never relies on color alone. Dimmer when the branch has no history
- * yet and the hint is only a guess from its shape.
+ * the hint never relies on color alone. Dimmer when the hint isn't sure: no
+ * history yet (tier 4), or a 2-bit predictor in a weak state.
  */
-export function branchHint(scene, width, height, taken, seen, era) {
+export function branchHint(scene, width, height, taken, sure, era) {
     const color = hintColor(era, taken);
     const halo = scene.add.rectangle(0, 0, width + 10, height + 10).setStrokeStyle(6, color, 0.22);
     const ring = scene.add.rectangle(0, 0, width + 4, height + 4).setStrokeStyle(2, color, 1);
@@ -26,6 +26,6 @@ export function branchHint(scene, width, height, taken, seen, era) {
         arrow.lineBetween(bx, by - 5, bx, by + 2);
         arrow.fillTriangle(bx, by + 6, bx - 4, by + 1, bx + 4, by + 1);
     }
-    return scene.add.container(0, 0, [halo, ring, badge, arrow]).setAlpha(seen ? 1 : 0.55);
+    return scene.add.container(0, 0, [halo, ring, badge, arrow]).setAlpha(sure ? 1 : 0.55);
 }
 //# sourceMappingURL=branchHint.js.map

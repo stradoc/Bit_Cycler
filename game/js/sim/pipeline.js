@@ -6,6 +6,8 @@ import { destReg, sourceRegs } from './isa.js';
 // second half, so an instruction in ID can read a value written by WB that
 // same cycle. The player acts at ID: issue the instruction, or stall.
 export const STAGES = ['IF', 'ID', 'EX', 'MEM', 'WB'];
+const INITIAL_COUNTER = { '1-bit': 0, '2-bit': 1 };
+const isBranch = (instr) => instr?.op === 'beq' || instr?.op === 'bne';
 /**
  * Bubbles needed between a producer and a consumer that is `distance`
  * instructions behind it (1 = producer now in EX, 2 = in MEM).
@@ -42,6 +44,15 @@ export class Pipeline {
     mispredicted = 0;
     /** What each branch (by pc) did each time it was decided, oldest first: true = taken. */
     history = new Map();
+    /** With a predictor: branches it guessed wrong, whatever the player did. */
+    predictorMisses = 0;
+    /** With a predictor: branches the player guessed differently from it, and how many of those were right. */
+    overrides = 0;
+    overridesRight = 0;
+    /** The predictor table: a counter per branch pc. */
+    counters = new Map();
+    /** The predictor's guess that fetch followed, for each fetched branch (by seq). */
+    fetchGuesses = new Map();
     /** The guess made for the branch in ID, if any (otherwise it's guessed not taken). */
     prediction = null;
     fetchPc = 0;
@@ -97,42 +108,62 @@ export class Pipeline {
         const last = this.history.get(pc)?.at(-1);
         return last === undefined ? { taken: instr.target <= pc, seen: false } : { taken: last, seen: true };
     }
+    /** The predictor's table entry for the branch at `pc` (1-bit: 0-1, 2-bit: 0-3); undefined without a predictor. */
+    predictorState(pc) {
+        const kind = this.options.predictor;
+        if (!kind || !isBranch(this.cpu.program.instructions[pc]))
+            return undefined;
+        return this.counters.get(pc) ?? INITIAL_COUNTER[kind];
+    }
+    /** What the predictor guesses right now for the branch at `pc`. */
+    predictorGuess(pc) {
+        const state = this.predictorState(pc);
+        if (state === undefined)
+            return undefined;
+        return this.options.predictor === '1-bit' ? { taken: state === 1, sure: true } : { taken: state >= 2, sure: state === 0 || state === 3 };
+    }
+    /** The predictor's guess for a slot: the one fetch followed if it's been fetched, else what it would guess now. */
+    guessFor(slot) {
+        const guess = this.predictorGuess(slot.pc);
+        const fetched = this.fetchGuesses.get(slot.seq);
+        return guess && fetched !== undefined ? { ...guess, taken: fetched } : guess;
+    }
     /** Whether the branch in ID will be taken (undefined if ID holds no branch). */
     branchOutcome() {
         const instr = this.stages.ID?.instr;
-        if (!instr || (instr.op !== 'beq' && instr.op !== 'bne'))
+        if (!isBranch(instr))
             return undefined;
         // Older instructions have all executed already, so the CPU's registers hold the values it compares.
         const equal = this.cpu.regs[instr.rs1] === this.cpu.regs[instr.rs2];
         return instr.op === 'beq' ? equal : !equal;
     }
     /**
-     * Guess the branch in ID. The next instruction is fetched in this same cycle,
-     * so a "taken" guess fetches from the branch target instead of the next line.
-     * Without a guess, fetch assumes not taken.
+     * The player's guess for the branch in ID. The next instruction is fetched in
+     * this same cycle, so a "taken" guess fetches from the branch target instead
+     * of the next line. Without a guess, fetch follows the predictor (or assumes
+     * not taken without one); guessing the other way overrides it.
      */
     predict(taken) {
         const branch = this.stages.ID;
-        if (!branch || this.branchOutcome() === undefined || this.prediction?.seq === branch.seq)
+        if (!branch || !isBranch(branch.instr) || this.prediction?.seq === branch.seq)
             return;
         this.prediction = { seq: branch.seq, taken };
-        if (!taken || (branch.instr.op !== 'beq' && branch.instr.op !== 'bne'))
+        if (taken === (this.fetchGuesses.get(branch.seq) ?? false))
             return;
-        const target = branch.instr.target;
-        const instr = this.cpu.program.instructions[target];
-        // Redirect fetch: the slot behind the branch now holds the target instruction.
-        this.stages.IF = { seq: this.stages.IF?.seq ?? this.nextSeq++, pc: target, instr };
-        this.fetchPc = target + 1;
+        // Redirect fetch: the slot behind the branch now holds the other path's instruction.
+        this.fetchPc = taken ? branch.instr.target : branch.pc + 1;
+        this.stages.IF = this.fetch(this.stages.IF?.seq);
     }
     /**
-     * The next `count` instructions fetch will bring in, assuming no branch is
-     * taken. Their seq numbers are the ones they'll get when fetched.
+     * The next `count` instructions fetch will bring in, following the
+     * predictor's current guesses (not taken without one). Their seq numbers are
+     * the ones they'll get when fetched.
      */
     upcoming(count) {
         const program = this.cpu.program.instructions;
         const slots = [];
-        for (let i = 0; i < count && this.fetchPc + i < program.length; i++) {
-            slots.push({ seq: this.nextSeq + i, pc: this.fetchPc + i, instr: program[this.fetchPc + i] });
+        for (let pc = this.fetchPc, i = 0; i < count && pc < program.length; i++, pc = this.nextFetch(pc)) {
+            slots.push({ seq: this.nextSeq + i, pc, instr: program[pc] });
         }
         return slots;
     }
@@ -174,6 +205,7 @@ export class Pipeline {
         let event;
         let nextEX = null; // a bubble unless something issues
         let mispredicted;
+        let predicted;
         let nextID;
         let nextIF;
         if (!ID) {
@@ -213,13 +245,25 @@ export class Pipeline {
                 nextEX = issued;
                 const taken = issued.step?.taken;
                 if (taken !== undefined) {
-                    // A branch is decided here. Fetch followed the guess (not taken unless predicted).
-                    const guessedTaken = this.prediction?.seq === issued.seq ? this.prediction.taken : false;
+                    // A branch is decided here. Fetch followed the guess: the player's, else the predictor's, else not taken.
+                    predicted = this.fetchGuesses.get(issued.seq);
+                    this.fetchGuesses.delete(issued.seq);
+                    const guessedTaken = this.prediction?.seq === issued.seq ? this.prediction.taken : (predicted ?? false);
                     mispredicted = guessedTaken !== taken;
                     this.branches++;
                     if (mispredicted)
                         this.mispredicted++;
                     this.history.set(issued.pc, [...(this.history.get(issued.pc) ?? []), taken]);
+                    if (predicted !== undefined) {
+                        if (predicted !== taken)
+                            this.predictorMisses++;
+                        if (guessedTaken !== predicted) {
+                            this.overrides++;
+                            if (!mispredicted)
+                                this.overridesRight++;
+                        }
+                        this.train(issued.pc, taken);
+                    }
                 }
                 if (mispredicted) {
                     // The instruction fetched behind the branch is on the wrong path.
@@ -243,13 +287,30 @@ export class Pipeline {
         if (this.prediction && this.prediction.seq !== nextID?.seq)
             this.prediction = null;
         this.cycle++;
-        return { event, flushed, committed, mispredicted };
+        return { event, flushed, committed, mispredicted, predicted };
     }
-    fetch() {
+    /** Fetches the instruction at fetchPc (as `seq` when refetching a slot) and moves fetch on, following the predictor. */
+    fetch(seq) {
         if (this.fetchPc >= this.cpu.program.instructions.length)
             return null;
-        const pc = this.fetchPc++;
-        return { seq: this.nextSeq++, pc, instr: this.cpu.program.instructions[pc] };
+        const pc = this.fetchPc;
+        const slot = { seq: seq ?? this.nextSeq++, pc, instr: this.cpu.program.instructions[pc] };
+        const guess = this.predictorGuess(pc);
+        if (guess)
+            this.fetchGuesses.set(slot.seq, guess.taken);
+        this.fetchPc = this.nextFetch(pc);
+        return slot;
+    }
+    /** Where fetch goes after `pc`: a branch's target if the predictor guesses taken, else the next line. */
+    nextFetch(pc) {
+        const instr = this.cpu.program.instructions[pc];
+        return isBranch(instr) && this.predictorGuess(pc)?.taken ? instr.target : pc + 1;
+    }
+    /** Updates the predictor's entry for a decided branch. */
+    train(pc, taken) {
+        const state = this.predictorState(pc) ?? 0;
+        const max = this.options.predictor === '1-bit' ? 1 : 3;
+        this.counters.set(pc, Math.max(0, Math.min(max, state + (taken ? 1 : -1))));
     }
     issue(slot) {
         if (this.cpu.pc !== slot.pc)
@@ -266,10 +327,11 @@ export class Pipeline {
     }
 }
 /**
- * Cycles a perfectly played run takes (stalling exactly when needed); for
- * comparisons. Branches are guessed not taken, or always right with 'perfect'.
+ * A perfectly played run (stalling exactly when needed), for comparisons.
+ * Branches follow the hardware ('hardware': the predictor, or not taken
+ * without one), or are always guessed right ('perfect').
  */
-export function perfectCycles(cpu, options, guesses = 'not-taken') {
+export function perfectRun(cpu, options, guesses = 'hardware') {
     const pipeline = new Pipeline(cpu.clone(), options);
     while (!pipeline.done) {
         const action = pipeline.bestAction();
@@ -278,6 +340,10 @@ export function perfectCycles(cpu, options, guesses = 'not-taken') {
             pipeline.predict(taken);
         pipeline.step(action);
     }
-    return pipeline.cycle;
+    return pipeline;
+}
+/** Cycles a perfectly played run takes; see perfectRun(). */
+export function perfectCycles(cpu, options, guesses = 'hardware') {
+    return perfectRun(cpu, options, guesses).cycle;
 }
 //# sourceMappingURL=pipeline.js.map

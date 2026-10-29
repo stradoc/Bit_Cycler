@@ -48,7 +48,7 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 - [x] 5-stage pipeline model (IF, ID, EX, MEM, WB)
 - [x] RAW hazard detection and stall (bubble insertion)
 - [x] Forwarding unit (simulator option; still needs the upgrade in the shop)
-- [ ] Branch handling: flush on mispredict (done: taken-branch flush with fetch assuming not-taken); predictors none → 1-bit → 2-bit
+- [x] Branch handling: flush on mispredict; predictors none (tiers 2-3) → player guesses (tier 4) → 1-bit (tier 5) → 2-bit (tier 6)
 - [ ] L1 cache: hit/miss model with miss penalty
 - [ ] Word size: multi-chunk add-with-carry chains on narrow CPUs
 - [ ] Performance tracking: instruction count, cycles, CPI, clock period, CPU time
@@ -76,6 +76,7 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 - [ ] Contract board: 3 offers with instruction mix, dataset size, access pattern, deadline, pay
 - [ ] Pay formula: base × speed bonus × accuracy bonus
 - [ ] Shop: CPU tiers 1–3, forwarding, predictor, clock, cooling, cache, RAM, HDD
+- [ ] **Debt deadline (after the shop; proposed 2026-10-28):** pay off a debt before an in-game deadline. Each contract costs game time = its CPU time (instructions × CPI × period), where the song is a sample of a much bigger job and your song CPI applies to the rest. The board shows each contract's estimate at your current CPU ("317 years" at 1 MHz → days late game; keep the numbers real, roughly a 10^4–10^5× total speedup). Clock upgrades shorten the time but **don't change the tempo; only overclocking does** (replaces the tempo-follows-clock rule above). Open: what missing the deadline does; fixed tempo per tier or a small step per tier
 - [ ] Results screen: instructions, cycles, CPI, clock period, CPU time, pay
 - [ ] All prices and balance numbers in one data file
 - [ ] Save/load progress
@@ -105,7 +106,7 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 - [x] Forwarding (tier 3): ALU→ALU needs 0 stalls, load-use needs 1; forwarded values shown jumping up a wire; results compare with/without forwarding
 - [x] Branch prediction keys (tier 4): J = guess not taken, K = guess taken; a wrong guess strikes out the fetched instruction
 - [x] Branch hint (tier 4): note glows in the color of what the branch did last time; history in the listing
-- [ ] Hardware predictors (1-bit, 2-bit) that guess for you, shown with their state; a nested-loop program where 2-bit beats 1-bit
+- [x] Hardware predictors (tiers 5-6): 1-bit and 2-bit, guessing first with the player following or overriding; nested-loop SUM GRID where 2-bit beats 1-bit (7 vs 10 misses)
 - [x] Results compare single-cycle vs pipelined CPU time (CPI up, period down, faster overall)
 - [x] Tier switch on the title screen (`T`) until the shop exists
 - [ ] Playtest tier 2 in a real browser: timing, music mix, readability

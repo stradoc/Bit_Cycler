@@ -45,9 +45,25 @@ class Sketch {
     hintText(x, y, content, taken, size = 16) {
         this.text(x, y, content, size, 1, true).setColor(cssColor(hintColor(this.era, taken)));
     }
-    /** A tier 4 branch hint (glowing ring and badge) around a w x h note at (x, y). */
-    hint(x, y, w, h, taken) {
-        this.parts.push(branchHint(this.scene, w, h, taken, true, this.era).setPosition(x, y));
+    /** A branch hint (glowing ring and badge) around a w x h note at (x, y); dimmer when not `sure`. */
+    hint(x, y, w, h, taken, sure = true) {
+        this.parts.push(branchHint(this.scene, w, h, taken, sure, this.era).setPosition(x, y));
+    }
+    /** A branch note (box, code, hint ring) as it appears in the game. */
+    branchNote(x, y, source, taken, sure = true) {
+        this.backing(x, y, 150, 26);
+        this.box(x, y, 150, 26);
+        this.code(x, y, source, 140, true);
+        this.hint(x, y, 150, 26, taken, sure);
+    }
+    /** A table of "when you see this -> the branch goes this way" rules. */
+    rules(cx, cy, rows) {
+        rows.forEach(([when, then, taken], i) => {
+            const y = cy + (i - (rows.length - 1) / 2) * 44;
+            this.text(cx - 150, y, when, 15, 0.9);
+            this.arrow(cx + 40, y, cx + 80, y);
+            this.hintText(cx + 200, y, then, taken, 15);
+        });
     }
     /** One instruction, syntax-highlighted. `source` may define its own label. */
     code(x, y, source, maxWidth, compact = false) {
@@ -366,6 +382,153 @@ const DIAGRAMS = {
         s.hintText(cx + 250, hitY - 4, 'J = NOT TAKEN', false, 20);
         s.hintText(cx + 250, hitY + 28, 'K = TAKEN', true, 20);
     },
+    // Tier 4: reading a branch instruction
+    branchread(s, cx, cy) {
+        s.box(cx, cy - 64, 260, 40, true, false);
+        s.code(cx, cy - 64, 'loop: bne x1, x2, loop');
+        s.arrow(cx - 150, cy - 10, cx - 66, cy - 50);
+        s.text(cx - 210, cy, 'Branch if Not Equal', 13, 0.8);
+        s.arrow(cx, cy - 10, cx - 4, cy - 46);
+        s.text(cx, cy, 'compare x1 with x2', 13, 0.8);
+        s.arrow(cx + 150, cy - 10, cx + 60, cy - 50);
+        s.text(cx + 210, cy, 'where to jump', 13, 0.8);
+        s.hintText(cx - 160, cy + 56, 'DIFFERENT: jump to loop:', true, 16);
+        s.text(cx - 160, cy + 80, 'TAKEN', 13, 0.7);
+        s.hintText(cx + 160, cy + 56, 'EQUAL: next line', false, 16);
+        s.text(cx + 160, cy + 80, 'NOT TAKEN', 13, 0.7);
+    },
+    // Tier 4: SUM ARRAY's loop, pass by pass, until x1 reaches x2
+    loopend(s, cx, cy) {
+        const col = (i) => cx - 60 + i * 100;
+        const rowY = [cy - 70, cy - 30, cy + 4, cy + 44];
+        ['PASS', 'x1 (after +1)', 'x2', 'bne x1, x2, loop'].forEach((label, r) => s.text(cx - 250, rowY[r], label, 14, 0.8));
+        for (let i = 0; i < 4; i++) {
+            const last = i === 3;
+            s.text(col(i), rowY[0], String(i + 1), 14, 0.8, true);
+            s.text(col(i), rowY[1], String(i + 1), 18);
+            s.text(col(i), rowY[2], '4', 18, 0.7);
+            s.hintText(col(i), rowY[3], last ? 'NOT TAKEN' : 'TAKEN', !last, 15);
+        }
+        s.box(col(3), cy - 13, 96, 140, true, false);
+        s.text(col(3), cy + 78, 'LAST PASS: x1 = x2', 13, 1, true);
+    },
+    // Tier 4: two clues for a guess: the glow (the past) and the registers (what is coming)
+    howguess(s, cx, cy) {
+        s.branchNote(cx - 200, cy - 30, 'loop: bne x1, x2, loop', true);
+        s.text(cx - 200, cy + 14, 'glow: TAKEN last time', 13, 0.8);
+        s.text(cx - 200, cy + 36, '(right on every pass but the last)', 12, 0.6);
+        s.box(cx + 170, cy - 30, 250, 64);
+        s.text(cx + 170, cy - 72, 'REGISTERS', 13, 0.7);
+        s.text(cx + 170, cy - 44, 'x1  0x03   3 <-MEM', 15);
+        s.text(cx + 170, cy - 16, 'x2  0x04   4      ', 15, 0.8);
+        s.text(cx + 170, cy + 20, 'x1 is being +1\'d: 3 + 1 = 4 = x2', 13, 0.9);
+        s.hintText(cx + 170, cy + 46, 'LAST PASS: NOT TAKEN', false, 15);
+    },
+    // Tier 5: fetch reads a table holding each branch's last outcome
+    table1(s, cx, cy) {
+        s.backing(cx - 220, cy, 150, 26);
+        s.box(cx - 220, cy, 150, 26);
+        s.code(cx - 220, cy, 'col: bne x1, x2, col', 140, true);
+        s.hint(cx - 220, cy, 150, 26, true);
+        s.text(cx - 220, cy + 44, 'glow = its guess', 13, 0.8);
+        s.arrow(cx + 2, cy, cx - 130, cy);
+        s.box(cx + 170, cy, 320, 120);
+        s.text(cx + 170, cy - 44, 'PREDICTOR: 1 BIT PER BRANCH', 13, 0.8, true);
+        s.text(cx + 120, cy - 10, 'bne ... col', 15, 0.9);
+        s.hintText(cx + 260, cy - 10, 'TAKEN', true, 15);
+        s.text(cx + 120, cy + 22, 'bne ... row', 15, 0.9);
+        s.hintText(cx + 260, cy + 22, 'NOT', false, 15);
+        s.text(cx, cy + 82, 'read at FETCH, so the guess is ready before the branch is decided', 13, 0.8);
+    },
+    // Tier 5: the predictor's guess glows; the player follows it or overrides it
+    override(s, cx, cy) {
+        s.backing(cx - 200, cy, 150, 26);
+        s.box(cx - 200, cy, 150, 26);
+        s.code(cx - 200, cy, 'col: bne x1, x2, col', 140, true);
+        s.hint(cx - 200, cy, 150, 26, true);
+        s.hintText(cx - 236, cy - 34, 'J: NOT', false, 12);
+        s.hintText(cx - 168, cy - 34, 'K: TAKEN', true, 12);
+        s.text(cx + 170, cy - 46, 'it guesses TAKEN:', 15, 0.8);
+        s.hintText(cx + 170, cy - 12, 'K = FOLLOW', true, 20);
+        s.hintText(cx + 170, cy + 22, 'J = OVERRIDE', false, 20);
+        s.text(cx, cy + 74, 'right override: BEAT THE PREDICTOR    wrong override: flushed, 1 cycle', 13, 0.8);
+    },
+    // Tier 5: SUM GRID's two loops over the grid in memory
+    grid(s, cx, cy) {
+        const values = [1, 2, 3, 4, 5, 6, 7, 8, 9, 2, 4, 6];
+        const x = (c) => cx - 250 + c * 52;
+        const y = (r) => cy - 62 + r * 36;
+        values.forEach((value, i) => {
+            const [r, c] = [Math.floor(i / 3), i % 3];
+            s.box(x(c), y(r), 44, 28, r === 0, false);
+            s.text(x(c), y(r), String(value), 16);
+        });
+        s.arrow(x(0) - 22, y(0) - 26, x(2) + 22, y(0) - 26);
+        s.arrow(x(2) + 40, y(0), x(2) + 40, y(3));
+        s.text(cx + 120, cy - 60, 'col loop: across a row', 15);
+        s.text(cx + 120, cy - 38, 'bne x1, x2, col   (x2 = end of row)', 13, 0.8);
+        s.text(cx + 120, cy + 6, 'row loop: down to the next row', 15);
+        s.text(cx + 120, cy + 28, 'bne x1, x6, row   (x6 = 12, end of grid)', 13, 0.8);
+        s.text(cx + 120, cy + 70, 'x1 = the address of the next number', 13, 0.7);
+    },
+    misses1(s, cx, cy) {
+        predictorTrace(s, cx, cy, '1-bit');
+    },
+    // Tier 6: the 2-bit counter's four states
+    counter2(s, cx, cy) {
+        const states = ['STRONG\nNOT', 'WEAK\nNOT', 'WEAK\nTAKEN', 'STRONG\nTAKEN'];
+        const x = (i) => cx + (i - 1.5) * 170;
+        states.forEach((label, i) => {
+            s.box(x(i), cy, 116, 56, i === 1, false);
+            s.hintText(x(i), cy, label, i >= 2, 15);
+            s.text(x(i), cy + 40, i === 1 ? '1 (START)' : String(i), 12, 0.6);
+        });
+        for (let i = 0; i < 3; i++) {
+            s.arrow(x(i) + 62, cy - 16, x(i + 1) - 62, cy - 16);
+            s.arrow(x(i + 1) - 62, cy + 16, x(i) + 62, cy + 16);
+        }
+        s.hintText(cx, cy - 62, 'TAKEN: one step right', true, 15);
+        s.hintText(cx, cy + 66, 'NOT TAKEN: one step left', false, 15);
+    },
+    // Tier 5: reading the registers to know when the predictor is wrong
+    when1(s, cx, cy) {
+        whenRules(s, cx, cy);
+        s.text(cx, cy + 92, 'col: the 1-bit predictor is wrong at every row end, and again at every row start', 13, 0.8);
+    },
+    misses2(s, cx, cy) {
+        predictorTrace(s, cx, cy, '2-bit');
+    },
+    // Tier 6: a sure guess glows bright, an unsure one dim
+    weak2(s, cx, cy) {
+        s.branchNote(cx - 170, cy - 20, 'col: bne x1, x2, col', true, true);
+        s.text(cx - 170, cy + 24, 'SURE: counter 3 (T)', 15);
+        s.text(cx - 170, cy + 48, 'it has been right lately', 12, 0.7);
+        s.branchNote(cx + 170, cy - 20, 'col: bne x1, x2, col', true, false);
+        s.text(cx + 170, cy + 24, 'UNSURE: counter 2 (t)', 15);
+        s.text(cx + 170, cy + 48, 'e.g. it just missed a row end', 12, 0.7);
+    },
+    // Tier 6: the one place the 2-bit predictor still misses
+    when2(s, cx, cy) {
+        whenRules(s, cx, cy);
+        s.text(cx, cy + 92, 'col: the 2-bit predictor is wrong at every row end (and once while it warms up)', 13, 0.8);
+    },
+    // Tier 6: branch misses on SUM GRID for each way of guessing
+    score2(s, cx, cy) {
+        const rows = [
+            ['ALWAYS NOT TAKEN', 11],
+            ['1-BIT PREDICTOR', 10],
+            ['2-BIT PREDICTOR', 7],
+            ['YOU, OVERRIDING EVERY ROW END', 0],
+        ];
+        s.text(cx, cy - 74, 'SUM GRID: 16 BRANCHES. EACH MISS COSTS 1 CYCLE.', 15, 0.8, true);
+        rows.forEach(([label, misses], i) => {
+            const y = cy - 34 + i * 34;
+            s.text(cx - 180, y, label, 15, 0.9);
+            if (misses > 0)
+                s.box(cx + 30 + misses * 11, y, misses * 22, 18, i === 3);
+            s.text(cx + 30 + misses * 22 + 52, y, `${misses} MISSES`, 14, 0.9);
+        });
+    },
     // Perfect guesses vs always guessing not taken
     speedup4(s, cx, cy) {
         s.box(cx, cy - 56, 640, 46, true);
@@ -375,4 +538,43 @@ const DIAGRAMS = {
         s.text(cx, cy + 74, '3 LOOP BRANCHES GUESSED RIGHT = 3 CYCLES SAVED', 16, 1, true);
     },
 };
+/**
+ * The inner branch of SUM GRID over its first two rows: what it did, what the
+ * predictor guessed, and where it missed. Runs the predictor's counter, so the
+ * chart can't disagree with the game.
+ */
+function predictorTrace(s, cx, cy, predictor) {
+    const outcomes = [true, true, false, true, true, false];
+    const max = predictor === '1-bit' ? 1 : 3;
+    let state = predictor === '1-bit' ? 0 : 1;
+    const col = (i) => cx - 110 + i * 64 + (i >= 3 ? 24 : 0);
+    const rowY = { title: cy - 82, actual: cy - 42, guess: cy - 4, state: cy + 30, miss: cy + 64 };
+    s.text(cx - 270, rowY.actual, 'IT DID', 14, 0.8);
+    s.text(cx - 270, rowY.guess, `${predictor.toUpperCase()} GUESSED`, 14, 0.8);
+    if (predictor === '2-bit')
+        s.text(cx - 270, rowY.state, 'COUNTER', 14, 0.6);
+    s.text(cx - 270, rowY.miss, 'MISS?', 14, 0.8);
+    s.text((col(0) + col(2)) / 2, rowY.title, 'ROW 1', 14, 0.8, true);
+    s.text((col(3) + col(5)) / 2, rowY.title, 'ROW 2', 14, 0.8, true);
+    s.polyline([[col(2) + 44, rowY.actual - 22], [col(2) + 44, rowY.miss + 20]]);
+    outcomes.forEach((taken, i) => {
+        const guess = predictor === '1-bit' ? state === 1 : state >= 2;
+        s.hintText(col(i), rowY.actual, taken ? 'T' : 'N', taken, 18);
+        s.hintText(col(i), rowY.guess, guess ? 'T' : 'N', guess, 18);
+        if (predictor === '2-bit')
+            s.text(col(i), rowY.state, String(state), 14, 0.6);
+        if (guess !== taken)
+            s.text(col(i), rowY.miss, 'X', 20, 1, true);
+        state = Math.max(0, Math.min(max, state + (taken ? 1 : -1)));
+    });
+}
+/** How to work out SUM GRID's branches from the registers (lessons 5 and 6). */
+function whenRules(s, cx, cy) {
+    s.rules(cx, cy - 12, [
+        ['x1 two or more below x2', 'col: TAKEN', true],
+        ['x1 one below x2 (+1 on the way)', 'col: NOT TAKEN', false],
+        ['x2 below 12 (not the last row)', 'row: TAKEN', true],
+        ['x2 is 12 (the last row)', 'row: NOT TAKEN', false],
+    ]);
+}
 //# sourceMappingURL=diagrams.js.map

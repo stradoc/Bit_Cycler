@@ -2,7 +2,8 @@ import { Conductor } from '../audio/conductor.ts';
 import { LayeredMusic } from '../audio/music.ts';
 import { blip } from '../audio/sfx.ts';
 import { GLOSSARY, type Entry } from '../data/glossary.ts';
-import { PROGRAMS, type ProgramSpec } from '../data/programs.ts';
+import { programByName, type ProgramSpec } from '../data/programs.ts';
+import type { TierOptions } from '../data/tiers.ts';
 import { keyOf, onKeyDown } from '../input/keys.ts';
 import type { Judgment } from '../rhythm/judge.ts';
 import { NORMAL_WINDOWS, RELAXED_WINDOWS } from '../rhythm/judge.ts';
@@ -19,7 +20,7 @@ import { getSettings } from '../settings.ts';
 import { assemble } from '../sim/assembler.ts';
 import { Cpu } from '../sim/cpu.ts';
 import { describe, format, tokens, UNIT_ROLES, UNITS, unitOf, type Instruction, type Program, type Unit } from '../sim/isa.ts';
-import { perfectCycles, STAGES, type Hazard, type Slot, type Stage } from '../sim/pipeline.ts';
+import { perfectCycles, STAGES, type Hazard, type Predictor, type Slot, type Stage } from '../sim/pipeline.ts';
 import { branchHint, hintColor } from '../visual/branchHint.ts';
 import { codeLine } from '../visual/codeLine.ts';
 import { panelBox } from '../visual/panelBox.ts';
@@ -69,7 +70,7 @@ type NoteBlock = {
   box: Phaser.GameObjects.Rectangle;
   label: Phaser.GameObjects.Container;
   /** Tier 4 branch notes: the hint drawn around the note (it lives in `label`, so it moves with it). */
-  hint?: { taken: boolean; seen: boolean; view: Phaser.GameObjects.Container };
+  hint?: { taken: boolean; sure: boolean; view: Phaser.GameObjects.Container };
 };
 /** Something on screen that can be hovered and clicked in a replay. */
 type Hoverable = Phaser.GameObjects.GameObject & Phaser.GameObjects.Components.GetBounds & { visible: boolean };
@@ -169,6 +170,9 @@ export class PipelineScene extends Phaser.Scene {
   private forwarding = false;
   /** Tier 4: the player guesses each branch (J not taken, K taken). */
   private guessing = false;
+  /** Tiers 5-6: a hardware predictor guesses first; the player follows or overrides it. */
+  private predictor: Predictor | undefined;
+  private programName = 'SUM ARRAY';
   /** The CPU as the program starts, for best-case comparisons on the results screen. */
   private freshCpu!: Cpu;
   private spec!: ProgramSpec;
@@ -196,9 +200,14 @@ export class PipelineScene extends Phaser.Scene {
     super('pipeline');
   }
 
-  init(data?: { practice?: boolean; watch?: readonly Recorded[]; forwarding?: boolean; guessing?: boolean }): void {
+  init(data?: TierOptions & { practice?: boolean; watch?: readonly Recorded[] }): void {
+    const params = new URLSearchParams(location.search);
     // ?guessing in the URL turns tier 4's branch guessing on (dev shortcut).
-    this.guessing = data?.guessing ?? new URLSearchParams(location.search).has('guessing');
+    this.guessing = data?.guessing ?? params.has('guessing');
+    // ?predictor=1-bit or 2-bit adds tier 5-6's predictor (dev shortcut; also play SUM GRID).
+    const predictor = data?.predictor ?? params.get('predictor');
+    this.predictor = predictor === '1-bit' || predictor === '2-bit' ? predictor : undefined;
+    this.programName = data?.program ?? (this.predictor ? 'SUM GRID' : 'SUM ARRAY');
     // ?forwarding in the URL turns tier 3's forwarding on (dev shortcut).
     this.forwarding = data?.forwarding ?? new URLSearchParams(location.search).has('forwarding');
     // ?practice in the URL starts in practice mode (dev shortcut).
@@ -237,7 +246,7 @@ export class PipelineScene extends Phaser.Scene {
     }
     this.ctx = this.sound.context;
 
-    const spec = PROGRAMS[0];
+    const spec = programByName(this.programName);
     this.spec = spec;
     const easy = settings.relaxed || this.practice;
     const bpm = tempoForClock(CLOCK_MHZ, easy);
@@ -246,7 +255,7 @@ export class PipelineScene extends Phaser.Scene {
     const cpu = new Cpu(program, 8, spec.memory, REGISTER_COUNT);
     this.listing = this.buildListing(program);
     this.freshCpu = cpu.clone();
-    this.run = new PipelineRun(cpu, this.forwarding, FIRST_BEAT, 60 / bpm, easy ? RELAXED_WINDOWS : NORMAL_WINDOWS);
+    this.run = new PipelineRun(cpu, { forwarding: this.forwarding, predictor: this.predictor }, FIRST_BEAT, 60 / bpm, easy ? RELAXED_WINDOWS : NORMAL_WINDOWS);
     this.shownRegs = [...this.run.pipeline.regs];
     this.shownMemory = cpu.memory.slice();
 
@@ -463,7 +472,7 @@ export class PipelineScene extends Phaser.Scene {
       }
     }
     const issued = report.event.kind === 'issued' ? report.event.slot : undefined;
-    if (report.mispredicted !== undefined) this.showBranchResult(report.mispredicted, issued?.step?.taken ?? false);
+    if (report.mispredicted !== undefined) this.showBranchResult(report.mispredicted, issued?.step?.taken ?? false, report.predicted);
     this.syncRows();
     this.sendResults(report.committed);
     this.refreshPanel();
@@ -484,7 +493,11 @@ export class PipelineScene extends Phaser.Scene {
       this.showCallout(`HAZARD: ${slot.instr.op} needs x${hazard.reg}, but\n${this.whyNotReady(hazard)}\nPress SPACE until the link is gone.`);
     } else if (!hazard && this.guessing && this.run.pipeline.branchOutcome() !== undefined && !this.explained.has('guess')) {
       this.explained.add('guess');
-      this.showCallout('BRANCH: will it jump back to loop:?\nJ = guess NOT TAKEN, K = guess TAKEN.\nIts glow shows what it did last time.');
+      this.showCallout(
+        this.predictor
+          ? "THE PREDICTOR'S GUESS GLOWS.\nPress that key to follow it, the other\nto override (J NOT TAKEN, K TAKEN)."
+          : 'BRANCH: will it jump back to loop:?\nJ = guess NOT TAKEN, K = guess TAKEN.\nIts glow shows what it did last time.',
+      );
     } else if (!hazard && !this.explained.has('route')) {
       this.explained.add('route');
       const unit = unitOf(slot.instr);
@@ -581,6 +594,13 @@ export class PipelineScene extends Phaser.Scene {
     this.guessTag = this.add.container(0, 0, [this.guessNot, this.guessTaken]).setDepth(21).setVisible(false);
   }
 
+  private styleGuess(text: Phaser.GameObjects.Text, hinted: boolean): void {
+    const color = String(text.style.color);
+    text.setAlpha(hinted ? 1 : 0.3).setFontStyle(hinted ? 'bold' : '');
+    if (hinted) text.setShadow(0, 0, color, 8, true, true);
+    else text.setShadow(0, 0, color, 0, false, false);
+  }
+
   /** Tier 4's branch lane label, "BRANCH J/K", with each key in the color of the guess it makes. */
   private drawGuessKeys(x: number, y: number, entry: Entry): void {
     const { era } = this.look;
@@ -600,7 +620,13 @@ export class PipelineScene extends Phaser.Scene {
 
   private drawPanel(name: string): void {
     const mode = this.watching ? '   REPLAY' : '';
-    const tier = this.guessing ? 'TIER 4: BRANCH PREDICTION' : this.forwarding ? 'TIER 3: FORWARDING' : 'TIER 2: PIPELINE';
+    const tier = this.predictor
+      ? `TIER ${this.predictor === '1-bit' ? 5 : 6}: ${this.predictor.toUpperCase()} PREDICTOR`
+      : this.guessing
+        ? 'TIER 4: BRANCH PREDICTION'
+        : this.forwarding
+          ? 'TIER 3: FORWARDING'
+          : 'TIER 2: PIPELINE';
     this.text(PANEL_X, 4, `${tier}   ${name}${mode}`, 14).setAlpha(0.7);
     const { era } = this.look;
     const programTitle = panelBox(this, BOX_X, LISTING_TOP - 10, BOX_W, LISTING_ROWS * LISTING_LINE + 16, 'PROGRAM', era);
@@ -678,7 +704,8 @@ export class PipelineScene extends Phaser.Scene {
       this.listingParts.push(code.setAlpha(current ? 1 : stages.length > 0 ? 0.8 : 0.45));
       if (current) this.listingParts.push(this.text(PANEL_X + 4, y, '>', 15));
       if (stages.length > 0) this.listingParts.push(this.text(PANEL_X + 250, y, stages.join(' '), 14).setAlpha(0.8));
-      if (this.guessing) this.drawHistory(line.pc, y);
+      if (this.predictor) this.drawPredictorState(line.pc, y);
+      else if (this.guessing) this.drawHistory(line.pc, y);
     });
     // Hint that the program continues beyond the window.
     if (start > 0) this.listingParts.push(this.text(PANEL_X + 380, LISTING_TOP, '^', 14).setAlpha(0.6));
@@ -693,6 +720,22 @@ export class PipelineScene extends Phaser.Scene {
     outcomes.forEach((taken, i) => {
       const letter = this.text(PANEL_X + 192 + i * 14, y, taken ? 'T' : 'N', 14).setColor(cssColor(hintColor(this.look.era, taken)));
       this.listingParts.push(this.clickable(letter, () => GLOSSARY.HISTORY));
+    });
+  }
+
+  /**
+   * Tiers 5-6: after a branch in the listing, its predictor entry: N T (1-bit)
+   * or N n t T (2-bit: strong and weak), with the current state lit.
+   */
+  private drawPredictorState(pc: number, y: number): void {
+    const state = this.run.pipeline.predictorState(pc);
+    if (state === undefined) return;
+    const cells = this.predictor === '1-bit' ? ['N', 'T'] : ['N', 'n', 't', 'T'];
+    cells.forEach((cell, i) => {
+      const taken = i >= cells.length / 2;
+      const text = this.text(PANEL_X + 192 + i * 14, y, cell, 14).setColor(cssColor(hintColor(this.look.era, taken)));
+      text.setAlpha(i === state ? 1 : 0.25).setFontStyle(i === state ? 'bold' : '');
+      this.listingParts.push(this.clickable(text, () => this.predictorEntry(pc)));
     });
   }
 
@@ -962,11 +1005,12 @@ export class PipelineScene extends Phaser.Scene {
       this.hazardTag.setVisible(false);
       this.guessTag.setVisible(Boolean(asking));
       if (asking) {
-        // Above the hint's badge; the guess the hint suggests is the brighter one.
+        // Above the hint's badge. The hinted guess (the predictor's, on tiers 5-6) glows;
+        // the other one (an override) is dim.
         this.guessTag.setPosition(waiting.box.x, waiting.box.y - NOTE_H / 2 - 20);
         const hinted = waiting.hint?.taken;
-        this.guessNot.setAlpha(hinted === false ? 1 : 0.55);
-        this.guessTaken.setAlpha(hinted === true ? 1 : 0.55);
+        this.styleGuess(this.guessNot, hinted === false);
+        this.styleGuess(this.guessTaken, hinted === true);
       }
       waiting?.box.setStrokeStyle(1, fg, 0.6);
       return;
@@ -996,17 +1040,24 @@ export class PipelineScene extends Phaser.Scene {
   }
 
   /**
-   * Tier 4: rings a branch note in the color of what it did last time. Redrawn
-   * when that changes, e.g. the next round's branch is on screen when this one is decided.
+   * Rings a branch note in the color of its hint. Tier 4: what it did last time.
+   * Tiers 5-6: the predictor's guess. Redrawn when that changes, e.g. the next
+   * round's branch is on screen when this one is decided.
    */
   private syncHint(view: NoteBlock, slot: Slot): void {
-    if (!this.guessing) return;
-    const hint = this.run.pipeline.hint(slot.pc);
-    if (!hint || (view.hint?.taken === hint.taken && view.hint.seen === hint.seen)) return;
+    const hint = this.hintFor(slot);
+    if (!hint || (view.hint?.taken === hint.taken && view.hint.sure === hint.sure)) return;
     view.hint?.view.destroy();
-    const ring = branchHint(this, NOTE_W, NOTE_H, hint.taken, hint.seen, this.look.era);
+    const ring = branchHint(this, NOTE_W, NOTE_H, hint.taken, hint.sure, this.look.era);
     view.label.add(ring);
     view.hint = { ...hint, view: ring };
+  }
+
+  private hintFor(slot: Slot): { taken: boolean; sure: boolean } | undefined {
+    if (this.predictor) return this.run.pipeline.guessFor(slot);
+    if (!this.guessing) return undefined;
+    const hint = this.run.pipeline.hint(slot.pc);
+    return hint && { taken: hint.taken, sure: hint.seen };
   }
 
   private createNote(key: string, slot: Slot, due: number): NoteView {
@@ -1171,14 +1222,33 @@ export class PipelineScene extends Phaser.Scene {
   private noteEntry(slot: Slot): Entry {
     const stage = this.run.pipeline.stageOf(slot.seq);
     const where = stage ? `Now in ${STAGE_NAMES[stage]} (${stage}).` : 'Coming up: it will be fetched soon.';
-    const hint = this.guessing ? this.run.pipeline.hint(slot.pc) : undefined;
     const guess = (taken: boolean) => (taken ? 'TAKEN (K)' : 'NOT TAKEN (J)');
+    const predicted = this.predictor ? this.run.pipeline.guessFor(slot) : undefined;
+    if (predicted) {
+      const sure = predicted.sure ? '' : ', but it is unsure (weak)';
+      return {
+        title: format(slot.instr),
+        body: `${describe(slot.instr)}. ${where} Its glow: the predictor guesses ${guess(predicted.taken)}${sure}.`,
+      };
+    }
+    const hint = this.guessing ? this.run.pipeline.hint(slot.pc) : undefined;
     const glow = !hint
       ? ''
       : hint.seen
         ? ` Its glow: last time it was ${guess(hint.taken)}.`
         : ` No history yet: it jumps backward, so it's probably a loop: ${guess(hint.taken)}.`;
     return { title: format(slot.instr), body: `${describe(slot.instr)}. ${where}${glow}` };
+  }
+
+  private predictorEntry(pc: number): Entry {
+    const state = this.run.pipeline.predictorState(pc) ?? 0;
+    const history = (this.run.pipeline.history.get(pc) ?? []).slice(-6).map((taken) => (taken ? 'T' : 'N')).join(' ');
+    const names = this.predictor === '1-bit' ? ['NOT TAKEN', 'TAKEN'] : ['STRONG NOT TAKEN', 'WEAK NOT TAKEN', 'WEAK TAKEN', 'STRONG TAKEN'];
+    const entry = this.predictor === '1-bit' ? GLOSSARY.PREDICTOR_1BIT : GLOSSARY.PREDICTOR_2BIT;
+    return {
+      title: `${entry.title}: ${names[state]}`,
+      body: `${entry.body} So far this branch went: ${history || 'nothing yet'}.`,
+    };
   }
 
   private registerEntry(r: number): Entry {
@@ -1196,16 +1266,27 @@ export class PipelineScene extends Phaser.Scene {
   // ---- results ----
 
   /** The tier's hardware, passed on when the scene restarts (retry, replay). */
-  private hardware(): { forwarding: boolean; guessing: boolean } {
-    return { forwarding: this.forwarding, guessing: this.guessing };
+  private hardware(): TierOptions {
+    return { forwarding: this.forwarding, guessing: this.guessing, predictor: this.predictor, program: this.programName };
   }
 
-  /** What this tier added, and the best a CPU without it could do (tier 3: forwarding, tier 4: guessing). */
+  /**
+   * What this tier added, and the best a CPU without it could do (tier 3:
+   * forwarding, tier 4: guessing, tiers 5-6: overriding the predictor).
+   */
   private baseline(): { label: string; cycles: number; saved: string; slower: string } | undefined {
+    if (this.predictor) {
+      return {
+        label: 'PREDICTOR ALONE:',
+        cycles: perfectCycles(this.freshCpu, { forwarding: true, predictor: this.predictor }, 'hardware'),
+        saved: 'CYCLES VS. JUST FOLLOWING THE PREDICTOR',
+        slower: 'NO BETTER THAN JUST FOLLOWING THE PREDICTOR',
+      };
+    }
     if (this.guessing) {
       return {
-        label: 'ALWAYS NOT TAKEN:   ',
-        cycles: perfectCycles(this.freshCpu, { forwarding: true }, 'not-taken'),
+        label: 'ALWAYS NOT TAKEN:',
+        cycles: perfectCycles(this.freshCpu, { forwarding: true }, 'hardware'),
         saved: 'CYCLES VS. ALWAYS GUESSING NOT TAKEN',
         slower: 'NO BETTER THAN ALWAYS GUESSING NOT TAKEN',
       };
@@ -1221,8 +1302,12 @@ export class PipelineScene extends Phaser.Scene {
     return undefined;
   }
 
-  /** Tier 4 feedback when a branch is decided; tiers 2-3 always guess "not taken". */
-  private showBranchResult(mispredicted: boolean, taken: boolean): void {
+  /** Feedback when a branch is decided; tiers 2-3 always guess "not taken". */
+  private showBranchResult(mispredicted: boolean, taken: boolean, predicted: boolean | undefined): void {
+    if (predicted !== undefined) {
+      this.showPredictorResult(mispredicted, taken, predicted);
+      return;
+    }
     if (!this.guessing) {
       if (!mispredicted) return;
       this.feedback.setText('BRANCH TAKEN:\nWRONG NEXT INSTRUCTION FLUSHED');
@@ -1243,14 +1328,42 @@ export class PipelineScene extends Phaser.Scene {
     }
   }
 
+  /** Tiers 5-6: did the player follow the predictor or override it, and how did that turn out? */
+  private showPredictorResult(mispredicted: boolean, taken: boolean, predicted: boolean): void {
+    const overrode = (mispredicted ? !taken : taken) !== predicted;
+    const direction = taken ? 'TAKEN' : 'NOT TAKEN';
+    this.feedback.setText(
+      overrode
+        ? mispredicted
+          ? 'BAD OVERRIDE:\nNEXT INSTRUCTION FLUSHED'
+          : 'OVERRIDE! YOU BEAT\nTHE PREDICTOR'
+        : mispredicted
+          ? 'PREDICTOR MISSED:\nNEXT INSTRUCTION FLUSHED'
+          : `PREDICTOR RIGHT: ${direction}\nNO CYCLE LOST`,
+    );
+    if (!this.practice) return;
+    if (overrode && !mispredicted && !this.explained.has('beat')) {
+      this.explained.add('beat');
+      this.showCallout('YOU BEAT THE PREDICTOR!\nIt would have guessed wrong here.\nNo cycle lost.');
+    } else if (!overrode && mispredicted && !this.explained.has('predictor-miss')) {
+      this.explained.add('predictor-miss');
+      this.showCallout(
+        this.predictor === '1-bit'
+          ? 'PREDICTOR MISSED: it guessed what the\nbranch did last time. Watch x1 reach\nx2 to see a row end, then override.'
+          : 'PREDICTOR MISSED: a row ended. That\nonly weakens its counter. Watch x1\nreach x2 to see it coming, then override.',
+      );
+    }
+  }
+
   /** CPU-time lines: this run, the tier's baseline (tiers 3-4), and single-cycle. */
   private timeLines(pipelined: number, single: number, base: ReturnType<PipelineScene['baseline']>): string[] {
     const p = this.run.pipeline;
     const n = p.instructions;
-    const yours = this.guessing ? 'YOUR GUESSES:        ' : this.forwarding ? 'WITH FORWARDING:     ' : 'PIPELINED (4 MHz):   ';
+    // Labels padded to the width of 'SINGLE-CYCLE (1 MHz):' so the numbers line up.
+    const yours = (this.guessing ? 'YOUR GUESSES:' : this.forwarding ? 'WITH FORWARDING:' : 'PIPELINED (4 MHz):').padEnd(21);
     const lines = [`${yours} ${n} x ${p.cpi.toFixed(2)} x 0.25 µs = ${pipelined.toFixed(1)} µs`];
     if (base) {
-      lines.push(`${base.label} ${n} x ${(base.cycles / n).toFixed(2)} x 0.25 µs = ${(base.cycles / CLOCK_MHZ).toFixed(1)} µs`);
+      lines.push(`${base.label.padEnd(21)} ${n} x ${(base.cycles / n).toFixed(2)} x 0.25 µs = ${(base.cycles / CLOCK_MHZ).toFixed(1)} µs`);
     }
     lines.push(`SINGLE-CYCLE (1 MHz): ${n} x 1.00 x 1.00 µs = ${single.toFixed(1)} µs`);
     return lines;
@@ -1307,7 +1420,14 @@ export class PipelineScene extends Phaser.Scene {
           '',
           `INSTRUCTIONS ${p.instructions}   CYCLES ${p.cycle}   CPI ${p.cpi.toFixed(2)}`,
           `STALLS ${p.stalls}   FLUSHED ${p.flushed}   BEST STREAK ${this.run.bestStreak}`,
-          ...(this.guessing ? [`BRANCH GUESSES: ${p.branches - p.mispredicted} OF ${p.branches} RIGHT`] : []),
+          ...(this.predictor
+            ? [
+                `GUESSES ${p.branches - p.mispredicted}/${p.branches} RIGHT   PREDICTOR ${p.branches - p.predictorMisses}/${p.branches}   ` +
+                  `OVERRIDES ${p.overridesRight}/${p.overrides} RIGHT`,
+              ]
+            : this.guessing
+              ? [`BRANCH GUESSES: ${p.branches - p.mispredicted} OF ${p.branches} RIGHT`]
+              : []),
           '',
           'CPU TIME = INSTRUCTIONS x CPI x CLOCK PERIOD',
           ...this.timeLines(pipelined, single, base),
@@ -1317,7 +1437,7 @@ export class PipelineScene extends Phaser.Scene {
             : `${(1 / ratio).toFixed(1)}x SLOWER: TOO MANY STALLS AND FLUSHES`,
           ...(base === undefined
             ? []
-            : [p.cycle < base.cycles ? `${this.guessing ? 'GUESSING' : 'FORWARDING'} SAVED ${base.cycles - p.cycle} ${base.saved}` : base.slower]),
+            : [p.cycle < base.cycles ? `${this.predictor ? 'OVERRIDES' : this.guessing ? 'GUESSING' : 'FORWARDING'} SAVED ${base.cycles - p.cycle} ${base.saved}` : base.slower]),
           '',
           '[ENTER] PLAY AGAIN    [W] WATCH AGAIN    [Q] TITLE',
         ];

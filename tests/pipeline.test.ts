@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { PROGRAMS } from '../game/src/data/programs.ts';
 import { assemble } from '../game/src/sim/assembler.ts';
 import { Cpu } from '../game/src/sim/cpu.ts';
-import { perfectCycles, Pipeline, stallsNeeded, type CycleResult } from '../game/src/sim/pipeline.ts';
+import { perfectCycles, perfectRun, Pipeline, stallsNeeded, type CycleResult } from '../game/src/sim/pipeline.ts';
 
 function pipeline(source: string, forwarding: boolean, memory: number[] = []): Pipeline {
   return new Pipeline(new Cpu(assemble(source), 8, memory), { forwarding });
@@ -207,7 +207,7 @@ test('a taken guess fetches the branch target straight away', () => {
 test('perfect guesses remove every branch flush from SUM ARRAY: 35 -> 32 cycles', () => {
   const spec = PROGRAMS[0];
   const cpu = new Cpu(assemble(spec.source, 8), 8, spec.memory);
-  assert.equal(perfectCycles(cpu, { forwarding: true }, 'not-taken'), 35);
+  assert.equal(perfectCycles(cpu, { forwarding: true }, 'hardware'), 35);
   assert.equal(perfectCycles(cpu, { forwarding: true }, 'perfect'), 32);
 });
 
@@ -218,4 +218,51 @@ test('branch history: the hint is what the branch did last time, or "taken" for 
   playPerfectly(p);
   assert.deepEqual(p.history.get(3), [true, false]); // loops once, then falls through
   assert.deepEqual(p.hint(3), { taken: false, seen: true });
+});
+
+test('1-bit predictor: guesses what the branch did last time, starting from not taken', () => {
+  const p = new Pipeline(new Cpu(assemble('addi x1, x0, 0\naddi x2, x0, 3\nloop: addi x1, x1, 1\nbne x1, x2, loop\nsb x1, 8(x0)'), 8, []), {
+    forwarding: true,
+    predictor: '1-bit',
+  });
+  assert.deepEqual(p.predictorGuess(3), { taken: false, sure: true });
+  assert.equal(p.predictorGuess(0), undefined); // not a branch
+  playPerfectly(p);
+  // Taken, taken, not taken: misses the first (still guessing not taken) and the exit.
+  assert.equal(p.predictorMisses, 2);
+  assert.equal(p.mispredicted, 2); // nobody overrode it
+  assert.equal(p.overrides, 0);
+  assert.equal(p.cpu.memory[8], 3);
+});
+
+test('a predictor guessing taken fetches the target; overriding it fetches the next line instead', () => {
+  const source = 'addi x1, x0, 0\naddi x2, x0, 3\nloop: addi x1, x1, 1\nbne x1, x2, loop\nsb x1, 8(x0)';
+  const p = new Pipeline(new Cpu(assemble(source), 8, []), { forwarding: true, predictor: '1-bit' });
+  // Run until the branch has been taken once, then until it's back in ID.
+  while (p.history.get(3)?.length !== 1) p.step(p.bestAction());
+  while (p.stages.ID?.pc !== 3) p.step(p.bestAction());
+  assert.equal(p.guessFor(p.stages.ID)?.taken, true);
+  assert.equal(p.stages.IF?.instr.op, 'addi'); // fetch followed the predictor to loop:
+  assert.deepEqual(p.upcoming(1).map((s) => s.pc), [3]); // and its guess again after that
+  p.predict(false); // the player overrides: not taken
+  assert.equal(p.stages.IF?.instr.op, 'sb');
+});
+
+test('SUM GRID (a loop inside a loop): the 2-bit predictor misses less than the 1-bit one', () => {
+  const spec = PROGRAMS.find((program) => program.name === 'SUM GRID');
+  assert.ok(spec);
+  const run = (predictor?: '1-bit' | '2-bit') => perfectRun(new Cpu(assemble(spec.source, 8), 8, spec.memory), { forwarding: true, predictor });
+  const [none, one, two] = [run(), run('1-bit'), run('2-bit')];
+  for (const p of [none, one, two]) {
+    assert.equal(p.cpu.memory[12], 57);
+    assert.equal(p.branches, 16); // 12 inner + 4 outer
+  }
+  // 1-bit: 2 misses per loop (the exit, then the first pass of the next run): 4 rows x 2 + outer 2.
+  assert.equal(one.predictorMisses, 10);
+  // 2-bit: one surprise only weakens it, so after the first row the inner branch misses only at its exit.
+  assert.equal(two.predictorMisses, 7);
+  assert.equal(one.cycle - two.cycle, 3);
+  assert.ok(two.cycle < one.cycle && one.cycle < none.cycle);
+  // A perfect player beats both.
+  assert.equal(perfectCycles(new Cpu(assemble(spec.source, 8), 8, spec.memory), { forwarding: true, predictor: '2-bit' }, 'perfect'), two.cycle - 7);
 });

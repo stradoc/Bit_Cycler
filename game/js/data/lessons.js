@@ -1,6 +1,3 @@
-// Briefings shown before a concept is played. Each page teaches ONE idea:
-// a picture, at most three short lines, and an everyday comparison.
-// The last page of each lesson explains how the concept plays.
 export const TIER1_LESSON = {
     id: 'tier1',
     title: 'LESSON 1: HOW A CPU RUNS A PROGRAM',
@@ -144,21 +141,39 @@ export const TIER4_LESSON = {
     options: { forwarding: true, guessing: true },
     pages: [
         {
+            title: 'WHAT A BRANCH DOES',
+            diagram: 'branchread',
+            lines: ['bne x1, x2, loop means "Branch if Not Equal":', 'if x1 and x2 are different, jump back to loop:', '(TAKEN). If they are equal, carry on (NOT TAKEN).'],
+            analogy: 'Like "keep stirring until the timer reaches zero".',
+        },
+        {
+            title: 'HOW A LOOP ENDS',
+            diagram: 'loopend',
+            lines: ['Each pass adds 1 to x1. x2 holds where to stop (4).', 'While x1 is below 4, the branch jumps back.', 'When x1 reaches 4, it is the last pass: NOT TAKEN.'],
+            analogy: 'A loop always repeats, except the very last time.',
+        },
+        {
             title: 'A FORK IN THE ROAD',
             diagram: 'fork',
-            lines: ['A branch is decided in DECODE, but the next', 'instruction is fetched in that same beat.'],
+            lines: ['The branch is decided in DECODE, but the next', 'instruction is fetched in that same beat,', 'before the CPU knows the answer.'],
             analogy: 'So the CPU has to guess which way the road goes.',
         },
         {
             title: 'GUESS RIGHT, GUESS WRONG',
             diagram: 'guess',
-            lines: ['Right guess: nothing is lost.', 'Wrong guess: the fetched instruction is flushed.'],
+            lines: ['Right guess: the next instruction is already there.', 'Wrong guess: the one fetched is thrown away', '(flushed), and the right one starts a beat late.'],
             analogy: 'Until now the CPU always guessed NOT TAKEN.',
+        },
+        {
+            title: 'HOW TO GUESS',
+            diagram: 'howguess',
+            lines: ['Usually: TAKEN. Loops repeat far more than they end.', 'Last pass: x1 is one below x2 in REGISTERS (its +1', 'is still on the way, marked <-EX or <-MEM): NOT TAKEN.'],
+            analogy: 'The glow shows what it did last time; the registers show what it will do.',
         },
         {
             title: 'HOW IT PLAYS',
             diagram: 'guessplay',
-            lines: ['Route a branch with J (guess NOT TAKEN) or K (guess TAKEN).', 'Its glow shows what it did last time.'],
+            lines: ['Route a branch with J (guess NOT TAKEN)', 'or K (guess TAKEN).', 'The bright key is the hint; the dim one goes against it.'],
             analogy: 'Loops jump back every time except the last.',
         },
         {
@@ -169,10 +184,88 @@ export const TIER4_LESSON = {
         },
     ],
 };
+export const TIER5_LESSON = {
+    id: 'tier5',
+    title: 'LESSON 5: A 1-BIT PREDICTOR',
+    scene: 'pipeline',
+    options: { forwarding: true, guessing: true, predictor: '1-bit', program: 'SUM GRID' },
+    pages: [
+        {
+            title: 'THE CPU GUESSES FOR YOU',
+            diagram: 'table1',
+            lines: ['Real CPUs guess on their own. A predictor is a small', 'table with one bit per branch: what it did last time.', 'Fetch follows that guess.'],
+            analogy: 'It does what you did on tier 4, without being asked.',
+        },
+        {
+            title: 'A LOOP INSIDE A LOOP',
+            diagram: 'grid',
+            lines: ['SUM GRID adds 4 rows of 3 numbers. The inner loop', '(col) adds one row; x2 is the end of that row. The outer', 'loop (row) moves to the next row; x6 is the end of the grid.'],
+            analogy: 'Like reading a page: across each line, then down to the next.',
+        },
+        {
+            title: 'WHERE IT MISSES',
+            diagram: 'misses1',
+            lines: ['The col branch goes TAKEN, TAKEN, NOT TAKEN on every row.', 'A 1-bit predictor misses twice per row: at the end,', 'and again on the next row, because it remembers NOT.'],
+            analogy: 'It only knows the last answer, not the pattern.',
+        },
+        {
+            title: 'FOLLOW OR OVERRIDE',
+            diagram: 'override',
+            lines: ["The predictor's guess glows bright: press it to follow.", 'The dim key overrides it. A right override saves', 'a cycle; a wrong one flushes, like any wrong guess.'],
+            analogy: 'Override only when you can see something it can\'t.',
+        },
+        {
+            title: 'WHEN TO OVERRIDE',
+            diagram: 'when1',
+            lines: ['Work out the answer from the registers, as above.', 'If the glow disagrees, press the dim key to override.', 'x1 is where you are; x2 is the end of this row.'],
+            analogy: 'The predictor only knows the past; you can read the registers.',
+        },
+    ],
+};
+export const TIER6_LESSON = {
+    id: 'tier6',
+    title: 'LESSON 6: A 2-BIT PREDICTOR',
+    scene: 'pipeline',
+    options: { forwarding: true, guessing: true, predictor: '2-bit', program: 'SUM GRID' },
+    pages: [
+        {
+            title: 'IT TAKES TWO MISSES',
+            diagram: 'counter2',
+            lines: ['A 2-bit predictor keeps a counter from 0 to 3.', 'Taken: count up. Not taken: count down.', 'At 2 or 3 it guesses TAKEN; at 0 or 1, NOT TAKEN.'],
+            analogy: 'One surprise only makes it unsure; two in a row change its mind.',
+        },
+        {
+            title: 'WHY THAT HELPS LOOPS',
+            diagram: 'misses2',
+            lines: ['At the end of a row it misses, but that only drops it', 'from 3 to 2: still TAKEN. So the next row starts', 'with the right guess: one miss per row, not two.'],
+            analogy: 'Same grid: 7 misses instead of 10.',
+        },
+        {
+            title: 'SURE OR UNSURE',
+            diagram: 'weak2',
+            lines: ['A bright glow: the predictor is sure (0 or 3).', 'A dim glow: it is unsure (1 or 2).', 'In the listing, N n t T shows the counter: capitals are sure.'],
+            analogy: 'Unsure or not, it is still only guessing from the past.',
+        },
+        {
+            title: 'WHEN TO OVERRIDE',
+            diagram: 'when2',
+            lines: ['It still misses the end of every row: when x1 is one', 'below x2 (its +1 still on the way), override with J.', 'Same rules as before; it just needs fewer overrides.'],
+            analogy: 'Beat it every row and you miss nothing.',
+        },
+        {
+            title: 'YOUR SCORE',
+            diagram: 'score2',
+            lines: ['Results compare you with the predictor on its own.', 'Every right override is a cycle it would have lost.'],
+            analogy: 'Real CPUs use bigger predictors, but they start here.',
+        },
+    ],
+};
 export const LESSONS = {
     [TIER1_LESSON.id]: TIER1_LESSON,
     [TIER2_LESSON.id]: TIER2_LESSON,
     [TIER3_LESSON.id]: TIER3_LESSON,
     [TIER4_LESSON.id]: TIER4_LESSON,
+    [TIER5_LESSON.id]: TIER5_LESSON,
+    [TIER6_LESSON.id]: TIER6_LESSON,
 };
 //# sourceMappingURL=lessons.js.map

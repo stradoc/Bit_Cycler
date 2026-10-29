@@ -73,5 +73,13 @@ export const GLOSSARY = {
         title: 'BRANCH HISTORY',
         body: 'What this branch did each time: T = taken (jumped back), N = not taken. Real CPUs remember this; guessing whatever it did last time is a 1-bit predictor.',
     },
+    PREDICTOR_1BIT: {
+        title: '1-BIT PREDICTOR',
+        body: 'One bit per branch: what it did last time. Fetch follows that guess, so a loop is guessed right until it ends.',
+    },
+    PREDICTOR_2BIT: {
+        title: '2-BIT PREDICTOR',
+        body: 'A counter per branch, 0-3: taken counts up, not taken down; 2-3 guess taken. One surprise only weakens it (N n t T).',
+    },
 };
 //# sourceMappingURL=glossary.js.map

@@ -1,6 +1,6 @@
 import type { Cpu } from '../sim/cpu.ts';
 import { unitOf, type Unit } from '../sim/isa.ts';
-import { Pipeline, type CycleResult, type Hazard, type Slot } from '../sim/pipeline.ts';
+import { Pipeline, type CycleResult, type Hazard, type PipelineOptions, type Slot } from '../sim/pipeline.ts';
 import { judge, type Judgment, type Windows } from './judge.ts';
 
 /** What the player can do with the instruction in ID. Routing a branch can carry a guess: taken or not. */
@@ -66,8 +66,8 @@ export class PipelineRun {
   /** Recent cycles: 1 if an instruction completed (reached WB), else 0. */
   private completions: number[] = [];
 
-  constructor(cpu: Cpu, forwarding: boolean, firstBeat: number, secondsPerBeat: number, windows: Windows) {
-    this.pipeline = new Pipeline(cpu, { forwarding });
+  constructor(cpu: Cpu, options: PipelineOptions, firstBeat: number, secondsPerBeat: number, windows: Windows) {
+    this.pipeline = new Pipeline(cpu, options);
     this.firstBeat = firstBeat;
     this.secondsPerBeat = secondsPerBeat;
     this.windows = windows;

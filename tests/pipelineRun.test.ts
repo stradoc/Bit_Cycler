@@ -10,7 +10,7 @@ import { unitOf } from '../game/src/sim/isa.ts';
 const SPB = 0.6;
 
 function newRun(source: string, forwarding = false, memory: readonly number[] = []): PipelineRun {
-  return new PipelineRun(new Cpu(assemble(source), 8, memory), forwarding, 3, SPB, NORMAL_WINDOWS);
+  return new PipelineRun(new Cpu(assemble(source), 8, memory), { forwarding }, 3, SPB, NORMAL_WINDOWS);
 }
 
 /** The right choice for whatever is in ID now. */
@@ -141,7 +141,7 @@ test('forcing recorded decisions replays a run exactly', () => {
 test('routing a branch with a guess: right costs nothing, wrong flushes, and replays repeat it', () => {
   const source = 'addi x1, x0, 0\naddi x2, x0, 2\nloop: addi x1, x1, 1\naddi x5, x0, 0\nbne x1, x2, loop\nsb x1, 8(x0)';
   const record: { action: Action | null; outcome: Parameters<PipelineRun['force']>[1]; judgment: 'PERFECT' | 'GOOD' | 'MISS' }[] = [];
-  const run = new PipelineRun(new Cpu(assemble(source), 8, []), true, 3, SPB, NORMAL_WINDOWS);
+  const run = new PipelineRun(new Cpu(assemble(source), 8, []), { forwarding: true }, 3, SPB, NORMAL_WINDOWS);
   while (!run.done) {
     let action = best(run);
     // Always guess TAKEN: right the first time round the loop, wrong the last.
@@ -151,7 +151,7 @@ test('routing a branch with a guess: right costs nothing, wrong flushes, and rep
   }
   assert.deepEqual([run.pipeline.branches, run.pipeline.mispredicted], [2, 1]);
 
-  const replay = new PipelineRun(new Cpu(assemble(source), 8, []), true, 3, SPB, NORMAL_WINDOWS);
+  const replay = new PipelineRun(new Cpu(assemble(source), 8, []), { forwarding: true }, 3, SPB, NORMAL_WINDOWS);
   let next = 0;
   while (!replay.done) {
     if (replay.pipeline.stages.ID) {
