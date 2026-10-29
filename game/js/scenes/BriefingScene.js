@@ -3,7 +3,8 @@ import { LESSONS, TIER1_LESSON } from '../data/lessons.js';
 import { keyOf, onKeyDown } from '../input/keys.js';
 import { getSettings, updateSettings } from '../settings.js';
 import { drawDiagram } from '../visual/diagrams.js';
-import { cssColor, ERAS, TerminalLook } from '../visual/terminal.js';
+import { cssColor, currentEra, TerminalLook } from '../visual/terminal.js';
+import { isSmooth, textBase, WIDTH } from '../visual/display.js';
 /** Paged concept cards shown before a concept is practiced and played. */
 export class BriefingScene extends Phaser.Scene {
     look;
@@ -26,9 +27,10 @@ export class BriefingScene extends Phaser.Scene {
         this.page = 0;
     }
     create() {
-        this.look = new TerminalLook(this, ERAS.at(getSettings().eraIndex) ?? ERAS[0]);
+        this.look = new TerminalLook(this, currentEra());
         this.layer = this.add.container(0, 0);
         this.render();
+        this.slideIn(0);
         playMenuMusic(this);
         this.input.on('pointerdown', () => this.next());
         onKeyDown(this, (event) => {
@@ -71,18 +73,26 @@ export class BriefingScene extends Phaser.Scene {
         uiSound(this, 'move');
         this.page = page;
         this.render();
+        this.slideIn(delta);
+    }
+    /** The modern era fades each page in, sliding from the side it came from; the retro eras just show it. */
+    slideIn(direction) {
+        if (!isSmooth())
+            return;
+        this.layer.setAlpha(0).setX(28 * direction).setY(direction === 0 ? 10 : 0);
+        this.tweens.add({ targets: this.layer, alpha: 1, x: 0, y: 0, duration: 240, ease: 'Cubic.Out' });
     }
     render() {
         this.tweens.killAll();
         this.layer.removeAll(true);
-        const { width } = this.scale;
+        const width = WIDTH;
         const cx = width / 2;
         const page = this.lesson.pages[this.page];
         const last = this.page === this.lesson.pages.length - 1;
         const text = (x, y, content, size, alpha = 1, bold = false) => {
             const t = this.add
                 .text(x, y, content, {
-                fontFamily: 'monospace',
+                ...textBase(),
                 fontSize: `${size}px`,
                 fontStyle: bold ? 'bold' : '',
                 color: cssColor(this.look.era.fg),

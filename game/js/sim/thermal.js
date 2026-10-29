@@ -128,12 +128,29 @@ export class Chip {
         this.micros += 1 / this.mhz;
         this.cycles++;
         this.settle(config.ambient + config.ratedRise * relativePower(this.clockRatio, active, config));
-        if (this.temperature >= this.throttleAt) {
-            this.halted = true;
-            this.overheats++;
-            this.maxDial = Math.max(1, Math.round((this.maxDial - config.damagePerOverheat) * 100) / 100);
-            this.setDial(this.dial);
-        }
+        this.checkOverheat();
+    }
+    /**
+     * One beat of a memory wait that stands for `cycles` cycles: they all pass
+     * (their time and their count), but the chip only takes one step toward its
+     * idle temperature, as a stall would. A long wait can't cool a hot chip down.
+     */
+    waitBeat(cycles) {
+        const { config } = this;
+        this.micros += cycles / this.mhz;
+        this.cycles += cycles;
+        this.settle(config.ambient + config.ratedRise * relativePower(this.clockRatio, false, config));
+        this.checkOverheat();
+    }
+    /** Too hot: stop the clock, and wear the chip. */
+    checkOverheat() {
+        const { config } = this;
+        if (this.temperature < this.throttleAt)
+            return;
+        this.halted = true;
+        this.overheats++;
+        this.maxDial = Math.max(1, Math.round((this.maxDial - config.damagePerOverheat) * 100) / 100);
+        this.setDial(this.dial);
     }
     /** One beat with the clock stopped: nothing runs and only leakage heats it, but the beat's time still passes. */
     coolBeat() {

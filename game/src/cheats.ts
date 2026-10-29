@@ -18,6 +18,7 @@ const HELP = `Bit Cycler cheats (type in this console):
   cheat.tier(4)         set your CPU tier (1-6): gives or removes parts
   cheat.clock(5)        clock upgrade level (0-${CLOCK.factors.length - 1})
   cheat.cooling(2)      cooler (0 stock, 1 heatsink, 2 fan)
+  cheat.cache()         own the L1 cache (false to remove)
   cheat.overclock()     own the overclocking upgrade (false to remove)
   cheat.wear(1.2)       chip's max clock after overheating (1.0-1.5)
   cheat.unlockAll()     every part, max clock, fan, overclocking, $100,000
@@ -39,7 +40,8 @@ export function installCheats(game: Phaser.Game): void {
     const tier = tierOf(p);
     return (
       `${formatMoney(p.money)} | tier ${tier.number} ${tier.name} | ${formatMhz(ratedMhz(p))} (clock level ${p.clockLevel}) | ` +
-      `${COOLING[p.cooling].name} | overclocking ${p.overclocking ? 'yes' : 'no'} | max clock ${Math.round(p.chipMaxDial * 100)}%`
+      `${COOLING[p.cooling].name} | overclocking ${p.overclocking ? 'yes' : 'no'} | L1 cache ${p.cacheLevels > 0 ? 'yes' : 'no'} | ` +
+      `max clock ${Math.round(p.chipMaxDial * 100)}%`
     );
   };
   const clampInt = (n: number, max: number) => Math.max(0, Math.min(max, Math.round(n)));
@@ -52,6 +54,7 @@ export function installCheats(game: Phaser.Game): void {
     clock: (level: number) => change((p) => ({ ...p, clockLevel: clampInt(level, CLOCK.factors.length - 1) })),
     cooling: (level: number) => change((p) => ({ ...p, cooling: clampInt(level, COOLING.length - 1) })),
     overclock: (on = true) => change((p) => ({ ...p, overclocking: on })),
+    cache: (on = true) => change((p) => ({ ...p, cacheLevels: on ? 1 : 0 })),
     wear: (maxDial: number) => change((p) => ({ ...p, chipMaxDial: Math.min(THERMAL.maxDial, Math.max(1, maxDial)) })),
     unlockAll: () =>
       change((p) => ({
@@ -59,6 +62,7 @@ export function installCheats(game: Phaser.Game): void {
         money: 100_000,
         clockLevel: CLOCK.factors.length - 1,
         cooling: COOLING.length - 1,
+        cacheLevels: 1,
         overclocking: true,
         chipMaxDial: THERMAL.maxDial,
       })),

@@ -13,7 +13,7 @@ Phases move on when ready. There are no internal due dates; the only fixed date 
 Checked against the assignment spec: everything else required is met (browser, no installs, 2.3 MB of 35 MB, relative paths, mechanics that teach, no quizzes, feedback, progression, in-game instructions). In priority order:
 
 - [ ] **Measure the learning objective** (required): % of correct hazard decisions after each contract (tier 2 vs tier 3), plus a report card. See Education below
-- [ ] **`game/README.md`** (required): the project, how it was developed, educational purpose and learning objectives, how to play, credits. Say the 8/16-bit CPUs are simplified teaching CPUs and which figures are approximate
+- [ ] **`game/README.md`** (required): the project, how it was developed, educational purpose and learning objectives, how to play, credits (JetBrains Mono, SIL Open Font License, `assets/fonts`). Say the 8/16-bit CPUs are simplified teaching CPUs and which figures are approximate
 - [ ] **`thumbnail.png`** (required): 16:9 PNG, exactly 800×450, ≤ 500 KB
 - [ ] **Every teammate commits their own work**: only students who actively contribute get credit, and all commits so far come from one account
 - [ ] **Outside playtest** (the spec asks to evaluate and refine through testing and feedback): someone new plays from the title through tier 3; fix what they trip on; tune the timing windows
@@ -61,11 +61,11 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 - [x] RAW hazard detection and stall (bubble insertion)
 - [x] Forwarding unit (simulator option; still needs the upgrade in the shop)
 - [x] Branch handling: flush on mispredict; predictors none (tiers 2-3) → player guesses (tier 4) → 1-bit (tier 5) → 2-bit (tier 6)
-- [ ] Memory wall: RAM access in fixed ns (~80, check the textbook), so cycles per access grow with the clock; an access longer than a cycle freezes the pipeline (single-cycle too)
-- [ ] L1 cache: 16 bytes, direct-mapped, 4 lines × 4 bytes, write-through + write buffer; a miss freezes the pipeline, 1-3 beats on a log scale, real cycles in the CPU-time math
-- [ ] Miss kinds for replays: first use / conflict / too small (compare with a fully associative cache of the same size)
-- [ ] Tests: hit/miss counts and miss penalties match hand-worked examples (SUM, ADD ARRAYS colliding vs not)
-- [ ] Word size: multi-chunk add-with-carry chains on narrow CPUs
+- [x] Memory wall: RAM access in fixed ns (60, textbook 50-70), so cycles per access grow with the clock; an access longer than a cycle freezes the pipeline (single-cycle too)
+- [x] L1 cache: 16 bytes, direct-mapped, 4 lines × 4 bytes, write-through + write buffer; a miss freezes the pipeline, 2 / 3 / 5 beats on a log scale (1.5x after playtest), real cycles in the CPU-time math
+- [x] Miss kinds for replays: first use / conflict / too small (compare with a fully associative cache of the same size)
+- [x] Tests: hit/miss counts and miss penalties match hand-worked examples (SUM, ADD ARRAYS colliding vs not)
+- [ ] Word size: 8 → 16 → 32 → 64-bit as its own upgrade track, the only upgrade that cuts the instruction count (CPU time = instructions x CPI x period). Contracts state their data width ("32-BIT DEPOSITS"); a narrow CPU on wide data plays a chain of chunks (RISC-V has no carry flag: `sltu` carries, so each chunk depends on the last, a chain of hazards); wider loads (`lh` / `lw` / `ld`); wider addresses reach more memory; byte jobs gain nothing. Drives the terminal era. Open: `sltu` or an invented `addc`; how 64-bit registers fit the panel. After L1, before L2 / L3 (team discussion 2026-10-29, order not yet confirmed)
 - [ ] Performance tracking: instruction count, cycles, CPI, clock period, CPU time
 - [x] Tests: CPI matches hand-calculated examples for each hazard type (pipeline; SUM ARRAY 43 / 35 cycles)
 
@@ -80,19 +80,21 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 - [x] A worn chip overheats sooner (88°C at 140% ... 65°C at 100%), so its top clock stays as risky as 150% on a new chip; worn out, even 100% overheats (underclock or repair)
 - [x] Overheating stops the clock (notes freeze, ~5-8 beats) instead of throttling to rated; the time counts in CPU time, not CPI
 - [x] Key registers (NEXT, END, GRID) tagged in the REGISTERS box and introduced in a ~4 s count-in before each song and practice
-- [ ] Cache miss in the song: load shows `MISS → RAM`, the bus carries the block to its line, a counter rolls up the real cycles; presses during the freeze are ignored
-- [ ] CACHE box in the panel (valid, tag, data per line; each lookup shown as `0000 01 10 → line 1, tag 0 → HIT`); MEMORY box grows to addresses 0-63
+- [x] Cache miss in the song: load shows `MISS → RAM`, the bus carries the request out and the data back, a counter rolls up the real cycles; presses during the freeze are ignored; drone and ticks while waiting, a click when the data arrives
+- [x] CACHE box in the panel (tag and data per line; each lookup shown as `lb 5: 0000 01 01 LINE 1 TAG 0 -> HIT`); MEMORY box grows to addresses 0-31 (0-63 would need a different layout)
 - [x] Clock dial in the song (`G` / `H`, 50–150% of the rated clock, tiers 2–6); results show average clock, peak temperature, overheats and real CPU time. Overclocking past 100% is a shop upgrade; every tier has it
 - [x] Underclocking down to 50% (slower tempo to think, more CPU time, cooler)
 - [x] **Overclock red zone:** the dial goes past the rated clock; heat builds every beat; overheating **throttles** (clock drops to rated mid-song until it cools) and **wears the chip** (maximum clock -10% until repaired). Still to do with the shop: better pay when overclocked, paid repairs, cooling upgrades that widen the safe zone
 - [x] Heat meter and thermal throttling (`sim/thermal.ts`), with fire effects building up with heat (`visual/heat.ts`)
 
 ### Memory and storage
-- [ ] Generator: data in addresses 0-63, bigger than the cache; ADD ARRAYS sometimes placed so its arrays collide in the cache
-- [ ] Contract cards show the access pattern (sequential, two arrays, grid by column ...)
-- [ ] Results: "waiting on memory" bar, hits / misses / hit rate, a "no cache" bar
-- [ ] Shop: L1 cache (a memory part, separate from the CPU tiers)
-- [ ] L2 cache, then L3 (shop upgrades; a miss checks each level; results show average memory access time)
+- [x] Generator: ADD ARRAYS puts its arrays a cache-full apart half the time (every load a conflict miss); data in addresses 0-31
+- [ ] Generator: data bigger than the cache that's read more than once (capacity misses, "too small", never happen yet)
+- [ ] **Contract cards show the access pattern** (sequential, two arrays, two arrays colliding, grid by column ...). Needed soon: a colliding ADD ARRAYS can be locked even at 4 GHz with the L1, and the card only says TOO SLOW
+- [x] Results: "waiting on RAM" bar, hits / misses / hit rate, a "no cache" bar
+- [x] Shop: L1 cache (a memory part, on sale once RAM takes over a cycle)
+- [ ] L2 cache, then L3 (shop upgrades; a miss checks each level and adds its lookup time, L2 ~5 ns, L3 ~10-15 ns, so a trip that misses everywhere grows from 60 toward ~80 ns; results show average memory access time and where the waits came from). In the song: an L2 hit is a 3-beat freeze at 4 GHz, RAM 5. Contracts need data sizes that fit L1 / fit L2 / fit L3 / stream through once, or L3 never matters; a streaming job gains almost nothing from L2 / L3 (first-use misses), a job that re-reads its data gains a lot. The whole job's miss rate for re-reading jobs should come from simulating many passes behind the scenes, not the song's first pass. Later idea: a prefetcher for streaming jobs
+- [ ] Balance pass once word size is in: contract sizes and deadlines (ADVANCED is provisionally 10-70 trillion instructions)
 - [ ] Later: choosing the cache's shape (block size, associativity)
 - [ ] RAM as page frames; a page fault pauses the song for its own view
 - [ ] Page replacement: player picks the frame to evict, each frame shows its last-used beat
@@ -116,7 +118,16 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 - [x] Menu sound: an old computer's hum (fan, mains hum, CRT whine, hard drive seeks) on the title, board, shop and briefings, and mechanical key presses for menu actions; `M` toggles the hum
 - [ ] Sound effects for hits, stalls, flushes, page faults
 - [ ] Sprites and UI art
+- [x] Shop: the chip as a spinning 3D model (own renderer) built from the parts owned, drawn as wireframe / flat / low-poly / smooth by era
 - [x] Terminal look with four eras (green CRT → modern terminal), previewable with keys 1–4
+- [x] 64-bit era: JetBrains Mono, the screen's real resolution, sub-pixel motion, eased transitions (listing slide, glides, page slides)
+- [x] 64-bit era as a terminal window (title bar with a prompt per screen) on black, with teal accents and an LCD subpixel grid
+- [x] 32-bit era as a mid-90s desktop app (gray 3D window on teal, notes as buttons, sunken fields, blue selection bar)
+- [x] 32-bit dark mode (D on the title screen); the shop's selected item, contract cards and the song's key labels are buttons that press in
+- [x] 16-bit era as a DOS app (blue text mode, menu and status bars, double-line boxes, drop shadows, EGA chip)
+- [x] CRT scanlines, phosphor stripes and vignette as a fine overlay at the screen's resolution
+- [ ] Era fonts: a VGA-style font for 16-bit and 32-bit (e.g. from the Ultimate Oldschool PC Font Pack, CC BY-SA 4.0, needs a credit) or a blocky one for 8-bit? Open
+- [ ] Playtest the 64-bit era on a real screen with `?fps`: smoothness, ligatures (`<-` drawn as an arrow) kept or not
 - [ ] Drive the era from the player's CPU word size instead of the preview keys
 
 ### Education: briefing → practice → play for every concept
@@ -126,7 +137,7 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 - [x] Tier 2 lesson: pipelining (laundry analogy), data hazards, stalls (+ tier 2 practice)
 - [x] Tier 3 lesson: forwarding
 - [x] Branch prediction lesson (tier 4)
-- [ ] Cache lesson: the memory wall (chart of RAM cycles vs clock), what a cache is (a desk next to the library), lines and tags, hit vs miss, locality; practice narrates each lookup
+- [x] Memory wall lesson (the trip, cycles per trip by clock, the floor chart) and cache lesson (desk, lines and blocks, the address split, locality, three kinds of miss, how it plays, score); practice narrates the first miss, hit and store
 - [ ] Storage lessons: RAM / page faults, HDD
 - [ ] Track hazard-decision accuracy (learning objective 1) and show it after each contract
 
@@ -154,6 +165,7 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 
 ## Later (not part of the MVP)
 
+- Idea, not decided: on contracts that fight the cache, a programmer's fix on the job sheet before the song (pad the array so it stops colliding, swap the loops to read a grid by row); the song plays the fixed program and results compare. A decision for direct-mapped caches, which have none of their own; could be a second measurable learning objective
 - Pipeline designer (cut the datapath; stalls stay manual at every depth; open: hold Space until the hazard clears), after L2 / L3 and pages + HDD
 - Stretch, in priority order: SSD flash mode → dual-issue → NVMe mode → out-of-order + renaming, report card, before/after check
 - Submission: see "Before submission" at the top

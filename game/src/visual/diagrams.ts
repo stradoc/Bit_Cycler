@@ -1,10 +1,16 @@
 import type { DiagramId } from '../data/lessons.ts';
+import { PROGRAMS } from '../data/programs.ts';
+import { formatMhz } from '../format.ts';
 import { assemble } from '../sim/assembler.ts';
+import { Cpu } from '../sim/cpu.ts';
 import { tokens } from '../sim/isa.ts';
+import { Cache, MEMORY_TIMING, ramCycles } from '../sim/memory.ts';
+import { perfectRun } from '../sim/pipeline.ts';
 import { Chip, relativePower, steadyTemperature, THERMAL } from '../sim/thermal.ts';
 import { branchHint, hintColor } from './branchHint.ts';
 import { codeLine } from './codeLine.ts';
 import { cssColor, type Era } from './terminal.ts';
+import { textBase } from './display.ts';
 
 type Parts = Phaser.GameObjects.GameObject[];
 
@@ -39,7 +45,7 @@ class Sketch {
   text(x: number, y: number, content: string, size = 16, alpha = 1, bold = false): Phaser.GameObjects.Text {
     const text = this.scene.add
       .text(x, y, content, {
-        fontFamily: 'monospace',
+        ...textBase(),
         fontSize: `${size}px`,
         fontStyle: bold ? 'bold' : '',
         color: cssColor(this.era.fg),
@@ -662,6 +668,198 @@ const DIAGRAMS: Record<DiagramId, (s: Sketch, cx: number, cy: number) => void> =
     });
     s.text(cx, cy - 92, 'TOP CLOCK AFTER EACH OVERHEAT', 13, 0.8, true);
     s.hintText(cx + 150, cy - 64, 'REPAIR: back to 150%', true, 14);
+  },
+
+  // The CPU, a long way from RAM: the same 60 ns at any clock
+  ramtrip(s, cx, cy) {
+    s.box(cx - 270, cy - 40, 120, 70, true);
+    s.text(cx - 270, cy - 40, 'CPU', 24, 1, true);
+    s.box(cx + 270, cy - 40, 120, 70);
+    s.text(cx + 270, cy - 40, 'RAM', 24, 1, true);
+    s.arrow(cx - 200, cy - 52, cx + 200, cy - 52);
+    s.arrow(cx + 200, cy - 28, cx - 200, cy - 28);
+    s.text(cx, cy - 72, `ABOUT ${MEMORY_TIMING.ramNs} ns THERE AND BACK`, 15, 1, true);
+    s.text(cx, cy + 30, `AT 1 MHz, A CYCLE IS 1000 ns: RAM ANSWERS WITHIN ${ramCycles(1)} CYCLE`, 14, 0.8);
+    s.text(cx, cy + 56, `AT 4 GHz, A CYCLE IS 0.25 ns: RAM TAKES ${ramCycles(4000)} CYCLES`, 14, 1, true);
+  },
+
+  // Cycles per trip to RAM at each clock (the game's own numbers), on a log scale
+  wallchart(s, cx, cy) {
+    const clocks = [4, 16, 32, 128, 500, 1000, 4000];
+    s.text(cx, cy - 92, 'CYCLES PER TRIP TO RAM (BARS ON A LOG SCALE)', 13, 0.8, true);
+    clocks.forEach((mhz, i) => {
+      const y = cy - 66 + i * 24;
+      const cycles = ramCycles(mhz);
+      const w = 14 + 52 * Math.log10(cycles) * 1.6;
+      s.text(cx - 240, y, formatMhz(mhz), 14, 0.9);
+      s.box(cx - 170 + w / 2, y, w, 16, cycles > 1, cycles > 1);
+      s.text(cx - 140 + w + 40, y, `${cycles} CYCLE${cycles > 1 ? 'S' : ''}`, 14, cycles > 1 ? 1 : 0.7);
+    });
+  },
+
+  // SUM ARRAY's time per instruction as the clock rises, with no cache: it flattens out
+  floor(s, cx, cy) {
+    const spec = PROGRAMS[0];
+    const clocks = [32, 64, 128, 256, 1000, 4000];
+    const ns = clocks.map((mhz) => {
+      const run = perfectRun(new Cpu(assemble(spec.source), 8, spec.memory), { forwarding: true, mhz });
+      return (run.cpi / mhz) * 1000;
+    });
+    const scale = 300 / Math.max(...ns);
+    s.text(cx, cy - 92, 'SUM ARRAY, NO CACHE: TIME PER INSTRUCTION', 13, 0.8, true);
+    clocks.forEach((mhz, i) => {
+      const y = cy - 64 + i * 26;
+      s.text(cx - 260, y, formatMhz(mhz), 14, 0.9);
+      s.box(cx - 200 + (ns[i] * scale) / 2, y, ns[i] * scale, 16, true);
+      s.text(cx - 200 + ns[i] * scale + 50, y, `${ns[i].toFixed(1)} ns`, 14);
+    });
+    // The floor: 5 trips to RAM for 20 instructions, 60 ns each, whatever the clock.
+    const floorNs = (5 * MEMORY_TIMING.ramNs) / 20;
+    const x = cx - 200 + floorNs * scale;
+    s.polyline([[x, cy - 80], [x, cy + 82]]);
+    s.hintText(x + 160, cy + 92, `FLOOR: 5 TRIPS x ${MEMORY_TIMING.ramNs} ns / 20 = ${floorNs} ns`, false, 13);
+  },
+
+  // The song frozen on a load waiting for RAM
+  freezeplay(s, cx, cy) {
+    const laneW = 140;
+    const left = cx - 400;
+    const hitY = cy - 30;
+    const rowY = (row: number) => hitY + 34 * (row + 1);
+    const lane = (i: number) => left + (i + 0.5) * laneW;
+    for (let i = 0; i <= 3; i++) s.polyline([[left + i * laneW, cy - 100], [left + i * laneW, rowY(2) + 17]]);
+    s.polyline([[left, hitY], [left + 3 * laneW, hitY]]);
+    ['ID', 'EX', 'MEM', 'WB'].forEach((stage, i) => s.text(left - 24, i === 0 ? hitY : rowY(i - 1), stage, 12, 0.7));
+    s.backing(lane(0), hitY, laneW - 8, 24);
+    s.box(lane(0), hitY, laneW - 8, 24);
+    s.code(lane(0), hitY, 'add x3, x3, x4', laneW - 16, true);
+    s.backing(lane(1), rowY(1), laneW - 8, 24);
+    s.box(lane(1), rowY(1), laneW - 8, 24, true, false);
+    s.code(lane(1), rowY(1), 'lb x4, 0(x1)', laneW - 16, true);
+    s.text(lane(1), rowY(1) - 22, 'WAITING ON RAM', 12, 1, true);
+    s.text(cx + 200, hitY - 20, `137 / ${ramCycles(4000) - 1} CYCLES FROZEN`, 16, 1, true);
+    s.text(cx + 200, hitY + 12, 'notes hold still; keys do nothing', 14, 0.8);
+    s.text(cx + 200, hitY + 44, 'click! the data arrived:', 14, 0.8);
+    s.text(cx + 200, hitY + 68, 'press the note on the line', 14, 0.8);
+  },
+
+  // CPU, a small cache close by, RAM far away
+  desk(s, cx, cy) {
+    s.box(cx - 290, cy - 20, 110, 70, true);
+    s.text(cx - 290, cy - 20, 'CPU', 22, 1, true);
+    s.box(cx - 90, cy - 20, 110, 70, true, false);
+    s.text(cx - 90, cy - 32, 'L1 CACHE', 16, 1, true);
+    s.text(cx - 90, cy - 6, '16 BYTES', 12, 0.8);
+    s.box(cx + 250, cy - 20, 200, 110);
+    s.text(cx + 250, cy - 32, 'RAM', 22, 1, true);
+    s.text(cx + 250, cy - 6, '256 BYTES', 12, 0.8);
+    s.arrow(cx - 230, cy - 20, cx - 150, cy - 20);
+    s.arrow(cx - 30, cy - 20, cx + 145, cy - 20);
+    s.text(cx - 190, cy + 34, 'HIT: inside the', 12, 0.9);
+    s.text(cx - 190, cy + 50, 'MEMORY stage', 12, 0.9);
+    s.text(cx + 58, cy + 34, `MISS: ${MEMORY_TIMING.l1Ns + MEMORY_TIMING.ramNs} ns`, 12, 0.9);
+    s.text(cx + 58, cy + 50, `(${ramCycles(4000, true)} cycles at 4 GHz)`, 12, 0.9);
+  },
+
+  // Memory's blocks and the line each one must go in
+  lines(s, cx, cy) {
+    const blockX = (b: number) => cx - 315 + b * 90;
+    for (let b = 0; b < 8; b++) {
+      s.box(blockX(b), cy - 60, 80, 30, b % 4 === 0);
+      s.text(blockX(b), cy - 60, `${b * 4}-${b * 4 + 3}`, 13);
+    }
+    s.text(cx, cy - 92, 'MEMORY, IN 4-BYTE BLOCKS', 12, 0.7);
+    const lineX = (i: number) => cx - 135 + i * 90;
+    for (let i = 0; i < 4; i++) {
+      s.box(lineX(i), cy + 50, 80, 30, i === 0);
+      s.text(lineX(i), cy + 50, `LINE ${i}`, 13);
+    }
+    s.text(cx, cy + 84, 'L1 CACHE: 4 LINES', 12, 0.7);
+    s.arrow(blockX(0), cy - 44, lineX(0) - 10, cy + 34);
+    s.arrow(blockX(4), cy - 44, lineX(0) + 10, cy + 34);
+    s.arrow(blockX(1), cy - 44, lineX(1), cy + 34);
+    s.text(cx + 300, cy + 4, 'block number', 12, 0.8);
+    s.text(cx + 300, cy + 22, 'mod 4 = its line', 12, 0.8);
+  },
+
+  // Address 22 split into tag, line and byte, and the line it checks
+  address(s, cx, cy) {
+    s.text(cx - 150, cy - 70, 'ADDRESS 22 =', 20, 0.9);
+    const parts: [string, string, number][] = [['0001', 'TAG', -10], ['01', 'LINE', 80], ['10', 'BYTE', 140]];
+    for (const [bits, name, dx] of parts) {
+      s.text(cx + dx, cy - 70, bits, 24, 1, true);
+      s.text(cx + dx, cy - 40, name, 12, 0.8);
+    }
+    s.arrow(cx + 80, cy - 28, cx + 80, cy + 16);
+    const rows: [string, string, string][] = [['0', '0000', '03 05 07 02'], ['1', '0001', '14 15 2A 17'], ['2', '----', '-- -- -- --'], ['3', '----', '-- -- -- --']];
+    rows.forEach(([line, tag, data], i) => {
+      const y = cy + 6 + i * 22;
+      s.text(cx - 150, y, line, 14, i === 1 ? 1 : 0.6, i === 1);
+      s.text(cx - 90, y, tag, 14, i === 1 ? 1 : 0.6, i === 1);
+      s.text(cx + 20, y, data, 14, i === 1 ? 1 : 0.6, i === 1);
+    });
+    s.box(cx - 50, cy + 28, 260, 20, true, false);
+    s.hintText(cx + 240, cy + 28, 'TAG 0001 MATCHES: HIT, BYTE 2 = 2A', true, 13);
+  },
+
+  // Reading bytes 0-7 in order: one miss per block (the game's own cache)
+  locality(s, cx, cy) {
+    const cache = new Cache();
+    for (let a = 0; a < 8; a++) {
+      const x = cx - 315 + a * 90;
+      const { hit } = cache.read(a);
+      s.text(x, cy - 50, `lb ${a}`, 14, 0.8);
+      s.box(x, cy - 10, 78, 30, !hit, !hit);
+      s.hintText(x, cy - 10, hit ? 'HIT' : 'MISS', hit, 15);
+      s.text(x, cy + 26, hit ? 'no wait' : 'block in', 12, 0.7);
+    }
+    s.text(cx, cy + 66, 'READING IN ORDER: 1 MISS PER 4 BYTES', 15, 1, true);
+  },
+
+  // First use, conflict, too small
+  misskinds(s, cx, cy) {
+    const kinds: [string, string, string][] = [
+      ['FIRST USE', 'lb 0 at the start:', 'never loaded before'],
+      ['CONFLICT', 'lb 0, lb 16, lb 1:', 'both want line 0'],
+      ['TOO SMALL', '5 blocks in use,', 'only 4 lines'],
+    ];
+    kinds.forEach(([name, example, why], i) => {
+      const x = cx + (i - 1) * 240;
+      s.box(x, cy - 10, 210, 110, i === 1);
+      s.text(x, cy - 44, name, 18, 1, true);
+      s.text(x, cy - 6, example, 13, 0.85);
+      s.text(x, cy + 16, why, 13, 0.85);
+    });
+    s.text(cx, cy + 74, 'a bigger cache fixes TOO SMALL, not FIRST USE', 13, 0.7);
+  },
+
+  // The panel with the cache: memory, the L1 box, the lookup line
+  cacheplay(s, cx, cy) {
+    s.box(cx - 150, cy - 30, 300, 100);
+    s.text(cx - 260, cy - 82, 'MEMORY', 12, 0.7);
+    ['00: 03 05 07 02  09 01 04 06', '08: 00 00 00 00  00 00 00 00', '10: 00 00 00 00  00 00 00 00'].forEach((row, i) =>
+      s.text(cx - 150, cy - 58 + i * 22, row, 13, 0.85),
+    );
+    s.box(cx + 140, cy - 30, 220, 100, true, false);
+    s.text(cx + 80, cy - 82, 'L1: LINE TAG DATA', 12, 0.8);
+    ['0 0000 03 05 07 02', '1 0000 09 01 04 06', '2 ---- -- -- -- --', '3 ---- -- -- -- --'].forEach((row, i) =>
+      s.text(cx + 140, cy - 64 + i * 20, row, 13, 0.9),
+    );
+    s.text(cx, cy + 46, 'lb 5: 0000 01 01 LINE 1 TAG 0 -> HIT', 15, 1, true);
+    s.text(cx, cy + 74, 'the lookup line: what every load and store just did', 12, 0.7);
+  },
+
+  // SUM ARRAY at 4 GHz with and without the cache (the game's own runs)
+  cachescore(s, cx, cy) {
+    const spec = PROGRAMS[0];
+    const run = (cache: boolean) => perfectRun(new Cpu(assemble(spec.source), 8, spec.memory), { forwarding: true, mhz: 4000, cache });
+    const [plain, cached] = [run(false), run(true)];
+    const ns = (cpi: number) => (cpi * 0.25 * plain.instructions).toFixed(0);
+    s.box(cx, cy - 56, 640, 46, true);
+    s.text(cx, cy - 56, 'CPU TIME = INSTRUCTIONS x CPI x CLOCK PERIOD', 20, 1, true);
+    s.text(cx, cy + 6, `NO CACHE (4 GHz): ${plain.instructions} x ${plain.cpi.toFixed(2)} x 0.25 ns = ${ns(plain.cpi)} ns`, 16, 0.7);
+    s.text(cx, cy + 38, `L1 CACHE (4 GHz): ${cached.instructions} x ${cached.cpi.toFixed(2)} x 0.25 ns = ${ns(cached.cpi)} ns`, 16);
+    s.text(cx, cy + 74, `${(plain.cpi / cached.cpi).toFixed(1)}x FASTER: ${plain.memory.ramTrips} TRIPS TO RAM BECOME ${cached.memory.ramTrips}`, 16, 1, true);
   },
 
   // Perfect guesses vs always guessing not taken

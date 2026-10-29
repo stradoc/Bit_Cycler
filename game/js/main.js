@@ -5,13 +5,20 @@ import { BriefingScene } from './scenes/BriefingScene.js';
 import { PipelineScene } from './scenes/PipelineScene.js';
 import { ShopScene } from './scenes/ShopScene.js';
 import { TitleScene } from './scenes/TitleScene.js';
+import { applyEra, fitCamera, HEIGHT, isHires, loadFonts, showFps, WIDTH } from './visual/display.js';
+import { currentEra } from './visual/terminal.js';
 keepKeyboardFocus();
+await loadFonts();
 const game = new Phaser.Game({
     type: Phaser.AUTO,
     parent: 'game',
-    width: 960,
-    height: 540,
-    pixelArt: true,
+    // The canvas grows past 960x540 in the modern era (visual/display.ts); layout always uses 960x540.
+    width: WIDTH,
+    height: HEIGHT,
+    // Smooth lines and sub-pixel motion where the era wants them; the retro eras snap to
+    // whole pixels and get stretched with chunky pixels instead (visual/display.ts).
+    antialias: true,
+    roundPixels: false,
     backgroundColor: '#050a05',
     scale: {
         mode: Phaser.Scale.FIT,
@@ -22,6 +29,20 @@ const game = new Phaser.Game({
     scene: [TitleScene, BoardScene, ShopScene, BriefingScene, PipelineScene],
 });
 installCheats(game);
+if (new URLSearchParams(location.search).has('fps'))
+    showFps(game);
+// A resized window gets a sharper or smaller canvas in the eras drawn at the screen's resolution.
+let resizeTimer;
+window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+        if (!isHires())
+            return;
+        applyEra(game, currentEra());
+        for (const scene of game.scene.getScenes(true))
+            fitCamera(scene.cameras.main);
+    }, 200);
+});
 // Dev shortcut: ?scene=play jumps straight into a scene.
 const startScene = new URLSearchParams(location.search).get('scene');
 if (startScene) {

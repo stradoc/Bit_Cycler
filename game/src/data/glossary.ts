@@ -46,7 +46,19 @@ export const GLOSSARY = {
   },
   MEMORY: {
     title: 'MEMORY',
-    body: 'Main memory: 256 bytes here, shown 8 per row in hex. Much bigger than the registers, but slower to reach.',
+    body: 'Main memory (RAM): 256 bytes here; addresses 0-31 shown, 8 per row in hex (two 4-byte blocks). Much bigger than the registers, but a trip takes about 60 ns, however fast the clock.',
+  },
+  RAM: {
+    title: 'THE MEMORY WALL',
+    body: 'A trip to RAM takes about 60 ns (the textbook gives 50-70 ns for DRAM), however fast the clock. A faster clock just means more cycles waiting: 1 at 16 MHz, 240 at 4 GHz.',
+  },
+  CACHE: {
+    title: 'L1 CACHE',
+    body: 'A tiny, fast memory beside the CPU: 4 lines, each holding one 4-byte block. A load whose block is there is a HIT (no wait); a MISS brings the whole block in from RAM.',
+  },
+  LOOKUP: {
+    title: 'CACHE LOOKUP',
+    body: 'An address splits into tttt ii oo: ii picks the line, tttt (the tag) says which block is in it, oo is the byte. Valid line + same tag = HIT. Stores go out through a write buffer.',
   },
   BUS: {
     title: 'WRITE-BACK BUS',

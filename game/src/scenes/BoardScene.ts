@@ -5,17 +5,28 @@ import { playContract } from '../flow.ts';
 import { formatCount, formatDuration, formatMhz, formatMoney } from '../format.ts';
 import { keyOf, onKeyDown } from '../input/keys.ts';
 import { getProgress } from '../save.ts';
-import { getSettings } from '../settings.ts';
 import { contractSeconds, isLocked, isTight, jobItems, ratedMhz, tierOf, type Contract } from '../sim/progress.ts';
 import { THERMAL } from '../sim/thermal.ts';
-import { cssColor, ERAS, TerminalLook } from '../visual/terminal.ts';
+import { cssColor, currentEra, TerminalLook } from '../visual/terminal.ts';
+import { isSmooth, textBase } from '../visual/display.ts';
+import { bevel, dropShadow, isClassic, isDos } from '../visual/bevel.ts';
 
 const CARD_W = 284;
 const CARD_H = 150;
 const COLUMN_X = [168, 480, 792];
 const ROW_Y = [212, 378];
 
-type Card = { contract: Contract; frame: Phaser.GameObjects.Rectangle; locked: boolean };
+/** A card on the board; on the classic desktop it's a raised panel (`edges`) that presses in when taken. */
+type Card = {
+  contract: Contract;
+  frame: Phaser.GameObjects.Rectangle;
+  locked: boolean;
+  edges?: Phaser.GameObjects.Graphics;
+  texts: Phaser.GameObjects.Text[];
+};
+
+/** A taken card stays pressed in this long (ms) before its contract starts, like a real button on release. */
+const PRESS_MS = 130;
 
 /**
  * The contract board: endless random jobs in three sections. Each shows how
@@ -27,6 +38,10 @@ export class BoardScene extends Phaser.Scene {
   private cards: Card[] = [];
   private selected = 0;
   private message!: Phaser.GameObjects.Text;
+  /** A card is pressed in and its contract about to start: ignore keys. */
+  private busy = false;
+  /** The modern era's selection frame, which glides from card to card. */
+  private selector: Phaser.GameObjects.Rectangle | undefined;
 
   constructor() {
     super('board');
@@ -34,10 +49,11 @@ export class BoardScene extends Phaser.Scene {
 
   init(): void {
     this.cards = [];
+    this.busy = false;
   }
 
   create(): void {
-    this.look = new TerminalLook(this, ERAS.at(getSettings().eraIndex) ?? ERAS[0]);
+    this.look = new TerminalLook(this, currentEra());
     const progress = getProgress();
     const { era } = this.look;
 
@@ -48,7 +64,7 @@ export class BoardScene extends Phaser.Scene {
     this.text(480, 62, `YOUR CPU: TIER ${tier.number} ${tier.name} AT ${formatMhz(ratedMhz(progress))}${worn}`, 15).setAlpha(0.8);
 
     SECTIONS.forEach((section, column) => {
-      this.text(COLUMN_X[column], 104, section.name, 18).setFontStyle('bold');
+      this.text(COLUMN_X[column], 104, section.name, 18).setFontStyle('bold').setColor(cssColor(era.accent));
       const [soon, late] = section.deadline;
       this.text(COLUMN_X[column], 126, `NEEDED IN ${formatDuration(soon)} TO ${formatDuration(late)}`, 12).setAlpha(0.6);
       progress.board
@@ -62,6 +78,8 @@ export class BoardScene extends Phaser.Scene {
 
     // Start on the first contract that can be taken.
     this.selected = Math.max(0, this.cards.findIndex((c) => !c.locked));
+    const first = this.cards[this.selected]?.frame;
+    this.selector = isSmooth() && first ? this.add.rectangle(first.x, first.y, CARD_W + 8, CARD_H + 8).setStrokeStyle(2, era.accent, 1) : undefined;
     this.highlight();
     this.bindKeys();
     playMenuMusic(this);
@@ -73,7 +91,7 @@ export class BoardScene extends Phaser.Scene {
 
   private text(x: number, y: number, content: string, size: number): Phaser.GameObjects.Text {
     return this.add
-      .text(x, y, content, { fontFamily: 'monospace', fontSize: `${size}px`, color: cssColor(this.look.era.fg) })
+      .text(x, y, content, { ...textBase(), fontSize: `${size}px`, color: cssColor(this.look.era.fg) })
       .setOrigin(0.5);
   }
 
@@ -82,15 +100,27 @@ export class BoardScene extends Phaser.Scene {
     const { era } = this.look;
     const spec = programByName(contract.program);
     const locked = isLocked(contract, progress);
-    const frame = this.add.rectangle(x, y, CARD_W, CARD_H, era.fg, 0).setStrokeStyle(1, era.fg, 0.4);
+    const frame = this.add.rectangle(x, y, CARD_W, CARD_H, era.accent, 0).setStrokeStyle(1, era.accent, 0.4);
+    // On the classic desktop, each card is a raised panel.
+    const edges = isClassic(era) ? bevel(this.add.graphics(), era, x - CARD_W / 2, y - CARD_H / 2, CARD_W, CARD_H, true) : undefined;
+    // DOS: a double-line card with a solid shadow.
+    if (isDos(era)) {
+      const lines = dropShadow(this.add.graphics(), x - CARD_W / 2, y - CARD_H / 2, CARD_W, CARD_H);
+      lines.lineStyle(1, era.accent, 0.6).strokeRect(x - CARD_W / 2 + 3, y - CARD_H / 2 + 3, CARD_W - 6, CARD_H - 6);
+    }
     const left = x - CARD_W / 2 + 14;
-    const line = (dy: number, content: string, size = 14) =>
-      this.text(left, y - CARD_H / 2 + dy, content, size).setOrigin(0, 0.5).setAlpha(locked ? 0.5 : 0.95);
+    const texts: Phaser.GameObjects.Text[] = [];
+    const line = (dy: number, content: string, size = 14) => {
+      const text = this.text(left, y - CARD_H / 2 + dy, content, size).setOrigin(0, 0.5).setAlpha(locked ? 0.5 : 0.95);
+      texts.push(text);
+      return text;
+    };
 
     line(22, spec.client ?? spec.name, 16).setFontStyle('bold');
-    this.text(x + CARD_W / 2 - 14, y - CARD_H / 2 + 22, formatMoney(contract.pay), 16)
+    const pay = this.text(x + CARD_W / 2 - 14, y - CARD_H / 2 + 22, formatMoney(contract.pay), 16)
       .setOrigin(1, 0.5)
       .setAlpha(locked ? 0.5 : 1);
+    texts.push(pay);
     // Squeezed to fit the card if the job's description is long.
     const job = line(48, `${spec.verb} ${formatCount(jobItems(contract))} ${spec.unit}`);
     job.setScale(Math.min(1, (CARD_W - 28) / job.width), 1);
@@ -106,7 +136,7 @@ export class BoardScene extends Phaser.Scene {
     }
 
     const index = this.cards.length;
-    this.cards.push({ contract, frame, locked });
+    this.cards.push({ contract, frame, locked, edges, texts });
     frame.setInteractive({ useHandCursor: true }).on('pointerdown', () => {
       this.selected = index;
       this.highlight();
@@ -115,10 +145,21 @@ export class BoardScene extends Phaser.Scene {
   }
 
   private highlight(): void {
-    const { fg } = this.look.era;
+    const { accent: fg } = this.look.era;
+    const { selector } = this;
     this.cards.forEach((card, i) => {
       const on = i === this.selected;
-      card.frame.setStrokeStyle(on ? 2 : 1, fg, on ? 1 : 0.4).setFillStyle(fg, on ? 0.08 : 0);
+      if (!selector) {
+        card.frame.setStrokeStyle(on ? 2 : 1, fg, on ? 1 : 0.4).setFillStyle(fg, on ? 0.08 : 0);
+        return;
+      }
+      // Modern: the chosen card's tint fades in while the frame glides over to it.
+      this.tweens.killTweensOf(card.frame);
+      this.tweens.add({ targets: card.frame, fillAlpha: on ? 0.08 : 0, duration: 180, ease: 'Quad.Out' });
+      if (on) {
+        this.tweens.killTweensOf(selector);
+        this.tweens.add({ targets: selector, x: card.frame.x, y: card.frame.y, duration: 200, ease: 'Cubic.Out' });
+      }
     });
     this.message.setText('');
   }
@@ -132,7 +173,17 @@ export class BoardScene extends Phaser.Scene {
       return;
     }
     uiSound(this, 'confirm');
-    playContract(this, card.contract);
+    const { edges } = card;
+    if (!edges) {
+      playContract(this, card.contract);
+      return;
+    }
+    // The classic desktop: the card presses in, and the contract starts as it's released.
+    this.busy = true;
+    const [x, y] = [card.frame.x - CARD_W / 2, card.frame.y - CARD_H / 2];
+    bevel(edges.clear(), this.look.era, x, y, CARD_W, CARD_H, false);
+    for (const text of card.texts) text.setPosition(text.x + 1, text.y + 1);
+    this.time.delayedCall(PRESS_MS, () => playContract(this, card.contract));
   }
 
   /** Arrow keys move within the 3 x 2 grid of cards (cards are stored column by column). */
@@ -150,6 +201,7 @@ export class BoardScene extends Phaser.Scene {
 
   private bindKeys(): void {
     onKeyDown(this, (event) => {
+      if (this.busy) return;
       const key = keyOf(event);
       if (key === 'ArrowLeft') this.move(-1, 0);
       else if (key === 'ArrowRight') this.move(1, 0);

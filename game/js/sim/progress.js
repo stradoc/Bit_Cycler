@@ -1,13 +1,14 @@
-// The player's progress: money, CPU parts, clock and cooling upgrades, chip
-// wear, and the contract board. Pure functions over a plain object, so the
+// The player's progress: money, CPU parts, clock, memory and cooling
+// upgrades, chip wear, and the contract board. Pure functions over a plain object, so the
 // rules are testable; game/src/save.ts stores it.
-import { BASE_MHZ, CLOCK, CONTRACTS_PER_SECTION, COOLING, CPU_PARTS, LATE_PAY_FACTOR, OVERCLOCKING_PRICE, REPAIR_PRICE_PER_STEP, SECTIONS, TIGHT_SHARE, } from '../data/economy.js';
+import { BASE_MHZ, CLOCK, CONTRACTS_PER_SECTION, COOLING, CPU_PARTS, LATE_PAY_FACTOR, MEMORY_PARTS, OVERCLOCKING_PRICE, REPAIR_PRICE_PER_STEP, SECTIONS, TIGHT_SHARE, } from '../data/economy.js';
 import { programByName } from '../data/programs.js';
 import { generateProgram } from './generator.js';
-import { formatMhz } from '../format.js';
+import { formatDuration, formatMhz } from '../format.js';
 import { tierByNumber } from '../data/tiers.js';
 import { assemble } from './assembler.js';
 import { Cpu, trace } from './cpu.js';
+import { ramCycles } from './memory.js';
 import { perfectRun } from './pipeline.js';
 import { THERMAL } from './thermal.js';
 import { tempoForClock } from '../rhythm/tempo.js';
@@ -15,6 +16,7 @@ export const NEW_GAME = {
     money: 0,
     parts: [],
     clockLevel: 0,
+    cacheLevels: 0,
     cooling: 0,
     overclocking: false,
     chipMaxDial: THERMAL.maxDial,
@@ -36,6 +38,17 @@ export function ratedMhz(progress) {
 export function ratedMhzFor(progress, pipelined) {
     return (pipelined ? BASE_MHZ.pipelined : BASE_MHZ.singleCycle) * CLOCK.factors[progress.clockLevel];
 }
+/** Owns the L1 cache. */
+export function hasCache(progress) {
+    return progress.cacheLevels > 0;
+}
+/**
+ * The memory wall has arrived: at your rated clock, a trip to RAM (without a
+ * cache) takes more than one cycle, so loads and stores freeze the pipeline.
+ */
+export function pastMemoryWall(progress) {
+    return ramCycles(ratedMhz(progress)) > 1;
+}
 /** The heat model with your cooler fitted. */
 export function thermalConfig(progress) {
     return { ...THERMAL, ratedRise: COOLING[progress.cooling].ratedRise };
@@ -43,24 +56,32 @@ export function thermalConfig(progress) {
 const cpiCache = new Map();
 /**
  * Cycles per instruction your CPU's hardware gets on a program, played
- * perfectly (the board's estimates). Branches follow the hardware: on a real
- * job of billions of instructions, nobody guesses them by hand.
+ * perfectly (the board's estimates), at your rated clock: past the memory
+ * wall, waiting for RAM raises it. Branches follow the hardware: on a real job
+ * of billions of instructions, nobody guesses them by hand.
  */
 export function cpiFor(programName, progress) {
     const tier = tierOf(progress);
-    const key = `${programName}:${tier.number}`;
+    const key = `${programName}:${tier.number}:${progress.clockLevel}:${progress.cacheLevels}`;
     const cached = cpiCache.get(key);
     if (cached !== undefined)
         return cached;
     const spec = programByName(programName);
     const cpu = new Cpu(assemble(spec.source, 8), 8, spec.memory);
-    let cpi = 1;
-    if (isPipelined(progress)) {
-        const run = perfectRun(cpu, { forwarding: tier.options?.forwarding ?? false, predictor: tier.options?.predictor });
-        cpi = run.cycle / run.instructions;
-    }
+    const run = perfectRun(cpu, {
+        singleCycle: !isPipelined(progress),
+        forwarding: tier.options?.forwarding ?? false,
+        predictor: tier.options?.predictor,
+        cache: hasCache(progress),
+        mhz: ratedMhz(progress),
+    });
+    const cpi = run.cycles / run.instructions;
     cpiCache.set(key, cpi);
     return cpi;
+}
+/** Seconds per instruction on a typical job (SUM ARRAY) with this hardware: CPI x clock period. */
+function typicalSecondsPerInstruction(progress) {
+    return cpiFor('SUM ARRAY', progress) / (ratedMhz(progress) * 1e6);
 }
 /** Seconds your CPU takes for a whole contract: instructions x CPI x clock period. */
 export function contractSeconds(contract, progress) {
@@ -157,9 +178,9 @@ export function shopItems(progress) {
         name: next === undefined ? 'CLOCK: FASTEST THERE IS' : `FASTER CLOCK: ${formatMhz(mhzAt(next))}`,
         price: next === undefined ? 0 : CLOCK.prices[level],
         state: next === undefined ? 'max' : 'buy',
-        about: next === undefined
-            ? 'Your clock is fully upgraded.'
-            : `Rated clock ${formatMhz(mhzAt(level))} -> ${formatMhz(mhzAt(next))}: a shorter clock period, so every contract takes less time, and the song's beat speeds up (${Math.round(tempoForClock(mhzAt(level)))} -> ${Math.round(tempoForClock(mhzAt(next)))} BPM).`,
+        // The first clock that outruns RAM comes with the memory wall's briefing.
+        lessonId: next !== undefined && !pastMemoryWall(progress) && pastMemoryWall({ ...progress, clockLevel: next }) ? 'memwall' : undefined,
+        about: next === undefined ? 'Your clock is fully upgraded.' : clockAbout(progress, mhzAt(level), mhzAt(next)),
         apply: (p) => ({ ...p, clockLevel: Math.min(CLOCK.factors.length - 1, p.clockLevel + 1) }),
     });
     items.push({
@@ -171,6 +192,20 @@ export function shopItems(progress) {
         lessonId: 'overclock',
         about: 'Lets H push the clock past its rating during a song, up to 150%: faster, but the chip heats up. G (slower) is always free.',
         apply: (p) => ({ ...p, overclocking: true }),
+    });
+    MEMORY_PARTS.forEach((part, i) => {
+        const owned = progress.cacheLevels > i;
+        const ready = i === progress.cacheLevels && pastMemoryWall(progress);
+        items.push({
+            key: part.id,
+            group: 'MEMORY',
+            name: part.name,
+            price: part.price,
+            state: owned ? 'owned' : ready ? 'buy' : 'later',
+            lessonId: 'cache',
+            about: owned || ready ? part.about : 'RAM keeps up with your clock for now: a trip fits in one cycle. Once a faster clock makes loads wait for RAM, this goes on sale.',
+            apply: (p) => ({ ...p, cacheLevels: i + 1 }),
+        });
     });
     COOLING.forEach((cooler, i) => {
         if (i === 0)
@@ -196,6 +231,20 @@ export function shopItems(progress) {
         apply: (p) => ({ ...p, chipMaxDial: THERMAL.maxDial }),
     });
     return items;
+}
+/**
+ * What a clock upgrade does: the beat, and a typical job's time per
+ * instruction. Past the memory wall the job barely speeds up, because the
+ * time spent waiting for RAM doesn't shrink with the clock.
+ */
+function clockAbout(progress, before, after) {
+    const upgraded = { ...progress, clockLevel: progress.clockLevel + 1 };
+    const [now, then] = [typicalSecondsPerInstruction(progress), typicalSecondsPerInstruction(upgraded)];
+    const saved = Math.round((1 - then / now) * 100);
+    const ram = [ramCycles(before, hasCache(progress)), ramCycles(after, hasCache(progress))];
+    const wall = ram[1] > 1 ? ` A trip to RAM still takes 60 ns: ${ram[0]} -> ${ram[1]} cycles.` : '';
+    return (`Rated clock ${formatMhz(before)} -> ${formatMhz(after)}, beat ${Math.round(tempoForClock(before))} -> ${Math.round(tempoForClock(after))} BPM. ` +
+        `A typical job: ${formatDuration(now)} -> ${formatDuration(then)} per instruction (${saved}% less).${wall}`);
 }
 /** Buys `key` if it's for sale and affordable; otherwise returns null. */
 export function buy(progress, key) {

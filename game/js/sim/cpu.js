@@ -43,8 +43,9 @@ export class Cpu {
                 return this.write(pc, instr, instr.rd, this.regs[instr.rs1] + instr.imm);
             case 'lb': {
                 // Like RISC-V, lb sign-extends the byte to the full register width.
-                const byte = this.memory[this.address(instr.rs1, instr.imm)];
-                return this.write(pc, instr, instr.rd, byte & 0x80 ? byte - 0x100 : byte);
+                const address = this.address(instr.rs1, instr.imm);
+                const byte = this.memory[address];
+                return { ...this.write(pc, instr, instr.rd, byte & 0x80 ? byte - 0x100 : byte), loaded: address };
             }
             case 'sb': {
                 const address = this.address(instr.rs1, instr.imm);

@@ -43,6 +43,9 @@ export class HeatEffects {
         const bottom = y + height;
         // Behind the notes (their boxes are filled), so the fire shows around them.
         const depth = -1;
+        // Glowing light adds up on a dark screen; on a light one it would wash out to white.
+        const light = ((era.bg >> 16) & 0xff) + ((era.bg >> 8) & 0xff) + (era.bg & 0xff) > 3 * 128;
+        const blendMode = light ? 'NORMAL' : 'ADD';
         this.glow = scene.add.rectangle(x, y, width, height, ember).setOrigin(0).setAlpha(0).setDepth(depth - 1);
         this.smoke = scene.add
             .particles(0, 0, DOT, {
@@ -66,7 +69,7 @@ export class HeatEffects {
             alpha: { start: 1, end: 0 },
             tint: core,
             lifespan: 900,
-            blendMode: 'ADD',
+            blendMode,
             frequency: -1,
         })
             .setDepth(depth);
@@ -79,7 +82,7 @@ export class HeatEffects {
             color: [core, flame, ember],
             colorEase: 'quad.out',
             lifespan: { min: 350, max: 750 },
-            blendMode: 'ADD',
+            blendMode,
             frequency: -1,
         };
         this.flames = scene.add

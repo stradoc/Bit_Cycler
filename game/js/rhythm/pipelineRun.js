@@ -1,4 +1,5 @@
 import { unitOf } from '../sim/isa.js';
+import { freezeBeats } from '../sim/memory.js';
 import { Pipeline } from '../sim/pipeline.js';
 import { Chip } from '../sim/thermal.js';
 import { judge } from './judge.js';
@@ -35,6 +36,12 @@ export class PipelineRun {
     };
     streak = 0;
     bestStreak = 0;
+    /** Cycles played so far (decisions closed), not counting memory waits: indexes a recorded run. */
+    steps = 0;
+    /** Beats drawn frozen while waiting for memory (each stands for many cycles). */
+    memoryBeats = 0;
+    /** The memory wait in progress: all its cycles, the beats it's drawn over, and how many of those have passed. */
+    freeze = null;
     pending = null;
     /** Seq of the instruction that stalled last cycle and is still waiting in ID. */
     waitingSeq = null;
@@ -54,9 +61,25 @@ export class PipelineRun {
     get done() {
         return this.pipeline.done;
     }
-    /** Beat on which the current cycle's decision is due (later by each beat the clock was stopped). */
+    /**
+     * Beat on which the current cycle's decision is due: later by each beat the
+     * clock was stopped, and a memory wait's cycles take only its few frozen beats.
+     */
     get dueBeat() {
-        return this.firstBeat + this.pipeline.cycle + this.chip.haltedBeats;
+        const { pipeline } = this;
+        return this.firstBeat + pipeline.cycle - pipeline.memoryCycles + this.memoryBeats + this.chip.haltedBeats;
+    }
+    /** Waiting for memory: the pipeline is frozen and presses are ignored. */
+    get frozen() {
+        return this.pipeline.memoryWait > 0;
+    }
+    /** The memory wait in progress: its cycles, how many are left, and its frozen beats left. */
+    get waiting() {
+        if (!this.frozen)
+            return null;
+        const total = this.freeze?.total ?? this.pipeline.memoryWait;
+        const beats = this.freeze?.beats ?? freezeBeats(total);
+        return { total, left: this.pipeline.memoryWait, beatsLeft: beats - (this.freeze?.passed ?? 0) };
     }
     /** The choice already made this cycle, if any. */
     get decided() {
@@ -74,8 +97,8 @@ export class PipelineRun {
      */
     press(action, beat) {
         const slot = this.pipeline.stages.ID;
-        // With the clock stopped there's nothing to decide: presses are ignored.
-        if (!slot || this.pending || this.done || this.chip.halted)
+        // With the clock stopped, or everything waiting for memory, there's nothing to decide: presses are ignored.
+        if (!slot || this.pending || this.done || this.chip.halted || this.frozen)
             return null;
         // A note already waiting on the line isn't moving, so there's no beat to hit:
         // any press during its cycle counts. Timing only matters when a note first arrives.
@@ -102,7 +125,7 @@ export class PipelineRun {
     /** Sets this cycle's decision directly (replaying a recorded run). */
     force(action, outcome, judgment) {
         const slot = this.pipeline.stages.ID;
-        if (!slot || this.done)
+        if (!slot || this.done || this.chip.halted || this.frozen)
             return null;
         this.pending = { slot, action, outcome, judgment, hazard: this.pipeline.hazard(), waited: this.waitingSeq === slot.seq };
         this.applyGuess(action, outcome);
@@ -110,17 +133,37 @@ export class PipelineRun {
     }
     /**
      * Call every frame: advances the pipeline for each cycle whose window has
-     * closed. A beat with the clock stopped (overheated) just cools the chip.
+     * closed. A beat with the clock stopped (overheated) just cools the chip; a
+     * beat waiting for memory spends its share of the wait's cycles.
      */
     update(beat) {
         const reports = [];
         while (!this.done && (beat - this.dueBeat) * this.secondsPerBeat > this.windows.good) {
             if (this.chip.halted)
                 this.chip.coolBeat();
+            else if (this.frozen)
+                this.waitBeat();
             else
                 reports.push(this.advance());
         }
         return reports;
+    }
+    /** One frozen beat: an even share of the wait's cycles pass, all of them by its last beat. */
+    waitBeat() {
+        const { pipeline } = this;
+        this.freeze ??= { total: pipeline.memoryWait, beats: freezeBeats(pipeline.memoryWait), passed: 0 };
+        const freeze = this.freeze;
+        freeze.passed++;
+        const spentBefore = freeze.total - pipeline.memoryWait;
+        const share = freeze.passed >= freeze.beats ? pipeline.memoryWait : Math.round((freeze.total * freeze.passed) / freeze.beats) - spentBefore;
+        const cycles = pipeline.wait(share);
+        this.chip.waitBeat(cycles);
+        this.memoryBeats++;
+        if (this.frozen)
+            return;
+        this.freeze = null;
+        // The note on the line sat through the wait: like a stalled note, it isn't arriving on a beat, so any press counts.
+        this.waitingSeq = pipeline.stages.ID?.seq ?? null;
     }
     advance() {
         const slot = this.pipeline.stages.ID;
@@ -142,6 +185,9 @@ export class PipelineRun {
         }
         // Only a correct route or a violation actually issues; every other outcome is a stall.
         const issues = decision?.outcome === 'issued' || decision?.outcome === 'violation';
+        // A trip to RAM takes a fixed time, so its cycles depend on the clock right now.
+        this.pipeline.clockMhz = this.chip.mhz;
+        this.steps++;
         const result = this.pipeline.step(issues ? 'issue' : 'stall');
         const { dial } = this.chip;
         this.chip.cycle(issues);

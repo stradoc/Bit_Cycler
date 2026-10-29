@@ -1,5 +1,6 @@
 import type { Token } from '../sim/isa.ts';
 import { cssColor, type SyntaxColors } from './terminal.ts';
+import { textBase } from './display.ts';
 
 type CodeLineOptions = {
   size?: number;
@@ -26,7 +27,7 @@ export function codeLine(
   const texts = parts.map((token) =>
     scene.add
       .text(0, 0, token.text, {
-        fontFamily: 'monospace',
+        ...textBase(),
         fontSize: `${size}px`,
         fontStyle: token.kind === 'op' ? 'bold' : '',
         color: cssColor(colors[token.kind]),

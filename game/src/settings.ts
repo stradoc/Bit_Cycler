@@ -7,10 +7,12 @@ export type Settings = {
   readonly music: boolean;
   /** Lesson ids whose briefing the player has finished. */
   readonly seenLessons: readonly string[];
+  /** Dark mode, for eras that have a dark variant (the 32-bit desktop). */
+  readonly dark: boolean;
 };
 
 const STORAGE_KEY = 'bit-cycler-settings';
-const DEFAULTS: Settings = { offset: 0, relaxed: false, eraIndex: 0, music: true, seenLessons: [] };
+const DEFAULTS: Settings = { offset: 0, relaxed: false, eraIndex: 0, music: true, seenLessons: [], dark: false };
 
 let current: Settings | undefined;
 

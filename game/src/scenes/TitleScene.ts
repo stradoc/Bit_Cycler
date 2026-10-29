@@ -6,7 +6,8 @@ import { keyOf, onKeyDown } from '../input/keys.ts';
 import { getProgress, newGame } from '../save.ts';
 import { getSettings, updateSettings } from '../settings.ts';
 import { ratedMhz, tierOf } from '../sim/progress.ts';
-import { cssColor, ERAS, TerminalLook } from '../visual/terminal.ts';
+import { cssColor, currentEra, ERAS, TerminalLook } from '../visual/terminal.ts';
+import { HEIGHT, textBase, WIDTH } from '../visual/display.ts';
 
 const CALIBRATION_BPM = 120;
 const OFFSET_STEP_MS = 5;
@@ -39,10 +40,15 @@ export class TitleScene extends Phaser.Scene {
   }
 
   create(): void {
-    const { width, height } = this.scale;
+    // ?era=1..4 in the URL overrides the saved era (handy for previews).
+    const eraParam = Number(new URLSearchParams(location.search).get('era'));
+    if (eraParam >= 1 && eraParam <= ERAS.length) updateSettings({ eraIndex: eraParam - 1 });
+    // First, so the texts below get the era's font.
+    this.look = new TerminalLook(this, currentEra());
+    const [width, height] = [WIDTH, HEIGHT];
     const ledY = height / 2 + 24;
     const text = (y: number, size: number) => {
-      const t = this.add.text(width / 2, y, '', { fontFamily: 'monospace', fontSize: `${size}px` }).setOrigin(0.5);
+      const t = this.add.text(width / 2, y, '', { ...textBase(), fontSize: `${size}px` }).setOrigin(0.5);
       this.texts.push(t);
       return t;
     };
@@ -54,10 +60,6 @@ export class TitleScene extends Phaser.Scene {
     this.options = text(height / 2 + 134, 16).setAlpha(0.7).setAlign('center').setLineSpacing(8);
     this.readout = text(height - 32, 16).setAlpha(0.6);
 
-    // ?era=1..4 in the URL overrides the saved era (handy for previews).
-    const eraParam = Number(new URLSearchParams(location.search).get('era'));
-    if (eraParam >= 1 && eraParam <= ERAS.length) updateSettings({ eraIndex: eraParam - 1 });
-    this.look = new TerminalLook(this, ERAS.at(getSettings().eraIndex) ?? ERAS[0]);
     this.restyle();
 
     this.time.addEvent({
@@ -91,7 +93,7 @@ export class TitleScene extends Phaser.Scene {
     this.input.once('pointerdown', () => this.start());
     onKeyDown(this, (event) => {
       const key = keyOf(event);
-      if (/^[BPNCRM1-4]$/.test(key)) uiSound(this, 'move');
+      if (/^[BPNCRMD1-4]$/.test(key)) uiSound(this, 'move');
       switch (key) {
         case 'Enter':
           uiSound(this, 'confirm');
@@ -110,6 +112,11 @@ export class TitleScene extends Phaser.Scene {
         case 'R':
           updateSettings({ relaxed: !getSettings().relaxed });
           return this.renderText();
+        case 'D':
+          // Dark mode, for an era that has a dark variant: rebuilt in its colors.
+          if (!ERAS.at(getSettings().eraIndex)?.dark) return;
+          updateSettings({ dark: !getSettings().dark });
+          return this.scene.restart();
         case 'ArrowLeft':
           return this.adjustOffset(-OFFSET_STEP_MS);
         case 'ArrowRight':
@@ -119,8 +126,8 @@ export class TitleScene extends Phaser.Scene {
       const era = ERAS.at(Number(key) - 1);
       if (era && /^[1-9]$/.test(key)) {
         updateSettings({ eraIndex: Number(key) - 1 });
-        this.look.setEra(era);
-        this.restyle();
+        // Rebuilt, so every text picks up the era's font and resolution.
+        this.scene.restart();
       }
     });
   }
@@ -147,8 +154,9 @@ export class TitleScene extends Phaser.Scene {
   }
 
   private restyle(): void {
-    const { fg, dim } = this.look.era;
+    const { fg, dim, accent } = this.look.era;
     for (const t of this.texts) t.setColor(cssColor(fg));
+    this.texts[0]?.setColor(cssColor(accent)); // the title
     this.ledBase.setFillStyle(dim);
     this.ledLight.setFillStyle(fg);
     this.renderText();
@@ -160,7 +168,8 @@ export class TitleScene extends Phaser.Scene {
     this.prompt.setText(`PRESS ENTER TO START${cursor}`);
     this.options.setText(
       `${this.progressLabel()}\n[B] BRIEFING   [P] PRACTICE   [N] NEW GAME${this.confirmNewGame ? ': PRESS N AGAIN TO ERASE YOUR SAVE' : ''}\n` +
-        `[C] CALIBRATE   [R] RELAXED: ${settings.relaxed ? 'ON' : 'OFF'}   [M] COMPUTER HUM: ${settings.music ? 'ON' : 'OFF'}   [1-4] ERA: ${this.look.era.name}`,
+        `[C] CALIBRATE   [R] RELAXED: ${settings.relaxed ? 'ON' : 'OFF'}   [M] COMPUTER HUM: ${settings.music ? 'ON' : 'OFF'}   [1-4] ERA: ${this.look.era.name}` +
+          (ERAS.at(settings.eraIndex)?.dark ? `   [D] DARK: ${settings.dark ? 'ON' : 'OFF'}` : ''),
     );
 
     if (!this.calibration) {

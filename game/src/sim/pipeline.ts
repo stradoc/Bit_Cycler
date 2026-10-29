@@ -1,5 +1,6 @@
 import type { Cpu, Step } from './cpu.ts';
 import { destReg, sourceRegs, type Branch, type Instruction } from './isa.ts';
+import { MemorySystem, type Access } from './memory.ts';
 
 // The classic 5-stage in-order pipeline from Patterson & Hennessy:
 //   IF  fetch   ID  decode + read registers (branches resolve here)
@@ -7,6 +8,9 @@ import { destReg, sourceRegs, type Branch, type Instruction } from './isa.ts';
 // The register file is written in the first half of a cycle and read in the
 // second half, so an instruction in ID can read a value written by WB that
 // same cycle. The player acts at ID: issue the instruction, or stall.
+// Loads and stores reach memory in MEM (sim/memory.ts). An access slower than
+// a cycle freezes the whole pipeline until it's done: every stage holds, so
+// the distances between instructions (and their hazards) don't change.
 
 export const STAGES = ['IF', 'ID', 'EX', 'MEM', 'WB'] as const;
 export type Stage = (typeof STAGES)[number];
@@ -41,6 +45,13 @@ export type PipelineOptions = {
    * branch is decided before the next instruction is fetched.
    */
   readonly singleCycle?: boolean;
+  /** The L1 data cache: loads that hit don't wait for RAM. */
+  readonly cache?: boolean;
+  /**
+   * The clock (MHz), which sets how many cycles a trip to RAM takes. Without
+   * one, memory keeps up with any clock. A song changes it as the dial turns.
+   */
+  readonly mhz?: number;
 };
 
 /** A predictor's guess for a branch, and whether it's sure (2-bit strong states; 1-bit is always sure). */
@@ -83,6 +94,8 @@ export type CycleResult = {
   readonly mispredicted?: boolean;
   /** ...and with a predictor, what the predictor guessed (the player may have overridden it). */
   readonly predicted?: boolean;
+  /** A load or store that reached memory this cycle (entered MEM; on a single-cycle CPU, ran). */
+  readonly access?: { readonly slot: Slot; readonly access: Access };
 };
 
 /**
@@ -120,6 +133,16 @@ export class Pipeline {
   stalls = 0;
   /** Instructions thrown away by flushes. */
   flushed = 0;
+  /** Data memory: RAM, and the L1 cache if fitted. */
+  readonly memory: MemorySystem;
+  /** The clock right now (MHz); undefined = memory keeps up with any clock. */
+  clockMhz: number | undefined;
+  /** Cycles left with the pipeline frozen, waiting for memory. */
+  memoryWait = 0;
+  /** Cycles spent frozen waiting for memory so far. */
+  memoryCycles = 0;
+  /** The last access to reach memory, and the instruction making it. */
+  lastAccess: { readonly slot: Slot; readonly access: Access } | undefined;
   /** Branches decided, and how many of them were guessed wrong. */
   branches = 0;
   mispredicted = 0;
@@ -143,6 +166,8 @@ export class Pipeline {
     this.cpu = cpu;
     this.options = options;
     this.regs = [...cpu.regs];
+    this.memory = new MemorySystem(options.cache ?? false);
+    this.clockMhz = options.mhz;
     this.stages.IF = this.fetch();
     if (options.singleCycle) {
       // Nothing to fill: the first instruction starts straight away.
@@ -158,7 +183,7 @@ export class Pipeline {
 
   get done(): boolean {
     const { IF, ID, EX, MEM } = this.stages;
-    return this.fetchPc >= this.cpu.program.instructions.length && !IF && !ID && !EX && !MEM;
+    return this.fetchPc >= this.cpu.program.instructions.length && !IF && !ID && !EX && !MEM && this.memoryWait === 0;
   }
 
   /** Average cycles per instruction so far, counting the cycles to fill the pipeline. */
@@ -290,9 +315,19 @@ export class Pipeline {
     return this.hazard() ? 'stall' : 'issue';
   }
 
+  /** Spends up to `cycles` of the current memory wait, the whole pipeline frozen. Returns how many it spent. */
+  wait(cycles = this.memoryWait): number {
+    const spent = Math.max(0, Math.min(cycles, this.memoryWait));
+    this.cycle += spent;
+    this.memoryCycles += spent;
+    this.memoryWait -= spent;
+    return spent;
+  }
+
   /** Advances one clock cycle. `action` is the player's choice for the instruction in ID. */
   step(action: 'issue' | 'stall'): CycleResult {
     if (this.done) throw new Error('pipeline is done');
+    if (this.memoryWait > 0) throw new Error('pipeline is frozen, waiting for memory');
     if (this.options.singleCycle) return this.stepSingleCycle(action);
     const { IF, ID, EX, MEM } = this.stages;
     const flushed: Slot[] = [];
@@ -372,7 +407,9 @@ export class Pipeline {
     this.stages = { IF: nextIF, ID: nextID, EX: nextEX, MEM: EX, WB: MEM };
     if (this.prediction && this.prediction.seq !== nextID?.seq) this.prediction = null;
     this.cycle++;
-    return { event, flushed, committed, mispredicted, predicted };
+    // The instruction now entering MEM reaches memory next cycle; if that takes longer, everything waits.
+    const access = this.reachMemory(EX);
+    return { event, flushed, committed, mispredicted, predicted, access };
   }
 
   /**
@@ -409,7 +446,19 @@ export class Pipeline {
     }
     this.stages = { IF: nextIF, ID: nextID, EX: null, MEM: null, WB: done };
     this.cycle++;
-    return { event, flushed: [], committed: done ?? undefined };
+    // A load or store stretches the long cycle until memory answers.
+    const access = this.reachMemory(done);
+    return { event, flushed: [], committed: done ?? undefined, access };
+  }
+
+  /** A load or store reaches memory: an access longer than one cycle freezes the pipeline. */
+  private reachMemory(slot: Slot | null): CycleResult['access'] {
+    const address = slot?.step?.loaded ?? slot?.step?.stored;
+    if (!slot || address === undefined) return undefined;
+    const access = this.memory.access(slot.step?.loaded !== undefined ? 'load' : 'store', address, this.clockMhz);
+    this.memoryWait = access.cycles - 1;
+    this.lastAccess = { slot, access };
+    return this.lastAccess;
   }
 
   /** Fetches the instruction at fetchPc (as `seq` when refetching a slot) and moves fetch on, following the predictor. */
@@ -458,6 +507,10 @@ export class Pipeline {
 export function perfectRun(cpu: Cpu, options: PipelineOptions, guesses: 'hardware' | 'perfect' = 'hardware'): Pipeline {
   const pipeline = new Pipeline(cpu.clone(), options);
   while (!pipeline.done) {
+    if (pipeline.memoryWait > 0) {
+      pipeline.wait();
+      continue;
+    }
     const action = pipeline.bestAction();
     const taken = pipeline.branchOutcome();
     if (action === 'issue' && guesses === 'perfect' && taken !== undefined) pipeline.predict(taken);
@@ -468,5 +521,5 @@ export function perfectRun(cpu: Cpu, options: PipelineOptions, guesses: 'hardwar
 
 /** Cycles a perfectly played run takes; see perfectRun(). */
 export function perfectCycles(cpu: Cpu, options: PipelineOptions, guesses: 'hardware' | 'perfect' = 'hardware'): number {
-  return perfectRun(cpu, options, guesses).cycle;
+  return perfectRun(cpu, options, guesses).cycles;
 }

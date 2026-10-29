@@ -293,6 +293,90 @@ export const OVERCLOCK_LESSON = {
         },
     ],
 };
+/** Shown when the clock first outruns RAM (a trip takes more than one cycle). */
+export const MEMWALL_LESSON = {
+    id: 'memwall',
+    title: 'THE MEMORY WALL',
+    scene: 'pipeline',
+    options: { forwarding: true },
+    pages: [
+        {
+            title: 'RAM TAKES ITS TIME',
+            diagram: 'ramtrip',
+            lines: ['A trip to RAM takes about 60 ns (the textbook gives', '50-70 ns for DRAM). Clocks went from 1 MHz to 4 GHz', 'in 40 years; RAM only got a few times quicker.'],
+            analogy: 'Working faster doesn\'t make the delivery truck arrive sooner.',
+        },
+        {
+            title: 'MORE CYCLES, SAME WAIT',
+            diagram: 'wallchart',
+            lines: ['60 ns is 1 cycle at 16 MHz, but 240 at 4 GHz.', 'Every load and store waits that long, and the', 'whole pipeline freezes while it does.'],
+            analogy: 'Each faster clock means more cycles spent doing nothing.',
+        },
+        {
+            title: 'THE WALL',
+            diagram: 'floor',
+            lines: ['CPU TIME = INSTRUCTIONS x CPI x CLOCK PERIOD.', 'A faster clock shrinks the period, but the waits', 'grow just as fast: past a point, upgrades buy nothing.'],
+            analogy: 'That floor is the memory wall. Caches are how real CPUs climb it.',
+        },
+        {
+            title: 'HOW IT PLAYS',
+            diagram: 'freezeplay',
+            lines: ['When a load or store reaches MEMORY, the notes freeze', 'and a counter rolls up the cycles. Keys do nothing.', 'A bright click: the data arrived. Press the next note.'],
+            analogy: 'Up to 5 beats stand for hundreds of cycles; every one counts.',
+        },
+    ],
+};
+/** Shown right after buying the L1 cache. */
+export const CACHE_LESSON = {
+    id: 'cache',
+    title: 'THE L1 CACHE',
+    scene: 'pipeline',
+    options: { forwarding: true },
+    pages: [
+        {
+            title: 'A DESK BESIDE THE CPU',
+            diagram: 'desk',
+            lines: ['A cache is a small, fast memory right beside the CPU.', 'It keeps copies of bytes used recently. A load', 'it already holds is a HIT: no trip to RAM.'],
+            analogy: 'Keep the books you are using on your desk, not across town.',
+        },
+        {
+            title: 'LINES AND BLOCKS',
+            diagram: 'lines',
+            lines: ['Memory moves in BLOCKS of 4 bytes. This cache has', '4 LINES of one block each (16 bytes). Every block has', 'exactly one line it can go in: DIRECT-MAPPED.'],
+            analogy: 'Blocks 0, 4, 8... all share line 0, so they push each other out.',
+        },
+        {
+            title: 'THE ADDRESS SAYS WHERE',
+            diagram: 'address',
+            lines: ['An address splits into TAG, LINE and BYTE: tttt ii oo.', 'The LINE bits pick the line. Its TAG says which', 'block is in it now. Same tag (and valid): a HIT.'],
+            analogy: 'The line is the shelf; the tag is the name on the book.',
+        },
+        {
+            title: 'A MISS BRINGS A WHOLE BLOCK',
+            diagram: 'locality',
+            lines: ['A MISS fetches the whole block from RAM, so the next', 'bytes are already there: reading in order costs one', 'miss per 4 bytes. Reading a byte again hits too.'],
+            analogy: 'Programs use nearby and recent data. That is why small caches work.',
+        },
+        {
+            title: 'THREE KINDS OF MISS',
+            diagram: 'misskinds',
+            lines: ['FIRST USE: the block was never loaded before.', 'CONFLICT: two blocks keep pushing each other out of a line.', 'TOO SMALL: more blocks in use than the cache holds.'],
+            analogy: 'Replays label every miss: click a load to see which kind.',
+        },
+        {
+            title: 'HOW IT PLAYS',
+            diagram: 'cacheplay',
+            lines: ['The L1 box shows each line: its tag and its 4 bytes.', 'A hit doesn\'t freeze; a miss freezes as before.', 'Stores go out through a WRITE BUFFER: no waiting.'],
+            analogy: 'Watch the lookup line under the memory to see every hit and miss.',
+        },
+        {
+            title: 'YOUR SCORE',
+            diagram: 'cachescore',
+            lines: ['Fewer trips to RAM means a lower CPI,', 'and clock upgrades start paying off again.'],
+            analogy: 'Results show your hit rate and your time next to NO CACHE.',
+        },
+    ],
+};
 export const LESSONS = {
     [TIER1_LESSON.id]: TIER1_LESSON,
     [TIER2_LESSON.id]: TIER2_LESSON,
@@ -301,5 +385,7 @@ export const LESSONS = {
     [TIER5_LESSON.id]: TIER5_LESSON,
     [TIER6_LESSON.id]: TIER6_LESSON,
     [OVERCLOCK_LESSON.id]: OVERCLOCK_LESSON,
+    [MEMWALL_LESSON.id]: MEMWALL_LESSON,
+    [CACHE_LESSON.id]: CACHE_LESSON,
 };
 //# sourceMappingURL=lessons.js.map

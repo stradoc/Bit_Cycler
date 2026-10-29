@@ -1,6 +1,6 @@
 import { getProgress } from './save.ts';
 import { getSettings } from './settings.ts';
-import { tierOf, type Contract } from './sim/progress.ts';
+import { pastMemoryWall, tierOf, type Contract } from './sim/progress.ts';
 
 /**
  * Plays a contract on the CPU the player owns. A concept they haven't learned
@@ -12,6 +12,9 @@ export function playContract(scene: Phaser.Scene, contract: Contract): void {
   const { seenLessons } = getSettings();
   if (!seenLessons.includes(tier.lessonId)) {
     scene.scene.start('briefing', { lessonId: tier.lessonId, mandatory: true, then: { scene: tier.scene, data: { ...data, practice: true } } });
+  } else if (pastMemoryWall(getProgress()) && !seenLessons.includes('memwall')) {
+    // The clock outran RAM without a clock purchase (buying the pipeline can do it): explain the wall first.
+    scene.scene.start('briefing', { lessonId: 'memwall', mandatory: true, then: { scene: tier.scene, data } });
   } else {
     scene.scene.start(tier.scene, data);
   }
@@ -19,13 +22,18 @@ export function playContract(scene: Phaser.Scene, contract: Contract): void {
 
 /**
  * Right after buying something with a briefing: the briefing (no skipping),
- * then a practice of the new part (CPU parts) or back to the shop.
+ * then a practice of the new part (CPU parts and the cache) or back to the shop.
+ * The cache's briefing builds on the memory wall's, so that one comes first if it's unread.
  */
 export function briefAfterPurchase(scene: Phaser.Scene, lessonId: string): void {
   const tier = tierOf(getProgress());
-  const isPart = lessonId === tier.lessonId;
-  const then = isPart
+  const practices = lessonId === tier.lessonId || lessonId === 'cache';
+  const then = practices
     ? { scene: tier.scene, data: { ...tier.options, practice: true, returnTo: 'board' } }
     : { scene: 'shop', data: {} };
+  if (lessonId === 'cache' && !getSettings().seenLessons.includes('memwall')) {
+    scene.scene.start('briefing', { lessonId: 'memwall', mandatory: true, then: { scene: 'briefing', data: { lessonId, mandatory: true, then } } });
+    return;
+  }
   scene.scene.start('briefing', { lessonId, mandatory: true, then });
 }

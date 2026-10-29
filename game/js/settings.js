@@ -1,5 +1,5 @@
 const STORAGE_KEY = 'bit-cycler-settings';
-const DEFAULTS = { offset: 0, relaxed: false, eraIndex: 0, music: true, seenLessons: [] };
+const DEFAULTS = { offset: 0, relaxed: false, eraIndex: 0, music: true, seenLessons: [], dark: false };
 let current;
 export function getSettings() {
     if (!current) {

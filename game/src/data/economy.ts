@@ -54,6 +54,19 @@ export const CLOCK = {
   prices: [200, 290, 420, 610, 885, 1280, 1860, 2700, 3900, 5660],
 } as const;
 
+/**
+ * Memory parts, separate from the CPU tiers, bought in this order. The L1
+ * cache goes on sale once your clock outruns RAM (a trip takes over a cycle).
+ */
+export const MEMORY_PARTS = [
+  {
+    id: 'l1',
+    name: 'L1 CACHE: 16 BYTES',
+    price: 500,
+    about: 'A tiny, fast memory beside the CPU: 4 lines of 4 bytes. A load it holds needs no trip to RAM; a miss brings in the whole 4-byte block, so the next bytes hit. Stores go out through a write buffer and never wait.',
+  },
+] as const;
+
 /** Unlocks H (overclocking past the rated clock) in songs. Underclocking (G) is always allowed. */
 export const OVERCLOCKING_PRICE = 400;
 
@@ -79,8 +92,9 @@ const DAY = 86400;
 export const SECTIONS = [
   { id: 'starter', name: 'STARTER', instructions: [1e4, 1e6], deadline: [1 * MINUTE, 10 * MINUTE], pay: [40, 80] },
   { id: 'standard', name: 'STANDARD', instructions: [1e11, 3e13], deadline: [1 * DAY, 7 * DAY], pay: [150, 400] },
-  // Sized so a fully upgraded CPU can take every advanced job, even the biggest, most urgent one.
-  { id: 'advanced', name: 'ADVANCED', instructions: [1e14, 1e15], deadline: [7 * DAY, 60 * DAY], pay: [500, 1200] },
+  // Sized so a fully upgraded CPU (with the L1 cache) can take every advanced job, even the biggest,
+  // most urgent one on the program that misses most (ADD ARRAYS: CPI about 32 at 4 GHz).
+  { id: 'advanced', name: 'ADVANCED', instructions: [1e13, 7e13], deadline: [7 * DAY, 60 * DAY], pay: [500, 1200] },
 ] as const;
 
 export type SectionId = (typeof SECTIONS)[number]['id'];

@@ -7,13 +7,16 @@ import {
   buy,
   completeContract,
   contractSeconds,
+  cpiFor,
   fillBoard,
   isLocked,
   isTight,
   jobItems,
   NEW_GAME,
   newContract,
+  pastMemoryWall,
   ratedMhz,
+  shopItems,
   tierOf,
   withTier,
   type Contract,
@@ -96,15 +99,49 @@ test("a contract is locked when your CPU can't meet its deadline, and tight when
   const day = 86400;
   const job: Contract = { id: 1, section: 'advanced', program: 'SUM ARRAY', instructions: 1e14, deadline: 30 * day, pay: 500 };
   assert.ok(isLocked(job, NEW_GAME)); // over 3 years at 1 MHz
-  const fast: Progress = { ...NEW_GAME, parts: ['pipeline', 'forwarding'], clockLevel: 5 }; // 128 MHz: about 16 days
-  assert.ok(!isLocked(job, fast));
-  assert.ok(!isTight(job, fast));
-  assert.ok(isTight({ ...job, deadline: 18 * day }, fast)); // 16 of 18 days: a sloppy run could be late
-  assert.ok(isLocked({ ...job, deadline: 10 * day }, fast));
-  // Even the biggest, most urgent advanced job is possible at 4 GHz with every part.
-  const best: Progress = { ...NEW_GAME, parts: ['pipeline', 'forwarding', 'guessing', 'predictor1', 'predictor2'], clockLevel: 10 };
-  const hardest = { ...job, instructions: SECTIONS[2].instructions[1], deadline: SECTIONS[2].deadline[0], program: 'SUM GRID' };
+  // 128 MHz with forwarding: every load waits 8 cycles for RAM, so about 32 days.
+  const fast: Progress = { ...NEW_GAME, parts: ['pipeline', 'forwarding'], clockLevel: 5 };
+  assert.ok(isLocked(job, fast));
+  // The L1 cache: one miss per 4-byte block instead of a trip for every byte, about 19 days.
+  const cached: Progress = { ...fast, cacheLevels: 1 };
+  assert.ok(!isLocked(job, cached));
+  assert.ok(!isTight(job, cached));
+  assert.ok(isTight({ ...job, deadline: 22 * day }, cached)); // 19 of 22 days: a sloppy run could be late
+  assert.ok(isLocked({ ...job, deadline: 15 * day }, cached));
+  // Even the biggest, most urgent advanced job is possible at 4 GHz with every part and the cache, on
+  // the program that misses the cache most when its data doesn't collide; without the cache it's out of reach.
+  const best: Progress = { ...NEW_GAME, parts: ['pipeline', 'forwarding', 'guessing', 'predictor1', 'predictor2'], clockLevel: 10, cacheLevels: 1 };
+  const hardest = { ...job, instructions: SECTIONS[2].instructions[1], deadline: SECTIONS[2].deadline[0], program: 'ADD ARRAYS #16' };
   assert.ok(!isLocked(hardest, best));
+  assert.ok(isLocked(hardest, { ...best, cacheLevels: 0 }));
+  // Arrays a cache-full apart (ADD ARRAYS #1) miss on every load: over twice as slow, so that job is locked.
+  assert.ok(cpiFor('ADD ARRAYS #1', best) > 2 * cpiFor('ADD ARRAYS #16', best));
+  assert.ok(isLocked({ ...hardest, program: 'ADD ARRAYS #1' }, best));
+});
+
+test('the memory wall: clock upgrades past it help less, and the L1 cache goes on sale', () => {
+  const piped: Progress = { ...NEW_GAME, parts: ['pipeline', 'forwarding'], money: 10_000, clockLevel: 2 }; // 16 MHz
+  assert.ok(!pastMemoryWall(piped));
+  const l1 = (p: Progress) => shopItems(p).find((item) => item.key === 'l1');
+  assert.equal(l1(piped)?.state, 'later');
+  // The next clock (32 MHz) is the first that outruns RAM: it comes with the memory wall briefing.
+  const clock = shopItems(piped).find((item) => item.key === 'clock');
+  assert.equal(clock?.lessonId, 'memwall');
+  const faster = buy(piped, 'clock');
+  assert.ok(faster && pastMemoryWall(faster));
+  assert.equal(shopItems(faster).find((item) => item.key === 'clock')?.lessonId, undefined);
+  assert.equal(l1(faster)?.state, 'buy');
+  assert.equal(l1(faster)?.lessonId, 'cache');
+  const cached = buy(faster, 'l1');
+  assert.equal(cached?.cacheLevels, 1);
+  assert.equal(cached && l1(cached)?.state, 'owned');
+  // Past the wall, a faster clock barely helps a typical job without a cache: 1 GHz -> 2 GHz saves under 10%.
+  const late: Progress = { ...piped, clockLevel: 8 };
+  const saved = Number(/\((\d+)% less\)/.exec(shopItems(late).find((item) => item.key === 'clock')?.about ?? '')?.[1]);
+  assert.ok(saved < 10, `saved ${saved}%`);
+  // With the cache, the same upgrade is worth more.
+  const savedCached = Number(/\((\d+)% less\)/.exec(shopItems({ ...late, cacheLevels: 1 }).find((item) => item.key === 'clock')?.about ?? '')?.[1]);
+  assert.ok(savedCached > saved, `${savedCached}% vs ${saved}%`);
 });
 
 test('standard jobs are mostly out of reach on the starting CPU', () => {

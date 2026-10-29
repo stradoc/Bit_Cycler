@@ -19,11 +19,12 @@ function randomTools(next) {
         chance: (p) => next() < p,
         registers: (count) => {
             const pool = [1, 2, 3, 4, 5, 6, 7];
+            // All seven are shuffled, so a seed's other random choices (data, layout, client) stay put.
             for (let i = pool.length - 1; i > 0; i--) {
                 const j = int(0, i);
                 [pool[i], pool[j]] = [pool[j], pool[i]];
             }
-            return pool.slice(0, count);
+            return [1, 2, ...pool.filter((reg) => reg > 2)].slice(0, count);
         },
     };
 }
@@ -139,20 +140,25 @@ function copy(r, double) {
         answer: data.map((d, i) => ({ address: to + i, value: double ? wrap(d * 2) : d })),
     };
 }
-/** Adds a second array (8..) into a first (0..), pair by pair. */
+/**
+ * Adds a second array into a first (0..), pair by pair. The second starts at
+ * 8, or half the time at 16: a cache-full away, so each pair's two bytes need
+ * the same cache line and keep pushing each other out (conflict misses).
+ */
 function addArrays(r) {
     const n = r.int(5, 8);
     const [p, end, a, b] = r.registers(4);
     const first = bytes(r, n, 1, 50);
     const second = bytes(r, n, 1, 50);
-    const memory = [...first, ...Array(8 - n).fill(0), ...second];
+    const at = r.chance(0.5) ? 16 : 8;
+    const memory = [...first, ...Array(at - n).fill(0), ...second];
     return {
         kind: 'ADD ARRAYS',
         source: [
             `      addi ${x(p)}, x0, 0`,
             `      addi ${x(end)}, x0, ${n}`,
             `loop: lb   ${x(a)}, 0(${x(p)})`,
-            `      lb   ${x(b)}, 8(${x(p)})`,
+            `      lb   ${x(b)}, ${at}(${x(p)})`,
             `      add  ${x(a)}, ${x(a)}, ${x(b)}`,
             `      sb   ${x(a)}, 0(${x(p)})`,
             `      addi ${x(p)}, ${x(p)}, 1`,
@@ -164,7 +170,8 @@ function addArrays(r) {
         unit: 'BYTES',
         roles: { [p]: 'which pair (0, 1, 2 ...)', [end]: `how many pairs (${n})`, [a]: 'a byte from the first array, then the sum', [b]: 'a byte from the second array' },
         keys: loopKeys(p, end, n, 'WHICH PAIR IS NEXT'),
-        memoryNote: `Addresses 0-${n - 1} and 8-${7 + n} hold two arrays; each sum replaces the byte in the first.`,
+        memoryNote: `Addresses 0-${n - 1} and ${at}-${at + n - 1} hold two arrays; each sum replaces the byte in the first.` +
+            (at === 16 ? ' They are 16 bytes apart, so each pair needs the same cache line.' : ''),
         answer: first.map((d, i) => ({ address: i, value: wrap(d + second[i]) })),
     };
 }
