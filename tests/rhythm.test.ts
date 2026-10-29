@@ -2,21 +2,31 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PROGRAMS } from '../game/src/data/programs.ts';
 import { judge, NORMAL_WINDOWS } from '../game/src/rhythm/judge.ts';
-import { SingleCycleRun } from '../game/src/rhythm/run.ts';
+import { PipelineRun } from '../game/src/rhythm/pipelineRun.ts';
 import { tempoForClock } from '../game/src/rhythm/tempo.ts';
 import { assemble } from '../game/src/sim/assembler.ts';
 import { Cpu } from '../game/src/sim/cpu.ts';
-import { unitOf } from '../game/src/sim/isa.ts';
+import { unitOf, type Unit } from '../game/src/sim/isa.ts';
 
 const SPB = 0.6; // 100 BPM
 
-function newRun(): SingleCycleRun {
+/** Tier 1: SUM ARRAY on the single-cycle CPU. */
+function newRun(): PipelineRun {
   const spec = PROGRAMS[0];
-  return new SingleCycleRun(new Cpu(assemble(spec.source, 8), 8, spec.memory), 4, SPB, NORMAL_WINDOWS);
+  return new PipelineRun(new Cpu(assemble(spec.source, 8), 8, spec.memory), { forwarding: false, singleCycle: true }, 4, SPB, NORMAL_WINDOWS);
 }
 
-function expectedUnit(run: SingleCycleRun) {
-  return unitOf(run.notes[run.head].instr);
+function expectedUnit(run: PipelineRun): Unit {
+  const slot = run.pipeline.stages.ID;
+  assert.ok(slot);
+  return unitOf(slot.instr);
+}
+
+/** Presses `unit` at the current due beat, then closes the cycle. */
+function play(run: PipelineRun, unit: Unit, offsetBeats = 0) {
+  const decision = run.press({ kind: 'route', unit }, run.dueBeat + offsetBeats);
+  run.update(run.dueBeat + 1);
+  return decision;
 }
 
 test('judgment windows', () => {
@@ -26,57 +36,46 @@ test('judgment windows', () => {
   assert.equal(judge(-0.12, NORMAL_WINDOWS), 'MISS');
 });
 
-test('a perfect run has CPI 1 and runs the program correctly', () => {
+test('tier 1: a perfect run has CPI 1 and runs the program correctly', () => {
   const run = newRun();
-  while (!run.done) {
-    const result = run.press(expectedUnit(run), run.dueBeat(run.head));
-    assert.equal(result?.judgment, 'PERFECT');
-  }
-  assert.equal(run.instructions, 20);
-  assert.equal(run.cycles, 20);
-  assert.equal(run.cpi, 1);
-  assert.equal(run.cpu.memory[8], 17);
+  while (!run.done) assert.equal(play(run, expectedUnit(run))?.judgment, 'PERFECT');
+  assert.equal(run.pipeline.instructions, 20);
+  assert.equal(run.pipeline.cycles, 20);
+  assert.equal(run.pipeline.cpi, 1);
+  assert.equal(run.pipeline.cpu.memory[8], 17);
 });
 
-test('a wrong unit stalls one cycle and the same note comes back a beat later', () => {
+test('tier 1: a wrong unit costs a cycle and the same note comes back', () => {
   const run = newRun();
-  const due = run.dueBeat(0);
+  const first = run.pipeline.stages.ID?.seq;
   const wrong = expectedUnit(run) === 'ALU' ? 'MEM' : 'ALU';
-  const miss = run.press(wrong, due);
-  assert.equal(miss?.judgment, 'MISS');
-  assert.equal(miss?.pressed, wrong);
-  assert.equal(run.head, 0);
-  assert.equal(run.dueBeat(0), due + 1);
-
-  run.press(expectedUnit(run), due + 1);
-  assert.equal(run.head, 1);
-  assert.equal(run.cycles, 2); // 1 instruction + 1 stall
+  assert.equal(play(run, wrong)?.outcome, 'wrong-unit');
+  assert.equal(run.pipeline.stages.ID?.seq, first); // still waiting
+  play(run, expectedUnit(run));
+  assert.equal(run.pipeline.instructions, 1);
+  assert.equal(run.pipeline.cycles, 2); // 1 instruction + 1 lost cycle
 });
 
-test('early presses are ignored; late notes are missed automatically', () => {
+test('tier 1: early presses are ignored; a note that passes is missed', () => {
   const run = newRun();
-  const due = run.dueBeat(0);
-  assert.equal(run.press(expectedUnit(run), due - 0.5), null);
-
-  assert.deepEqual(run.update(due + 0.1), []); // 60 ms late: still in the window
-  const missed = run.update(due + 0.5); // 300 ms late
-  assert.equal(missed.length, 1);
-  assert.equal(missed[0].pressed, null);
-  assert.equal(run.stalls, 1);
+  assert.equal(run.press({ kind: 'route', unit: expectedUnit(run) }, run.dueBeat - 0.5), null);
+  const [report] = run.update(run.dueBeat + 0.5); // 300 ms late
+  assert.equal(report.decision?.outcome, 'missed');
+  assert.equal(run.pipeline.stalls, 1);
 });
 
-test('CPI reflects stalls: 20 instructions with 5 misses = 25 cycles', () => {
+test('tier 1: CPI reflects lost cycles: 20 instructions with 5 misses = 25 cycles', () => {
   const run = newRun();
   let misses = 0;
   while (!run.done) {
     if (misses < 5) {
-      run.update(run.dueBeat(run.head) + 1); // let the note pass
+      run.update(run.dueBeat + 1); // let the note pass
       misses++;
     }
-    run.press(expectedUnit(run), run.dueBeat(run.head));
+    play(run, expectedUnit(run));
   }
-  assert.equal(run.cycles, 25);
-  assert.equal(run.cpi, 25 / 20);
+  assert.equal(run.pipeline.cycles, 25);
+  assert.equal(run.pipeline.cpi, 25 / 20);
 });
 
 test('tempo grows 12 BPM per 10x clock, from 75 BPM at 1 MHz', () => {

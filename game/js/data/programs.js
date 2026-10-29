@@ -13,6 +13,9 @@ loop: lb   x4, 0(x1)
       sb   x3, 8(x0)
     `,
         memory: [3, 5, 7, 2],
+        elements: 4,
+        verb: 'SUM',
+        unit: 'BYTES',
         roles: {
             1: 'the address of the next number to add',
             2: 'the end address (4): the loop stops when x1 reaches it',
@@ -38,6 +41,9 @@ col:  lb   x4, 0(x1)
       sb   x3, 12(x0)
     `,
         memory: [1, 2, 3, 4, 5, 6, 7, 8, 9, 2, 4, 6],
+        elements: 12,
+        verb: 'SUM A GRID:',
+        unit: 'BYTES',
         roles: {
             1: 'the address of the next number to add',
             2: 'the end of the current row: the inner loop stops when x1 reaches it',

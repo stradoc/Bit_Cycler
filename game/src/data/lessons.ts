@@ -25,7 +25,7 @@ export type Lesson = {
   readonly id: string;
   readonly title: string;
   /** Scene that practices and plays this lesson's concept, and options for it. */
-  readonly scene: 'play' | 'pipeline';
+  readonly scene: 'pipeline';
   readonly options?: TierOptions;
   readonly pages: readonly LessonPage[];
 };
@@ -33,7 +33,8 @@ export type Lesson = {
 export const TIER1_LESSON: Lesson = {
   id: 'tier1',
   title: 'LESSON 1: HOW A CPU RUNS A PROGRAM',
-  scene: 'play',
+  scene: 'pipeline',
+  options: { singleCycle: true },
   pages: [
     {
       title: 'A CPU FOLLOWS INSTRUCTIONS',

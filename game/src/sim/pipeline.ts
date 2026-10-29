@@ -35,6 +35,12 @@ export type PipelineOptions = {
   readonly forwarding: boolean;
   /** Without a predictor, fetch always assumes a branch is not taken. */
   readonly predictor?: Predictor;
+  /**
+   * Tier 1: a single-cycle CPU. The instruction in ID does all five steps in
+   * one long cycle, so nothing ever waits for another instruction, and a
+   * branch is decided before the next instruction is fetched.
+   */
+  readonly singleCycle?: boolean;
 };
 
 /** A predictor's guess for a branch, and whether it's sure (2-bit strong states; 1-bit is always sure). */
@@ -138,6 +144,16 @@ export class Pipeline {
     this.options = options;
     this.regs = [...cpu.regs];
     this.stages.IF = this.fetch();
+    if (options.singleCycle) {
+      // Nothing to fill: the first instruction starts straight away.
+      this.stages.ID = this.stages.IF;
+      this.stages.IF = this.fetch();
+    }
+  }
+
+  /** Clock cycles so far: a single-cycle CPU has no cycle where the first instruction is only fetched. */
+  get cycles(): number {
+    return this.options.singleCycle ? this.cycle - 1 : this.cycle;
   }
 
   get done(): boolean {
@@ -147,7 +163,7 @@ export class Pipeline {
 
   /** Average cycles per instruction so far, counting the cycles to fill the pipeline. */
   get cpi(): number {
-    return this.instructions === 0 ? 0 : this.cycle / this.instructions;
+    return this.instructions === 0 ? 0 : this.cycles / this.instructions;
   }
 
   /** Stages holding a real instruction (0-5): how full the pipeline is. */
@@ -158,7 +174,7 @@ export class Pipeline {
   /** The data hazard blocking the instruction in ID, if any (the worst one). */
   hazard(): Hazard | null {
     const consumer = this.stages.ID;
-    if (!consumer) return null;
+    if (!consumer || this.options.singleCycle) return null;
     let worst: Hazard | null = null;
     for (const reg of sourceRegs(consumer.instr)) {
       if (reg === 0) continue; // x0 is constant
@@ -277,6 +293,7 @@ export class Pipeline {
   /** Advances one clock cycle. `action` is the player's choice for the instruction in ID. */
   step(action: 'issue' | 'stall'): CycleResult {
     if (this.done) throw new Error('pipeline is done');
+    if (this.options.singleCycle) return this.stepSingleCycle(action);
     const { IF, ID, EX, MEM } = this.stages;
     const flushed: Slot[] = [];
     let event: CycleEvent;
@@ -356,6 +373,43 @@ export class Pipeline {
     if (this.prediction && this.prediction.seq !== nextID?.seq) this.prediction = null;
     this.cycle++;
     return { event, flushed, committed, mispredicted, predicted };
+  }
+
+  /**
+   * One long cycle of the single-cycle CPU: the instruction in ID runs all the
+   * way and its result is written straight away (it shows in WB for a cycle).
+   * The next instruction is fetched from wherever the program counter points,
+   * so a taken branch never fetches the wrong instruction.
+   */
+  private stepSingleCycle(action: 'issue' | 'stall'): CycleResult {
+    const { IF, ID } = this.stages;
+    let event: CycleEvent = { kind: 'idle' };
+    let done: Slot | null = null;
+    let nextID = ID;
+    let nextIF = IF;
+    if (ID && action === 'stall') {
+      this.stalls++;
+      event = { kind: 'stalled', needed: false };
+    } else if (ID) {
+      done = this.issue(ID);
+      this.commit(done);
+      event = { kind: 'issued', slot: done };
+      const taken = done.step?.taken;
+      if (taken !== undefined) {
+        this.branches++;
+        this.history.set(done.pc, [...(this.history.get(done.pc) ?? []), taken]);
+      }
+      if (taken) {
+        this.fetchPc = this.cpu.pc;
+        nextID = this.fetch();
+      } else {
+        nextID = IF;
+      }
+      nextIF = this.fetch();
+    }
+    this.stages = { IF: nextIF, ID: nextID, EX: null, MEM: null, WB: done };
+    this.cycle++;
+    return { event, flushed: [], committed: done ?? undefined };
   }
 
   /** Fetches the instruction at fetchPc (as `seq` when refetching a slot) and moves fetch on, following the predictor. */

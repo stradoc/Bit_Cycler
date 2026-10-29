@@ -3,16 +3,14 @@ export type Settings = {
   readonly offset: number;
   readonly relaxed: boolean;
   readonly eraIndex: number;
+  /** The menus' computer hum (fan, mains hum, hard drive) on or off (M). */
+  readonly music: boolean;
   /** Lesson ids whose briefing the player has finished. */
   readonly seenLessons: readonly string[];
-  /** CPU tier chosen on the title screen. */
-  readonly tier: number;
-  /** The chip's maximum clock (fraction of rated): overheating lowers it until it's repaired. */
-  readonly chipMaxDial: number;
 };
 
 const STORAGE_KEY = 'bit-cycler-settings';
-const DEFAULTS: Settings = { offset: 0, relaxed: false, eraIndex: 0, seenLessons: [], tier: 1, chipMaxDial: 1.5 };
+const DEFAULTS: Settings = { offset: 0, relaxed: false, eraIndex: 0, music: true, seenLessons: [] };
 
 let current: Settings | undefined;
 

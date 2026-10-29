@@ -31,7 +31,7 @@ export const THERMAL = {
   damagePerOverheat: 0.1,
 } as const;
 
-export type ThermalConfig = typeof THERMAL;
+export type ThermalConfig = { readonly [K in keyof typeof THERMAL]: number };
 
 /** Dynamic power relative to running flat out at the rated clock. */
 export function relativePower(clockRatio: number, active: boolean, config: ThermalConfig = THERMAL): number {

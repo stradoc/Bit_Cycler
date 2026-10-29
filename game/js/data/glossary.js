@@ -89,5 +89,9 @@ export const GLOSSARY = {
         title: 'TEMPERATURE',
         body: 'Power grows with voltage squared times the clock, and a faster clock needs more voltage. At 95°C it throttles to its rated clock until it cools to 80°C, and the heat wears it: its top clock drops 10%.',
     },
+    SINGLE_CYCLE: {
+        title: 'SINGLE-CYCLE CPU',
+        body: 'Each instruction does all five steps (fetch, decode, execute, memory, write back) in one long clock cycle, then the next one starts. Nothing waits, but the cycle must be long enough for the slowest instruction.',
+    },
 };
 //# sourceMappingURL=glossary.js.map

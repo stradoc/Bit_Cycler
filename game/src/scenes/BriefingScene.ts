@@ -1,3 +1,4 @@
+import { playMenuMusic, uiSound } from '../audio/menu.ts';
 import { LESSONS, TIER1_LESSON, type Lesson } from '../data/lessons.ts';
 import { keyOf, onKeyDown } from '../input/keys.ts';
 import { getSettings, updateSettings } from '../settings.ts';
@@ -10,13 +11,16 @@ export class BriefingScene extends Phaser.Scene {
   private lesson: Lesson = TIER1_LESSON;
   private page = 0;
   private then: { scene: string; data: object } | undefined;
+  /** Can't be skipped: the first time a concept comes up, or right after buying a part. */
+  private mandatory = false;
   private layer!: Phaser.GameObjects.Container;
 
   constructor() {
     super('briefing');
   }
 
-  init(data?: { lessonId?: string; then?: { scene: string; data: object } }): void {
+  init(data?: { lessonId?: string; then?: { scene: string; data: object }; mandatory?: boolean }): void {
+    this.mandatory = data?.mandatory ?? false;
     // Where to go after the last page; by default, practice of the lesson's concept.
     this.then = data?.then;
     // ?lesson=tier2 in the URL opens a lesson directly (dev shortcut).
@@ -30,13 +34,14 @@ export class BriefingScene extends Phaser.Scene {
     this.layer = this.add.container(0, 0);
     this.render();
 
+    playMenuMusic(this);
     this.input.on('pointerdown', () => this.next());
     onKeyDown(this, (event) => {
       const key = keyOf(event);
       if (key === 'Enter' || key === ' ' || key === 'ArrowRight') this.next();
       else if (key === 'ArrowLeft') this.turn(-1);
       // Q too: Vimium-style extensions swallow Escape while a text field has focus.
-      else if (key === 'Escape' || key === 'Q') this.scene.start('title');
+      else if ((key === 'Escape' || key === 'Q') && !this.mandatory) this.scene.start('title');
     });
   }
 
@@ -55,9 +60,16 @@ export class BriefingScene extends Phaser.Scene {
     else this.scene.start(this.lesson.scene, { practice: true, ...this.lesson.options });
   }
 
+  private finishLabel(): string {
+    if (!this.then) return 'START PRACTICE';
+    if (this.then.scene !== 'pipeline') return 'CONTINUE';
+    return (this.then.data as { practice?: boolean }).practice ? 'START PRACTICE' : 'PLAY';
+  }
+
   private turn(delta: number): void {
     const page = Phaser.Math.Clamp(this.page + delta, 0, this.lesson.pages.length - 1);
     if (page === this.page) return;
+    uiSound(this, 'move');
     this.page = page;
     this.render();
   }
@@ -95,7 +107,9 @@ export class BriefingScene extends Phaser.Scene {
     text(
       cx,
       508,
-      last ? `[<-] BACK      [ENTER] ${this.then ? 'PLAY' : 'START PRACTICE'}` : '[<-] BACK      [ENTER] NEXT      [Q] SKIP',
+      last
+        ? `[<-] BACK      [ENTER] ${this.finishLabel()}`
+        : `[<-] BACK      [ENTER] NEXT${this.mandatory ? '' : '      [Q] SKIP'}`,
       16,
       0.6,
     );

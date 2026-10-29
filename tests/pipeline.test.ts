@@ -266,3 +266,18 @@ test('SUM GRID (a loop inside a loop): the 2-bit predictor misses less than the 
   // A perfect player beats both.
   assert.equal(perfectCycles(new Cpu(assemble(spec.source, 8), 8, spec.memory), { forwarding: true, predictor: '2-bit' }, 'perfect'), two.cycle - 7);
 });
+
+test('single-cycle CPU (tier 1): CPI 1, no hazards, and branches never fetch the wrong instruction', () => {
+  const spec = PROGRAMS[0];
+  const p = new Pipeline(new Cpu(assemble(spec.source, 8), 8, spec.memory), { forwarding: false, singleCycle: true });
+  assert.equal(p.stages.ID?.pc, 0); // starts straight away
+  const results = playPerfectly(p);
+  assert.equal(p.cpu.memory[8], 17);
+  assert.equal(p.instructions, 20);
+  assert.equal(p.cycles, 20);
+  assert.equal(p.cpi, 1);
+  assert.equal(p.stalls, 0);
+  assert.equal(p.flushed, 0);
+  assert.ok(results.every((r) => r.flushed.length === 0));
+  assert.equal(p.regs[3], 17); // written straight away, no write-back delay
+});

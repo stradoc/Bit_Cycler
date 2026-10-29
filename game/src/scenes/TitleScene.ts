@@ -1,16 +1,18 @@
 import { Conductor } from '../audio/conductor.ts';
-import { OVERCLOCK_LESSON } from '../data/lessons.ts';
-import { TIERS, tierByNumber, type Tier } from '../data/tiers.ts';
-import { THERMAL } from '../sim/thermal.ts';
+import { playMenuMusic, stopMenuMusic, toggleMenuMusic, uiSound } from '../audio/menu.ts';
+import { type Tier } from '../data/tiers.ts';
+import { formatMhz, formatMoney } from '../format.ts';
 import { keyOf, onKeyDown } from '../input/keys.ts';
+import { getProgress, newGame } from '../save.ts';
 import { getSettings, updateSettings } from '../settings.ts';
+import { ratedMhz, tierOf } from '../sim/progress.ts';
 import { cssColor, ERAS, TerminalLook } from '../visual/terminal.ts';
 
 const CALIBRATION_BPM = 120;
 const OFFSET_STEP_MS = 5;
 const CURSOR_BLINK_MS = 530;
 
-/** Title screen: start the game, calibrate audio, toggle relaxed mode, preview eras. */
+/** Title screen: go to the contract board, calibrate audio, toggle relaxed mode, preview eras, start over. */
 export class TitleScene extends Phaser.Scene {
   private look!: TerminalLook;
   private calibration: Conductor | undefined;
@@ -21,6 +23,8 @@ export class TitleScene extends Phaser.Scene {
   private options!: Phaser.GameObjects.Text;
   private readout!: Phaser.GameObjects.Text;
   private cursorOn = true;
+  /** N was pressed once: press it again to really start a new game. */
+  private confirmNewGame = false;
   private lastBeat = -1;
 
   constructor() {
@@ -29,6 +33,7 @@ export class TitleScene extends Phaser.Scene {
 
   init(): void {
     this.calibration = undefined;
+    this.confirmNewGame = false;
     this.texts = [];
     this.lastBeat = -1;
   }
@@ -65,6 +70,7 @@ export class TitleScene extends Phaser.Scene {
     });
 
     this.bindKeys();
+    playMenuMusic(this);
     this.events.once('shutdown', () => this.calibration?.stop());
   }
 
@@ -85,20 +91,20 @@ export class TitleScene extends Phaser.Scene {
     this.input.once('pointerdown', () => this.start());
     onKeyDown(this, (event) => {
       const key = keyOf(event);
+      if (/^[BPNCRM1-4]$/.test(key)) uiSound(this, 'move');
       switch (key) {
         case 'Enter':
+          uiSound(this, 'confirm');
           return this.start();
+        case 'M':
+          toggleMenuMusic(this);
+          return this.renderText();
         case 'B':
           return this.scene.start('briefing', { lessonId: this.tier().lessonId });
         case 'P':
           return this.scene.start(this.tier().scene, { practice: true, ...this.tier().options });
-        case 'T': {
-          const next = TIERS[(TIERS.indexOf(this.tier()) + 1) % TIERS.length];
-          updateSettings({ tier: next.number });
-          return this.renderText();
-        }
-        case 'X':
-          return this.repairChip();
+        case 'N':
+          return this.startOver();
         case 'C':
           return this.toggleCalibration();
         case 'R':
@@ -119,27 +125,24 @@ export class TitleScene extends Phaser.Scene {
     });
   }
 
+  /** The tier of the CPU the player owns: briefing (B) and practice (P) are for it. */
   private tier(): Tier {
-    return tierByNumber(getSettings().tier);
+    return tierOf(getProgress());
   }
 
-  /**
-   * First time on a tier: the briefing teaches the concept before anything is
-   * played. First real song on a pipelined tier: a short briefing on the clock
-   * (G / H overclock in the song) and heat, then the tier.
-   */
+  /** To the contract board; briefings for new parts come up when a contract is taken. */
   private start(): void {
-    const tier = this.tier();
-    const { seenLessons } = getSettings();
-    if (!seenLessons.includes(tier.lessonId)) this.scene.start('briefing', { lessonId: tier.lessonId });
-    else if (tier.scene === 'pipeline' && !seenLessons.includes(OVERCLOCK_LESSON.id)) {
-      this.scene.start('briefing', { lessonId: OVERCLOCK_LESSON.id, then: { scene: tier.scene, data: { ...tier.options } } });
-    } else this.scene.start(tier.scene, { ...tier.options });
+    this.scene.start('board');
   }
 
-  /** X: repair a chip worn by overheating. Free until the shop exists; then it will cost money. */
-  private repairChip(): void {
-    updateSettings({ chipMaxDial: THERMAL.maxDial });
+  /** N twice: wipe the save (money, parts, upgrades, board) and start again. */
+  private startOver(): void {
+    if (!this.confirmNewGame) {
+      this.confirmNewGame = true;
+      return this.renderText();
+    }
+    newGame();
+    this.confirmNewGame = false;
     this.renderText();
   }
 
@@ -156,9 +159,8 @@ export class TitleScene extends Phaser.Scene {
     const cursor = this.cursorOn ? '█' : ' ';
     this.prompt.setText(`PRESS ENTER TO START${cursor}`);
     this.options.setText(
-      `[T] TIER ${this.tier().number}: ${this.tier().name}   [B] BRIEFING   [P] PRACTICE\n` +
-        `[C] CALIBRATE   [R] RELAXED: ${settings.relaxed ? 'ON' : 'OFF'}   [1-4] ERA: ${this.look.era.name}\n` +
-        this.chipLabel(),
+      `${this.progressLabel()}\n[B] BRIEFING   [P] PRACTICE   [N] NEW GAME${this.confirmNewGame ? ': PRESS N AGAIN TO ERASE YOUR SAVE' : ''}\n` +
+        `[C] CALIBRATE   [R] RELAXED: ${settings.relaxed ? 'ON' : 'OFF'}   [M] COMPUTER HUM: ${settings.music ? 'ON' : 'OFF'}   [1-4] ERA: ${this.look.era.name}`,
     );
 
     if (!this.calibration) {
@@ -172,10 +174,10 @@ export class TitleScene extends Phaser.Scene {
     );
   }
 
-  private chipLabel(): string {
-    const max = Math.round(getSettings().chipMaxDial * 100);
-    if (max >= Math.round(THERMAL.maxDial * 100)) return `CHIP OK: OVERCLOCKS TO ${max}% (G / H IN A SONG)`;
-    return `CHIP DAMAGED BY HEAT: OVERCLOCKS TO ${max}% ONLY   [X] REPAIR (FREE FOR NOW)`;
+  private progressLabel(): string {
+    const progress = getProgress();
+    const tier = tierOf(progress);
+    return `${formatMoney(progress.money)}   TIER ${tier.number}: ${tier.name} AT ${formatMhz(ratedMhz(progress))}`;
   }
 
   private toggleCalibration(): void {
@@ -183,12 +185,15 @@ export class TitleScene extends Phaser.Scene {
       this.calibration.stop();
       this.calibration = undefined;
       this.ledBase.setVisible(false);
+      playMenuMusic(this);
       this.renderText();
       return;
     }
     if (!(this.sound instanceof Phaser.Sound.WebAudioSoundManager)) return;
     const ctx = this.sound.context;
     void ctx.resume();
+    // Calibration needs to hear the click alone.
+    stopMenuMusic();
     this.calibration = new Conductor(ctx, CALIBRATION_BPM);
     this.calibration.offset = getSettings().offset;
     this.calibration.start();

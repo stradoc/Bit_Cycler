@@ -1,3 +1,4 @@
+import { playMenuMusic, uiSound } from '../audio/menu.js';
 import { LESSONS, TIER1_LESSON } from '../data/lessons.js';
 import { keyOf, onKeyDown } from '../input/keys.js';
 import { getSettings, updateSettings } from '../settings.js';
@@ -9,11 +10,14 @@ export class BriefingScene extends Phaser.Scene {
     lesson = TIER1_LESSON;
     page = 0;
     then;
+    /** Can't be skipped: the first time a concept comes up, or right after buying a part. */
+    mandatory = false;
     layer;
     constructor() {
         super('briefing');
     }
     init(data) {
+        this.mandatory = data?.mandatory ?? false;
         // Where to go after the last page; by default, practice of the lesson's concept.
         this.then = data?.then;
         // ?lesson=tier2 in the URL opens a lesson directly (dev shortcut).
@@ -25,6 +29,7 @@ export class BriefingScene extends Phaser.Scene {
         this.look = new TerminalLook(this, ERAS.at(getSettings().eraIndex) ?? ERAS[0]);
         this.layer = this.add.container(0, 0);
         this.render();
+        playMenuMusic(this);
         this.input.on('pointerdown', () => this.next());
         onKeyDown(this, (event) => {
             const key = keyOf(event);
@@ -33,7 +38,7 @@ export class BriefingScene extends Phaser.Scene {
             else if (key === 'ArrowLeft')
                 this.turn(-1);
             // Q too: Vimium-style extensions swallow Escape while a text field has focus.
-            else if (key === 'Escape' || key === 'Q')
+            else if ((key === 'Escape' || key === 'Q') && !this.mandatory)
                 this.scene.start('title');
         });
     }
@@ -52,10 +57,18 @@ export class BriefingScene extends Phaser.Scene {
         else
             this.scene.start(this.lesson.scene, { practice: true, ...this.lesson.options });
     }
+    finishLabel() {
+        if (!this.then)
+            return 'START PRACTICE';
+        if (this.then.scene !== 'pipeline')
+            return 'CONTINUE';
+        return this.then.data.practice ? 'START PRACTICE' : 'PLAY';
+    }
     turn(delta) {
         const page = Phaser.Math.Clamp(this.page + delta, 0, this.lesson.pages.length - 1);
         if (page === this.page)
             return;
+        uiSound(this, 'move');
         this.page = page;
         this.render();
     }
@@ -85,7 +98,9 @@ export class BriefingScene extends Phaser.Scene {
         this.layer.add(drawDiagram(this, page.diagram, cx, 205, this.look.era));
         page.lines.forEach((line, i) => text(cx, 340 + i * 32, line, 20));
         text(cx, 450, page.analogy, 18, 0.75);
-        text(cx, 508, last ? `[<-] BACK      [ENTER] ${this.then ? 'PLAY' : 'START PRACTICE'}` : '[<-] BACK      [ENTER] NEXT      [Q] SKIP', 16, 0.6);
+        text(cx, 508, last
+            ? `[<-] BACK      [ENTER] ${this.finishLabel()}`
+            : `[<-] BACK      [ENTER] NEXT${this.mandatory ? '' : '      [Q] SKIP'}`, 16, 0.6);
     }
 }
 //# sourceMappingURL=BriefingScene.js.map

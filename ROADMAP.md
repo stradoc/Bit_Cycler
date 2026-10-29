@@ -59,7 +59,7 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 - [ ] Event notes: hazard (stall/forward), branch fork, cache-miss hold, wide-arithmetic chain
 - [ ] Wrong or missed input → slow path (extra stall), never a fail state
 - [x] Clock speed sets the tempo: 75 BPM at 1 MHz, +12 BPM per 10× clock (`rhythm/tempo.ts`)
-- [x] Clock dial in the song (`G` / `H`, 50–150% of the rated clock, tiers 2–6); results show average clock, peak temperature, overheats and real CPU time. Still to do: rated clock upgrades in the shop, and tier 1
+- [x] Clock dial in the song (`G` / `H`, 50–150% of the rated clock, tiers 2–6); results show average clock, peak temperature, overheats and real CPU time. Overclocking past 100% is a shop upgrade; every tier has it
 - [x] Underclocking down to 50% (slower tempo to think, more CPU time, cooler)
 - [x] **Overclock red zone:** the dial goes past the rated clock; heat builds every beat; overheating **throttles** (clock drops to rated mid-song until it cools) and **wears the chip** (maximum clock -10% until repaired). Still to do with the shop: better pay when overclocked, paid repairs, cooling upgrades that widen the safe zone
 - [x] Heat meter and thermal throttling (`sim/thermal.ts`), with fire effects building up with heat (`visual/heat.ts`)
@@ -73,16 +73,17 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 - [ ] Latency figures checked against the textbook and labeled approximate
 
 ### Economy and UI
-- [ ] Contract board: 3 offers with instruction mix, dataset size, access pattern, deadline, pay
-- [ ] Pay formula: base × speed bonus × accuracy bonus
-- [ ] Shop: CPU tiers 1–3, forwarding, predictor, clock, cooling, cache, RAM, HDD
+- [x] Contract board (endless): random jobs in STARTER / STANDARD / ADVANCED, each with its whole-job time on your CPU; over 30 days is locked. Later: instruction mix, access pattern, deadline
+- [ ] Pay formula: base × speed bonus × accuracy bonus (flat pay for now; overclocking bonus)
+- [x] Shop: CPU parts (tiers 2–6), clock upgrades (to 4 GHz), cooling, chip repair. Later: cache, RAM, HDD
 - [ ] **Debt deadline (after the shop; proposed 2026-10-28):** pay off a debt before an in-game deadline. Each contract costs game time = its CPU time (instructions × CPI × period), where the song is a sample of a much bigger job and your song CPI applies to the rest. The board shows each contract's estimate at your current CPU ("317 years" at 1 MHz → days late game; keep the numbers real, roughly a 10^4–10^5× total speedup). Clock upgrades shorten the time but **don't change the tempo; only overclocking does** (replaces the tempo-follows-clock rule above). Open: what missing the deadline does; fixed tempo per tier or a small step per tier
-- [ ] Results screen: instructions, cycles, CPI, clock period, CPU time, pay
-- [ ] All prices and balance numbers in one data file
-- [ ] Save/load progress
+- [x] Results screen: instructions, cycles, CPI, clock period, CPU time, the whole contract's time, pay
+- [x] All prices and balance numbers in one data file (`data/economy.ts`)
+- [x] Save/load progress (browser storage; `N` twice on the title for a new game)
 
 ### Audio and art
 - [ ] Synthesized music whose tempo follows the clock speed
+- [x] Menu sound: an old computer's hum (fan, mains hum, CRT whine, hard drive seeks) on the title, board, shop and briefings, and mechanical key presses for menu actions; `M` toggles the hum
 - [ ] Sound effects for hits, stalls, flushes, page faults
 - [ ] Sprites and UI art
 - [x] Terminal look with four eras (green CRT → modern terminal), previewable with keys 1–4
@@ -115,7 +116,7 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 - [x] Plain-English stage labels (FETCH / DECODE / EXECUTE / MEMORY / WRITE BACK); results wait until the last instruction leaves WB
 - [x] Replay after every run, with speed control, pause, and click-anything explanations (`data/glossary.ts`)
 - [x] Panel split into titled PROGRAM / REGISTERS / MEMORY boxes; hover outline on clickable things in replays
-- [ ] Tier 1 replay and explanations (tier 1 has no replay yet)
+- [x] Tier 1 replay and explanations (tier 1 now plays on the shared pipeline screen)
 - [ ] Run logic accepts several presses per beat (ready for superscalar chords later)
 
 **Done when:** a new player can go from tier 1 to tier 3 and buy an HDD in one ~30-minute session, the CPI numbers are verified by tests, and the game runs from a plain static server.

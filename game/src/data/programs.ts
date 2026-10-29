@@ -3,6 +3,11 @@ export type ProgramSpec = {
   readonly source: string;
   /** Initial memory contents, starting at address 0. */
   readonly memory: readonly number[];
+  /** How many items the song's run works through (contracts scale this up: "sum 2 billion bytes"). */
+  readonly elements: number;
+  /** What a contract does with them, e.g. "SUM" ... "BYTES". */
+  readonly verb: string;
+  readonly unit: string;
   /** What each register is used for (shown when a register is clicked in a replay). */
   readonly roles?: Readonly<Record<number, string>>;
   /** What the interesting parts of memory hold (shown when memory is clicked). */
@@ -24,6 +29,9 @@ loop: lb   x4, 0(x1)
       sb   x3, 8(x0)
     `,
     memory: [3, 5, 7, 2],
+    elements: 4,
+    verb: 'SUM',
+    unit: 'BYTES',
     roles: {
       1: 'the address of the next number to add',
       2: 'the end address (4): the loop stops when x1 reaches it',
@@ -49,6 +57,9 @@ col:  lb   x4, 0(x1)
       sb   x3, 12(x0)
     `,
     memory: [1, 2, 3, 4, 5, 6, 7, 8, 9, 2, 4, 6],
+    elements: 12,
+    verb: 'SUM A GRID:',
+    unit: 'BYTES',
     roles: {
       1: 'the address of the next number to add',
       2: 'the end of the current row: the inner loop stops when x1 reaches it',

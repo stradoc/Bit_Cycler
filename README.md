@@ -37,22 +37,45 @@ Add these to the URL, e.g. `http://localhost:8000/?scene=play&autoplay`:
 
 | Parameter | Effect |
 | --- | --- |
-| `?scene=play` / `?scene=pipeline` | Skip the title and start tier 1 / tier 2 |
+| `?scene=play` (or `?scene=pipeline&single`) / `?scene=pipeline` | Skip the title and start tier 1 (single-cycle) / tier 2 |
 | `?practice` | Start that scene in practice mode |
 | `?scene=pipeline&forwarding` | Tier 3 (pipeline with forwarding) |
 | `?scene=pipeline&forwarding&guessing` | Tier 4 (branch prediction) |
 | `?scene=pipeline&forwarding&guessing&predictor=1-bit` (or `2-bit`) | Tiers 5–6 (hardware predictor, SUM GRID) |
-| `&clock=150` | Start a pipelined song with the clock dial at 50–150% of the rated 4 MHz |
+| `&clock=150` | Start a pipelined song with the clock dial at 50–150% of the rated clock |
+| `&contract=standard` | Play the board's first contract in that section (`starter` / `standard` / `advanced`), with pay and results |
+| `?money=5000` | Set the money (try the shop) |
 | `?scene=briefing&lesson=tier2` | Open a lesson directly |
 | `?autoplay` | The game plays every note perfectly (demos, checking the results screen) |
 | `?era=1` … `?era=4` | Start in a given terminal era (8/16/32/64-bit look) |
 
+## Testing cheats
+
+Open the browser's developer console (F12, then Console) while the game is running and type `cheat.help()`. Each cheat changes the save and redraws the title, board or shop:
+
+| Cheat | Effect |
+| --- | --- |
+| `cheat.status()` | What you have now |
+| `cheat.money(5000)` | Set your money |
+| `cheat.tier(4)` | Set your CPU tier (1–6) |
+| `cheat.clock(5)` | Clock upgrade level (0–10; 10 = 4 GHz pipelined) |
+| `cheat.cooling(2)` | Cooler: 0 stock, 1 heatsink, 2 fan |
+| `cheat.overclock()` / `cheat.overclock(false)` | Own / remove the overclocking upgrade |
+| `cheat.wear(1.2)` | The chip's max clock after overheating (1.0–1.5) |
+| `cheat.unlockAll()` | Every part, max clock, fan, overclocking, $100,000 |
+| `cheat.board()` | New random contracts |
+| `cheat.lessons()` / `cheat.lessons(false)` | Mark every briefing read / unread |
+| `cheat.autoplay()` / `cheat.autoplay(false)` | Songs play themselves |
+| `cheat.temp(94)` | Set the chip's temperature mid-song |
+| `cheat.reset()` | New game (wipes the save) |
+
 ## Controls
 
-Title: `Enter` play (first time on a tier: briefing → practice → play) · `T` switch tier (1 single-cycle, 2 pipeline, 3 forwarding, 4 branch prediction, 5 1-bit predictor, 6 2-bit predictor) · `B` briefing · `P` practice · `C` calibrate (then `←/→` to line the light up with the click) · `R` relaxed mode · `X` repair a chip damaged by overheating (free until the shop exists) · `1–4` era.
+Title: `Enter` contract board · `B` briefing / `P` practice for your CPU · `N` twice: new game · `M` computer hum on/off · `C` calibrate (then `←/→` to line the light up with the click) · `R` relaxed mode · `1–4` era.
+Contract board: arrows choose · `Enter` take a contract (a new part gets its briefing → practice first) · `S` shop · `M` hum · `Q` title. Shop: `↑/↓` choose · `Enter` buy (new parts and overclocking play their briefing straight away) · `B` board · `M` hum.
 Briefing: `Enter`/`→` next · `←` back · `Q` or `Esc` title.
-Play: `D` ALU · `F` MEM · `J` BRANCH (tier 4: guess not taken) · `K` BRANCH, guess taken (tier 4; a branch note glows in the color of the key matching what it did last time; tiers 5–6: the glow is the predictor's guess, and pressing the other key overrides it) · `Space` stall (tiers 2–6) · `H` / `G` clock up / down 10% (tiers 2–6, 50–150%) · `Q` or `Esc` quit (Vimium swallows `Esc`, so the game also accepts `Q`) · `Enter` play again after the results.
-Replay (tiers 2–4, after every run): `←`/`→` speed (0.5×–4×) · `Space` pause / resume · click anything to learn what it is · `W` watch again from the results.
+Play: `D` ALU · `F` MEM · `J` BRANCH (tier 4: guess not taken) · `K` BRANCH, guess taken (tier 4; a branch note glows in the color of the key matching what it did last time; tiers 5–6: the glow is the predictor's guess, and pressing the other key overrides it) · `Space` stall (tiers 2–6) · `G` / `H` clock down / up 10% (G down to 50% always; H past 100% needs the overclocking upgrade) · `Q` or `Esc` quit (Vimium swallows `Esc`, so the game also accepts `Q`) · `Enter` after the results: back to the board (contracts) or play again.
+Replay (every tier, after every run): `←`/`→` speed (0.5×–4×) · `Space` pause / resume · click anything to learn what it is · `W` watch again from the results.
 
 ## Layout
 

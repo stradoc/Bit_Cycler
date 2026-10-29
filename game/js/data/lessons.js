@@ -1,7 +1,8 @@
 export const TIER1_LESSON = {
     id: 'tier1',
     title: 'LESSON 1: HOW A CPU RUNS A PROGRAM',
-    scene: 'play',
+    scene: 'pipeline',
+    options: { singleCycle: true },
     pages: [
         {
             title: 'A CPU FOLLOWS INSTRUCTIONS',
