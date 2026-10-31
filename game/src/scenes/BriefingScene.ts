@@ -1,7 +1,7 @@
 import { playMenuMusic, uiSound } from '../audio/menu.ts';
 import { LESSONS, TIER1_LESSON, type Lesson } from '../data/lessons.ts';
 import { keyOf, onKeyDown } from '../input/keys.ts';
-import { getSettings, updateSettings } from '../settings.ts';
+import { updateProgress } from '../save.ts';
 import { drawDiagram } from '../visual/diagrams.ts';
 import { cssColor, currentEra, TerminalLook } from '../visual/terminal.ts';
 import { isSmooth, textBase, WIDTH } from '../visual/display.ts';
@@ -56,8 +56,7 @@ export class BriefingScene extends Phaser.Scene {
       this.turn(1);
       return;
     }
-    const seen = new Set(getSettings().seenLessons).add(this.lesson.id);
-    updateSettings({ seenLessons: [...seen] });
+    updateProgress((p) => ({ ...p, seenLessons: [...new Set(p.seenLessons).add(this.lesson.id)] }));
     if (this.then) this.scene.start(this.then.scene, this.then.data);
     else this.scene.start(this.lesson.scene, { practice: true, ...this.lesson.options });
   }

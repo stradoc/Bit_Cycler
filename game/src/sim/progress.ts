@@ -56,6 +56,8 @@ export type Progress = {
   readonly chipMaxDial: number;
   readonly board: readonly Contract[];
   readonly nextId: number;
+  /** Lesson ids whose briefing this player has finished: a new campaign starts with none. */
+  readonly seenLessons: readonly string[];
 };
 
 export const NEW_GAME: Progress = {
@@ -68,6 +70,7 @@ export const NEW_GAME: Progress = {
   chipMaxDial: THERMAL.maxDial,
   board: [],
   nextId: 1,
+  seenLessons: [],
 };
 
 /** A random number in [0, 1); injectable so tests are repeatable. */
@@ -175,6 +178,19 @@ export function jobItems(contract: Contract): number {
 export function withTier(progress: Progress, tier: number): Progress {
   const count = Math.max(0, Math.min(CPU_PARTS.length, Math.round(tier) - 1));
   return { ...progress, parts: CPU_PARTS.slice(0, count).map((part) => part.id) };
+}
+
+/** A copy of `progress` with every part, the top clock, the best cooler, a new chip and $100,000, for testing. */
+export function withEverything(progress: Progress): Progress {
+  return {
+    ...withTier(progress, CPU_PARTS.length + 1),
+    money: 100_000,
+    clockLevel: CLOCK.factors.length - 1,
+    cooling: COOLING.length - 1,
+    cacheLevels: MEMORY_PARTS.length,
+    overclocking: true,
+    chipMaxDial: THERMAL.maxDial,
+  };
 }
 
 // ---- the board ----

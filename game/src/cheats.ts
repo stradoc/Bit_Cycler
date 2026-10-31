@@ -2,15 +2,14 @@ import { cheatFlags } from './cheatFlags.ts';
 import { CLOCK, COOLING } from './data/economy.ts';
 import { LESSONS } from './data/lessons.ts';
 import { formatMhz, formatMoney } from './format.ts';
-import { getProgress, newGame, updateProgress } from './save.ts';
-import { getSettings, updateSettings } from './settings.ts';
-import { fillBoard, ratedMhz, tierOf, withTier, type Progress } from './sim/progress.ts';
+import { activeSlot, getProgress, newGame, slotName, updateProgress } from './save.ts';
+import { fillBoard, ratedMhz, tierOf, withEverything, withTier, type Progress } from './sim/progress.ts';
 import { THERMAL } from './sim/thermal.ts';
 
 // Testing cheats, typed into the browser's developer console (F12 -> Console):
 // cheat.help() lists them. Each one changes the save and refreshes the screen.
 
-const MENU_SCENES = ['title', 'board', 'shop'];
+const MENU_SCENES = ['title', 'board', 'shop', 'saves', 'dev'];
 
 const HELP = `Bit Cycler cheats (type in this console):
   cheat.status()        what you have now
@@ -21,7 +20,7 @@ const HELP = `Bit Cycler cheats (type in this console):
   cheat.cache()         own the L1 cache (false to remove)
   cheat.overclock()     own the overclocking upgrade (false to remove)
   cheat.wear(1.2)       chip's max clock after overheating (1.0-1.5)
-  cheat.unlockAll()     every part, max clock, fan, overclocking, $100,000
+  cheat.unlockAll()     every part, max clock, fan, overclocking, the L1 cache, $100,000
   cheat.board()         new random contracts
   cheat.lessons(true)   mark every briefing read (false: unread again)
   cheat.autoplay()      the game plays songs for you (false to stop)
@@ -39,7 +38,7 @@ export function installCheats(game: Phaser.Game): void {
     const p = getProgress();
     const tier = tierOf(p);
     return (
-      `${formatMoney(p.money)} | tier ${tier.number} ${tier.name} | ${formatMhz(ratedMhz(p))} (clock level ${p.clockLevel}) | ` +
+      `${slotName(activeSlot())} | ${formatMoney(p.money)} | tier ${tier.number} ${tier.name} | ${formatMhz(ratedMhz(p))} (clock level ${p.clockLevel}) | ` +
       `${COOLING[p.cooling].name} | overclocking ${p.overclocking ? 'yes' : 'no'} | L1 cache ${p.cacheLevels > 0 ? 'yes' : 'no'} | ` +
       `max clock ${Math.round(p.chipMaxDial * 100)}%`
     );
@@ -56,20 +55,11 @@ export function installCheats(game: Phaser.Game): void {
     overclock: (on = true) => change((p) => ({ ...p, overclocking: on })),
     cache: (on = true) => change((p) => ({ ...p, cacheLevels: on ? 1 : 0 })),
     wear: (maxDial: number) => change((p) => ({ ...p, chipMaxDial: Math.min(THERMAL.maxDial, Math.max(1, maxDial)) })),
-    unlockAll: () =>
-      change((p) => ({
-        ...withTier(p, 6),
-        money: 100_000,
-        clockLevel: CLOCK.factors.length - 1,
-        cooling: COOLING.length - 1,
-        cacheLevels: 1,
-        overclocking: true,
-        chipMaxDial: THERMAL.maxDial,
-      })),
+    unlockAll: () => change(withEverything),
     board: () => change((p) => fillBoard({ ...p, board: [] }, Math.random)),
     lessons: (read = true) => {
-      updateSettings({ seenLessons: read ? Object.keys(LESSONS) : [] });
-      return `briefings marked ${read ? 'read' : 'unread'} (${getSettings().seenLessons.length} read)`;
+      updateProgress((p) => ({ ...p, seenLessons: read ? Object.keys(LESSONS) : [] }));
+      return `briefings marked ${read ? 'read' : 'unread'} (${getProgress().seenLessons.length} read)`;
     },
     autoplay: (on = true) => {
       cheatFlags.autoplay = on;

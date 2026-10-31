@@ -22,6 +22,7 @@ export const NEW_GAME = {
     chipMaxDial: THERMAL.maxDial,
     board: [],
     nextId: 1,
+    seenLessons: [],
 };
 // ---- the CPU you own ----
 export function tierOf(progress) {
@@ -110,6 +111,18 @@ export function jobItems(contract) {
 export function withTier(progress, tier) {
     const count = Math.max(0, Math.min(CPU_PARTS.length, Math.round(tier) - 1));
     return { ...progress, parts: CPU_PARTS.slice(0, count).map((part) => part.id) };
+}
+/** A copy of `progress` with every part, the top clock, the best cooler, a new chip and $100,000, for testing. */
+export function withEverything(progress) {
+    return {
+        ...withTier(progress, CPU_PARTS.length + 1),
+        money: 100_000,
+        clockLevel: CLOCK.factors.length - 1,
+        cooling: COOLING.length - 1,
+        cacheLevels: MEMORY_PARTS.length,
+        overclocking: true,
+        chipMaxDial: THERMAL.maxDial,
+    };
 }
 // ---- the board ----
 /** `low` to `high` on a log scale: t = 0 gives low, t = 1 gives high. */

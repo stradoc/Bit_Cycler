@@ -1,0 +1,10 @@
+Sounds used in Bit Cycler
+
+keys/letter-1.wav ... keys/letter-8.wav, keys/enter.wav, keys/space.wav
+  Single keystrokes cut from "Typing on a keyboard" by SamsterBirdies
+  (a Cherry MX Blue mechanical keyboard), https://freesound.org/s/489424/
+  Creative Commons 0 (public domain dedication):
+  https://creativecommons.org/publicdomain/zero/1.0/
+  Cut from Freesound's public preview, trimmed, faded and level-matched.
+
+Every other sound in the game is synthesized in code with the Web Audio API.

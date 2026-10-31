@@ -28,5 +28,6 @@ export function panelBox(
       backgroundColor: cssColor(era.bg), // hides the border behind the title
     })
     .setOrigin(0, 0.5)
-    .setAlpha(0.85);
+    // Opaque and above the box's contents, so nothing moving inside (the sliding listing) shows through it.
+    .setDepth(5);
 }

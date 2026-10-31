@@ -1,3 +1,5 @@
+import { output } from './output.ts';
+
 /** A short synthesized tone with a fast decay, played at audio-clock time `at`. */
 export function blip(
   ctx: AudioContext,
@@ -13,7 +15,7 @@ export function blip(
   osc.frequency.value = frequency;
   gain.gain.setValueAtTime(volume, at);
   gain.gain.exponentialRampToValueAtTime(0.001, at + duration);
-  osc.connect(gain).connect(ctx.destination);
+  osc.connect(gain).connect(output(ctx));
   osc.start(at);
   osc.stop(at + duration + 0.01);
 }

@@ -1,5 +1,4 @@
 import { getProgress } from './save.js';
-import { getSettings } from './settings.js';
 import { pastMemoryWall, tierOf } from './sim/progress.js';
 /**
  * Plays a contract on the CPU the player owns. A concept they haven't learned
@@ -8,7 +7,7 @@ import { pastMemoryWall, tierOf } from './sim/progress.js';
 export function playContract(scene, contract) {
     const tier = tierOf(getProgress());
     const data = { ...tier.options, program: contract.program, contract };
-    const { seenLessons } = getSettings();
+    const { seenLessons } = getProgress();
     if (!seenLessons.includes(tier.lessonId)) {
         scene.scene.start('briefing', { lessonId: tier.lessonId, mandatory: true, then: { scene: tier.scene, data: { ...data, practice: true } } });
     }
@@ -31,7 +30,7 @@ export function briefAfterPurchase(scene, lessonId) {
     const then = practices
         ? { scene: tier.scene, data: { ...tier.options, practice: true, returnTo: 'board' } }
         : { scene: 'shop', data: {} };
-    if (lessonId === 'cache' && !getSettings().seenLessons.includes('memwall')) {
+    if (lessonId === 'cache' && !getProgress().seenLessons.includes('memwall')) {
         scene.scene.start('briefing', { lessonId: 'memwall', mandatory: true, then: { scene: 'briefing', data: { lessonId, mandatory: true, then } } });
         return;
     }

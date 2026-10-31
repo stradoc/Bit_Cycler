@@ -1,0 +1,68 @@
+// The save format, kept free of browser storage so it can be tested in Node:
+// the player's progress and when it was saved, as JSON. The same text goes
+// into browser storage and into exported files, so an exported save can be
+// imported on another computer.
+import { CLOCK, COOLING, CPU_PARTS, MEMORY_PARTS } from './data/economy.js';
+import { NEW_GAME } from './sim/progress.js';
+import { THERMAL } from './sim/thermal.js';
+const GAME = 'bit-cycler';
+export const SAVE_VERSION = 1;
+/** A save as text: what browser storage keeps and what an exported file holds. */
+export function saveText(progress, savedAt) {
+    return JSON.stringify({ game: GAME, version: SAVE_VERSION, savedAt, progress });
+}
+/**
+ * Reads a save, or null if the text isn't one. Also reads the first saves,
+ * which were the progress object alone. Fields an older save lacks take a new
+ * game's values, and out-of-range numbers (an edited file) are pulled back in.
+ */
+export function parseSave(text) {
+    let data;
+    try {
+        data = JSON.parse(text);
+    }
+    catch {
+        return null;
+    }
+    if (!isObject(data))
+        return null;
+    const wrapped = data.game === GAME && isObject(data.progress);
+    const raw = wrapped ? data.progress : data;
+    if (typeof raw.money !== 'number' || !Array.isArray(raw.parts))
+        return null;
+    const savedAt = wrapped && typeof data.savedAt === 'number' ? data.savedAt : 0;
+    return { progress: cleanProgress(raw), savedAt };
+}
+function isObject(value) {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+const clamp = (value, min, max, fallback) => typeof value === 'number' && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
+function cleanProgress(raw) {
+    const progress = { ...NEW_GAME, ...raw };
+    // CPU parts are bought in order, so keep the parts that follow that order from the first one.
+    let parts = 0;
+    while (parts < CPU_PARTS.length && progress.parts[parts] === CPU_PARTS[parts].id)
+        parts++;
+    return {
+        ...progress,
+        money: Math.round(clamp(progress.money, 0, 1e12, 0)),
+        parts: CPU_PARTS.slice(0, parts).map((part) => part.id),
+        clockLevel: Math.round(clamp(progress.clockLevel, 0, CLOCK.factors.length - 1, 0)),
+        cacheLevels: Math.round(clamp(progress.cacheLevels, 0, MEMORY_PARTS.length, 0)),
+        cooling: Math.round(clamp(progress.cooling, 0, COOLING.length - 1, 0)),
+        overclocking: progress.overclocking === true,
+        chipMaxDial: clamp(progress.chipMaxDial, 1, THERMAL.maxDial, THERMAL.maxDial),
+        // Contracts saved before deadlines existed are dropped; the board refills when loaded.
+        board: Array.isArray(progress.board) ? progress.board.filter(isContract) : [],
+        nextId: Math.round(clamp(progress.nextId, 1, Number.MAX_SAFE_INTEGER, 1)),
+        seenLessons: Array.isArray(progress.seenLessons) ? progress.seenLessons.filter((id) => typeof id === 'string') : [],
+    };
+}
+function isContract(value) {
+    return (isObject(value) &&
+        typeof value.deadline === 'number' &&
+        typeof value.program === 'string' &&
+        typeof value.instructions === 'number' &&
+        typeof value.pay === 'number');
+}
+//# sourceMappingURL=saveFile.js.map

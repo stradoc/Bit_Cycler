@@ -44,6 +44,13 @@ export function formatMhz(mhz) {
 export function formatMoney(dollars) {
     return `$${Math.round(dollars).toLocaleString('en-US')}`;
 }
+const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+/** When a save was made, in local time: "OCT 30 14:02". */
+export function formatSavedAt(ms) {
+    const date = new Date(ms);
+    const two = (n) => String(n).padStart(2, '0');
+    return `${MONTHS[date.getMonth()]} ${date.getDate()} ${two(date.getHours())}:${two(date.getMinutes())}`;
+}
 /** Up to 3 significant figures, without trailing zeros: 2.40 -> "2.4", 317.2 -> "317". */
 function trim(value) {
     return String(Number(value.toPrecision(value >= 100 ? String(Math.round(value)).length : 2)));

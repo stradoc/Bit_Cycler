@@ -1,3 +1,5 @@
+import { output } from './output.ts';
+
 // Five synth layers, one per pipeline stage: a full pipeline plays the full
 // song, and a flush strips it back down. Am - F - C - G, one chord per bar.
 
@@ -22,7 +24,7 @@ export class LayeredMusic {
     this.ctx = ctx;
     this.out = ctx.createGain();
     this.out.gain.value = volume;
-    this.out.connect(ctx.destination);
+    this.out.connect(output(ctx));
     this.noise = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.25), ctx.sampleRate);
     const data = this.noise.getChannelData(0);
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;

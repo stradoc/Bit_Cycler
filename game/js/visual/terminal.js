@@ -65,6 +65,17 @@ export const ERAS = [
         chip: 'smooth',
     },
 ];
+/**
+ * Adds a glow (bloom) of `strength` around bright things. Phaser's bloom
+ * doesn't add its halo to the picture: it averages the picture with its
+ * blurred copy (half of each), which halved every letter's brightness, and
+ * each glow stacked on another halved it again. So it runs at half strength
+ * and the result is doubled: the whole picture plus the same halo as before.
+ */
+function addGlow(fx, strength) {
+    fx.addBloom(0xffffff, 1, 1, 1, strength / 2, 4);
+    fx.addColorMatrix().brightness(2);
+}
 /** The era the settings choose: its index, and its dark variant if dark mode is on and it has one. */
 export function currentEra() {
     const { eraIndex, dark } = getSettings();
@@ -77,26 +88,39 @@ export function cssColor(color) {
 const LCD_TEXTURE = 'lcd';
 /** The DOS menu bar's items, and which one each screen is. */
 const DOS_MENU = ['FILE', 'CONTRACTS', 'SHOP', 'RUN', 'HELP'];
-const DOS_ITEM = { title: 'FILE', board: 'CONTRACTS', shop: 'SHOP', pipeline: 'RUN', briefing: 'HELP' };
+const DOS_ITEM = {
+    title: 'FILE', settings: 'FILE', saves: 'FILE', dev: 'FILE', board: 'CONTRACTS', shop: 'SHOP', pipeline: 'RUN', briefing: 'HELP',
+};
 /** Where each scene is: a terminal prompt in the modern window's title bar, an app's document name in the classic one. */
-const PATHS = { title: '~', board: '~/contracts', shop: '~/shop', briefing: '~/briefings', pipeline: '~/run' };
+const PATHS = {
+    boot: '~', title: '~', settings: '~/settings', saves: '~/saves', dev: '~/dev', board: '~/contracts', shop: '~/shop', briefing: '~/briefings', pipeline: '~/run',
+};
 const TITLES = {
-    title: 'BIT CYCLER', board: 'BIT CYCLER - CONTRACTS', shop: 'BIT CYCLER - SHOP', briefing: 'BIT CYCLER - BRIEFING', pipeline: 'BIT CYCLER - RUN',
+    title: 'BIT CYCLER', settings: 'BIT CYCLER - SETTINGS', saves: 'BIT CYCLER - SAVES', dev: 'BIT CYCLER - DEVELOPER', board: 'BIT CYCLER - CONTRACTS',
+    shop: 'BIT CYCLER - SHOP', briefing: 'BIT CYCLER - BRIEFING', pipeline: 'BIT CYCLER - RUN',
 };
 /**
  * Applies an era to a scene: the canvas size and the camera's zoom
  * (visual/display.ts), and the CRT effects. Create it before any text, so
- * texts get the era's font. Call update() every frame.
+ * texts get the era's font. Call update() every frame. `windowed: false`
+ * leaves out the window or DOS bars (the intro, before the app has started).
  */
 export class TerminalLook {
     era;
     scene;
+    windowed;
     /** The era's window or DOS bars, and the LCD grid, redrawn when the era changes. */
     chrome = [];
-    constructor(scene, era) {
+    constructor(scene, era, windowed = true) {
         this.scene = scene;
         this.era = era;
+        this.windowed = windowed;
         this.setEra(era);
+    }
+    /** Shows or hides the era's window or DOS bars (the intro opens the window once the screen is on). */
+    setWindowed(windowed) {
+        this.windowed = windowed;
+        this.drawChrome(this.era);
     }
     setEra(era) {
         this.era = era;
@@ -105,14 +129,19 @@ export class TerminalLook {
         fitCamera(camera);
         camera.setBackgroundColor(era.window?.desk ?? era.bg).setAlpha(1);
         this.drawChrome(era);
-        const fx = camera.postFX;
+        this.screenEffects(era.bloom);
+    }
+    /** The camera's glow and screen curve; the CRT effects setting turns both down with the overlay. */
+    screenEffects(bloom) {
+        const fx = this.scene.cameras.main.postFX;
         if (!fx)
             return; // Canvas renderer: no shader effects
         fx.clear();
-        if (era.bloom > 0)
-            fx.addBloom(0xffffff, 1, 1, 1, era.bloom, 4);
-        if (era.curve > 0)
-            fx.addBarrel(1 + era.curve);
+        const { crt } = getSettings();
+        if (bloom * crt > 0)
+            addGlow(fx, bloom * crt);
+        if (this.era.curve * crt > 0)
+            fx.addBarrel(1 + this.era.curve * crt);
     }
     /**
      * The modern era: a terminal window (black body, a title bar with three
@@ -125,7 +154,7 @@ export class TerminalLook {
             part.destroy();
         this.chrome = [];
         const { scene } = this;
-        const frame = era.window;
+        const frame = this.windowed ? era.window : undefined;
         if (frame?.style === 'classic') {
             this.chrome.push(...this.classicWindow(frame));
         }
@@ -144,6 +173,7 @@ export class TerminalLook {
                 .strokeRoundedRect(left, top, w, h, r)
                 .lineBetween(left, 0, left + w, 0);
             [0xe06c75, 0xe5c07b, 0x98c379].forEach((color, i) => bar.fillStyle(color).fillCircle(16 + i * 18, -WINDOW_BAR / 2, 5));
+            this.chrome.push(this.deskAbove(frame.desk, top));
             const path = PATHS[scene.scene.key] ?? '~';
             const title = scene.add
                 .text(WIDTH / 2, -WINDOW_BAR / 2, `player@bit-cycler: ${path}`, { ...textBase(), fontSize: '12px', color: cssColor(frame.title) })
@@ -181,6 +211,14 @@ export class TerminalLook {
                 .setBlendMode(Phaser.BlendModes.MULTIPLY);
             this.chrome.push(grid);
         }
+    }
+    /**
+     * The desktop above a window, drawn over everything else: things that
+     * start above the layout (notes on their way down) would otherwise show
+     * on the desktop above the title bar.
+     */
+    deskAbove(desk, windowTop) {
+        return this.scene.add.rectangle(-200, windowTop, WIDTH + 400, 400, desk).setOrigin(0, 1).setDepth(989);
     }
     /**
      * A DOS app's screen: a gray menu bar on top (each item's first letter in
@@ -225,7 +263,7 @@ export class TerminalLook {
             .setDepth(990)
             .fillGradientStyle(frame.bar, frame.bar2, frame.bar, frame.bar2, 1)
             .fillRect(-1, -WINDOW_BAR, WIDTH + 2, WINDOW_BAR - 3);
-        const parts = [body, bar];
+        const parts = [body, bar, this.deskAbove(frame.desk, top)];
         ['_', '□', '×'].forEach((glyph, i) => {
             const x = WIDTH - 58 + i * 18 + (i === 2 ? 2 : 0);
             bar.fillStyle(colors.face).fillRect(x, -WINDOW_BAR + 3, 16, 14);
@@ -239,10 +277,23 @@ export class TerminalLook {
         parts.push(title);
         return parts;
     }
+    /**
+     * More glow (bloom) on top of the era's own: the intro and the main menu
+     * glow like a bright screen in a dark room. Only for screens that are dark
+     * behind the text (on light or blue ones it would haze everything); the
+     * CRT effects setting turns it down with the rest.
+     */
+    glow(strength) {
+        const fx = this.scene.cameras.main.postFX;
+        const amount = strength * getSettings().crt;
+        if (!fx || amount <= 0)
+            return;
+        addGlow(fx, amount);
+    }
     update() {
-        if (this.era.flicker > 0) {
-            this.scene.cameras.main.setAlpha(1 - Math.random() * this.era.flicker);
-        }
+        const flicker = this.era.flicker * getSettings().crt;
+        if (flicker > 0)
+            this.scene.cameras.main.setAlpha(1 - Math.random() * flicker);
     }
 }
 //# sourceMappingURL=terminal.js.map
