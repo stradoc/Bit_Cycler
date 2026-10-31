@@ -1,7 +1,7 @@
 import type { Predictor } from '../sim/pipeline.ts';
 
-// The CPU tiers playable so far. The shop will unlock these; for now the
-// title screen switches between them with T.
+// The CPU tiers: each CPU part bought in the shop is the next tier
+// (sim/progress.ts `tierOf`), and its options set up the song's hardware.
 
 export type Tier = {
   readonly number: number;

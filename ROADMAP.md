@@ -1,189 +1,74 @@
-# MVP Roadmap
+# Roadmap
 
-Personal roadmap for building the MVP. The full design lives in the [design doc](https://claude.ai/artifact/8VttdcZGpm8e6upLo3wgzy). Rules are in `RULES.md`, history in `CHANGELOG.md`.
+What's left to build, in priority order, with a short list of what's done at the end. Decisions and history are in `CHANGELOG.md`; the rules in `RULES.md`; how to build things in `CLAUDE.md`.
 
-**MVP =** tiers 1–3 (single-cycle → 5-stage pipeline → forwarding, branch prediction, L1 cache), RAM page frames, HDD platter mode, contract board, shop, and a results screen with CPI.
+**MVP =** tiers 1–3 (single-cycle → 5-stage pipeline → forwarding, branch prediction, L1 cache), RAM page frames, HDD platter mode, contract board, shop, and a results screen with CPI. **Done when** a new player can go from tier 1 to tier 3 and buy an HDD in one ~30-minute session, the CPI numbers are verified by tests, and the game runs from a plain static server.
 
-Phases move on when ready. There are no internal due dates; the only fixed date is the course deadline, **Nov 30, 2026**.
+There are no internal due dates; the only fixed date is the course deadline, **Nov 30, 2026**.
 
----
+## Before submission (required, in priority order)
 
-## Before submission (from the rubric check, 2026-10-29)
+From the rubric check (2026-10-29). Everything else the spec requires is met: browser, no installs, 3.6 MB of the 35 MB limit, relative paths, mechanics that teach, no quizzes, feedback, progression, in-game instructions.
 
-Checked against the assignment spec: everything else required is met (browser, no installs, 2.3 MB of 35 MB, relative paths, mechanics that teach, no quizzes, feedback, progression, in-game instructions). In priority order:
-
-- [ ] **Measure the learning objective** (required): % of correct hazard decisions after each contract (tier 2 vs tier 3), plus a report card. See Education below
-- [ ] **`game/README.md`** (required): the project, how it was developed, educational purpose and learning objectives, how to play, credits (fonts: JetBrains Mono, SIL OFL; The Ultimate Oldschool PC Font Pack by VileR, CC BY-SA 4.0; see `assets/fonts/CREDITS.txt`; keyboard sounds: SamsterBirdies on Freesound, CC0; see `assets/sounds/CREDITS.txt`). Say the 8/16-bit CPUs are simplified teaching CPUs and which figures are approximate
-- [ ] **`thumbnail.png`** (required): 16:9 PNG, exactly 800×450, ≤ 500 KB
+- [ ] **Measure the learning objective**: the share of correct hazard decisions after each contract (tier 2 vs tier 3), shown after each contract and in a report card on the main menu (it could be a file on the menu's disk)
+- [ ] **`game/README.md`**: How to play and Credits are written; still to write: the educational purpose and learning objectives (say the 8/16-bit CPUs are simplified teaching CPUs and which figures are approximate) and how it was developed
+- [ ] **`thumbnail.png`**: 16:9 PNG, exactly 800×450, ≤ 500 KB
 - [ ] **Every teammate commits their own work**: only students who actively contribute get credit, and all commits so far come from one account
-- [ ] **Outside playtest** (the spec asks to evaluate and refine through testing and feedback): someone new plays from the title through tier 3; fix what they trip on; tune the timing windows
-- [ ] **Textbook check** (design rule): stall counts, forwarding, branch penalty, CPU time, power wall, and any latency figures checked against Patterson & Hennessy; anything stylized (tempo scale, wear, overheat limits) labeled
-- [ ] Submission steps: `games.yml` entry (title, authors, topic, description, learning_objective, game_url, thumbnail), copy `game/` to `games/bit-cycler/`, GitHub Pages test, pull request by Nov 30
+- [ ] **Outside playtest**: someone new plays from the title through tier 3; fix what they trip on; tune the timing windows (see "Needs a real browser")
+- [ ] **Textbook check**: stall counts, forwarding, branch penalty, CPU time, the power wall and every latency figure against Patterson & Hennessy; label what's stylized (the tempo curve, wear, overheat limits)
+- [ ] **Submission**: a `games.yml` entry (title, authors, topic, description, learning_objective, game_url, thumbnail), copy `game/` to `games/bit-cycler/`, test on GitHub Pages, pull request by Nov 30
 
-## Step 0: Decisions needed first
+## Next up
 
-Nothing is built until these are settled (see `RULES.md` rule 3). Each one gets a full pros/cons write-up before it's decided.
+1. **Campaign goal: the debt deadline.** A calendar (each contract costs its whole job's time at the pace played) and one far deadline to pay a debt by, possibly in installments; free play on the endless board after. Open, to decide with the team: what missing the deadline does; installments or one payment; how the board shows the date. Where it fits in the code: "Campaign mode" in `CLAUDE.md`.
+2. **Contract cards show the access pattern** (sequential, two arrays, two arrays colliding, grid by column...). A colliding ADD ARRAYS can be locked even at 4 GHz with the L1, and its card only says TOO SLOW.
+3. **Word size: 8 → 16 → 32 → 64-bit** as its own upgrade track, the only upgrade that cuts the instruction count. Contracts state their data width ("32-BIT DEPOSITS"); a narrow CPU on wide data plays a chain of chunks (RISC-V has no carry flag: `sltu` carries, so each chunk depends on the last, a chain of hazards); wider loads (`lh` / `lw` / `ld`) and addresses; byte jobs gain nothing; it drives the era instead of the preview keys. Open: `sltu` or an invented `addc`; how 64-bit registers fit the panel. Planned after L1 and before L2 / L3 (order not confirmed).
+4. **L2, then L3.** Shop parts; a miss checks each level and adds its lookup time (L2 ~5 ns, L3 ~10–15 ns), so a trip that misses everywhere grows from 60 toward ~80 ns; results show average memory access time and where the waits came from. In the song an L2 hit is a 3-beat freeze at 4 GHz, RAM 5. Contracts need data that fits L1 / L2 / L3 / streams once, or L3 never matters; a re-reading job's whole-job miss rate should come from simulating many passes. Later idea: a prefetcher.
+5. **RAM as page frames and the HDD**: a page fault pauses the song for its own view; the player picks the frame to evict (each shows its last-used beat); HDD platter mode (move the head to seek, tap as the sector passes); an access-time breakdown (seek + rotation + transfer + controller); sequential and random contracts behave differently. Storage lessons with them.
+6. **Balance pass** once word size is in: contract sizes and deadlines (ADVANCED is provisionally 10–70 trillion instructions).
 
-- [x] **Rendering:** Phaser 3.90
-- [x] **Language:** TypeScript
-- [x] **Audio:** raw Web Audio API
-- [x] **Testing the simulation:** Node's built-in `node:test`
-- [x] **WebAssembly:** not used
-- [x] **Build step:** plain `tsc`, no bundler
-- [x] **Package manager:** npm
-- [x] **Local dev server:** `python3 -m http.server`
-- [x] **Git setup:** separate team repo; everyone works in `game/`, copied to `games/bit-cycler/` at submission
-- [x] **Design (not tech):** RISC-V inspired instruction set, adapted for 8/16/32/64-bit tiers
-- [x] **Repo access:** connected to https://github.com/stradoc/Bit_Cycler over SSH
-- [x] **Design (not tech):** title **Bit Cycler**, folder `bit-cycler`
+## Open work by area
 
-## Phase 1: Prototype
-
-Goal: prove the "beat = clock cycle" idea is fun before building systems around it.
-
-- [x] Folder skeleton: `index.html`, entry script, empty README
-- [x] Conductor: audio-clock beat scheduling with a metronome click (confirm sync by ear in a real browser)
-- [x] Input judgment: Perfect / Good / Miss windows, plus an audio latency calibration offset
-- [x] Note highway: 3 lanes (ALU / MEM / BRANCH); route each instruction to its unit on the beat
-- [x] Tier 1 CPU: single-cycle model runs a program, one instruction per beat
-- [x] Register panel shows values changing as instructions execute (plus memory and program listing)
-- [x] Relaxed mode toggle (wider windows, slower tempo)
-- [ ] Relaxed mode: pipeline waits for input instead of stalling
-- [ ] Playtest in a real browser and tune timing windows
-- [ ] Full-length song (~60 s): longer program or several programs back to back (contract songs now run 60-150 cycles, median 94 on tier 2: ~65 s at 87 BPM, ~40 s at 147; tier 1 runs 30-64 cycles, median 46: ~37 s at 75 BPM; longer needs more memory, with the cache work)
-
-**Done when:** a 60-second tier 1 song is playable, instructions visibly execute on the beat, and registers update correctly. (Currently tier 1 contract songs run about 25-50 s, median 37 s.)
-
-## Phase 2: MVP
-
-### CPU simulation
-- [x] 5-stage pipeline model (IF, ID, EX, MEM, WB)
-- [x] RAW hazard detection and stall (bubble insertion)
-- [x] Forwarding unit (tier 3, bought in the shop)
-- [x] Branch handling: flush on mispredict; predictors none (tiers 2-3) → player guesses (tier 4) → 1-bit (tier 5) → 2-bit (tier 6)
-- [x] Memory wall: RAM access in fixed ns (60, textbook 50-70), so cycles per access grow with the clock; an access longer than a cycle freezes the pipeline (single-cycle too)
-- [x] L1 cache: 16 bytes, direct-mapped, 4 lines × 4 bytes, write-through + write buffer; a miss freezes the pipeline, 2 / 3 / 5 beats on a log scale (1.5x after playtest), real cycles in the CPU-time math
-- [x] Miss kinds for replays: first use / conflict / too small (compare with a fully associative cache of the same size)
-- [x] Tests: hit/miss counts and miss penalties match hand-worked examples (SUM, ADD ARRAYS colliding vs not)
-- [ ] Word size: 8 → 16 → 32 → 64-bit as its own upgrade track, the only upgrade that cuts the instruction count (CPU time = instructions x CPI x period). Contracts state their data width ("32-BIT DEPOSITS"); a narrow CPU on wide data plays a chain of chunks (RISC-V has no carry flag: `sltu` carries, so each chunk depends on the last, a chain of hazards); wider loads (`lh` / `lw` / `ld`); wider addresses reach more memory; byte jobs gain nothing. Drives the terminal era. Open: `sltu` or an invented `addc`; how 64-bit registers fit the panel. After L1, before L2 / L3 (team discussion 2026-10-29, order not yet confirmed)
-- [x] Performance tracking: instruction count, cycles, CPI, clock period, CPU time (counted by the pipeline and chip models, shown on the results screen)
-- [x] Tests: CPI matches hand-calculated examples for each hazard type (pipeline; SUM ARRAY 43 / 35 cycles)
-
-### Play screen
-- [x] Pipeline stages on screen, registers highlighted: built as unit lanes (ALU / MEM / BRANCH) with EX / MEM / WB rows below the hit line instead of five stage lanes (see Tier 2–3 play screen); key registers tagged, registers still being computed marked
-- [x] Event notes: hazard (Space stalls; forwarding is automatic once bought), branch (J / K guesses), cache miss (the pipeline freezes on its own; no hold key)
-- [ ] Event notes: wide-arithmetic chain (with word size)
-- [x] Wrong or missed input → slow path, never a fail state (a wrong unit, off-beat or missed note costs a stall; going ahead through a hazard flushes)
-- [x] Clock speed sets the tempo: 75 BPM at 1 MHz, +12 BPM per 10× clock (`rhythm/tempo.ts`; now +20, see below)
-- [x] Clock upgrades raise the tempo again, steeper: +20 BPM per 10× clock (pipelined 87 → ~147 BPM, single-cycle 75 → ~135); songs use the rated clock
-- [x] Bus stops at the panel's box edge (the row lights up; a stored byte gets an outline) instead of running over the text
-- [x] Heat builds faster (time constant 25 → 15 cycles): 150% overheats in ~28 busy beats, 140% in ~53, within one song
-- [x] A worn chip overheats sooner (88°C at 140% ... 65°C at 100%), so its top clock stays as risky as 150% on a new chip; worn out, even 100% overheats (underclock or repair)
-- [x] Overheating stops the clock (notes freeze, ~5-8 beats) instead of throttling to rated; the time counts in CPU time, not CPI
-- [x] Key registers (NEXT, END, GRID) tagged in the REGISTERS box and introduced in a ~4 s count-in before each song and practice
-- [x] Cache miss in the song: load shows `MISS → RAM`, the bus carries the request out and the data back, a counter rolls up the real cycles; presses during the freeze are ignored; drone and ticks while waiting, a click when the data arrives
-- [x] CACHE box in the panel (tag and data per line; each lookup shown as `lb 5: 0000 01 01 LINE 1 TAG 0 -> HIT`); MEMORY box grows to addresses 0-31 (0-63 would need a different layout)
-- [x] Clock dial in the song (`G` / `H`, 50–150% of the rated clock, tiers 2–6); results show average clock, peak temperature, overheats and real CPU time. Overclocking past 100% is a shop upgrade; every tier has it
-- [x] Underclocking down to 50% (slower tempo to think, more CPU time, cooler)
-- [x] **Overclock red zone:** the dial goes past the rated clock; heat builds every beat; overheating **stops the clock** until it cools (the first version dropped to the rated clock) and **wears the chip** (maximum clock -10% until repaired). Paid repairs and cooling upgrades are in the shop. Still to do: better pay when overclocked (with the pay formula)
-- [x] Heat meter and thermal throttling (the clock stops while too hot; `sim/thermal.ts`), with fire effects building up with heat (`visual/heat.ts`)
-
-### Memory and storage
-- [x] Generator: ADD ARRAYS puts its arrays a cache-full apart half the time (every load a conflict miss); data in addresses 0-31
-- [ ] Generator: data bigger than the cache that's read more than once (capacity misses, "too small", never happen yet)
-- [ ] **Contract cards show the access pattern** (sequential, two arrays, two arrays colliding, grid by column ...). Needed soon: a colliding ADD ARRAYS can be locked even at 4 GHz with the L1, and the card only says TOO SLOW
-- [x] Results: "waiting on RAM" bar, hits / misses / hit rate, a "no cache" bar
-- [x] Shop: L1 cache (a memory part, on sale once RAM takes over a cycle)
-- [ ] L2 cache, then L3 (shop upgrades; a miss checks each level and adds its lookup time, L2 ~5 ns, L3 ~10-15 ns, so a trip that misses everywhere grows from 60 toward ~80 ns; results show average memory access time and where the waits came from). In the song: an L2 hit is a 3-beat freeze at 4 GHz, RAM 5. Contracts need data sizes that fit L1 / fit L2 / fit L3 / stream through once, or L3 never matters; a streaming job gains almost nothing from L2 / L3 (first-use misses), a job that re-reads its data gains a lot. The whole job's miss rate for re-reading jobs should come from simulating many passes behind the scenes, not the song's first pass. Later idea: a prefetcher for streaming jobs
-- [ ] Balance pass once word size is in: contract sizes and deadlines (ADVANCED is provisionally 10-70 trillion instructions)
+**Song and CPU**
+- [ ] Relaxed mode: the pipeline waits for input instead of stalling
+- [ ] Full-length songs (~60 s): tier 1 contract songs run 30–64 cycles (median 46, about 37 s at 75 BPM), tier 2 about 65 s; longer needs more memory
+- [ ] Event notes for the wide-arithmetic chain (with word size)
+- [ ] Run logic that accepts several presses per beat (for superscalar chords later)
+- [ ] Pay formula: base × speed bonus × accuracy bonus, and better pay when overclocked (pay is flat for now)
+- [ ] Generator: data bigger than the cache that's read more than once (capacity misses never happen yet)
 - [ ] Later: choosing the cache's shape (block size, associativity)
-- [ ] RAM as page frames; a page fault pauses the song for its own view
-- [ ] Page replacement: player picks the frame to evict, each frame shows its last-used beat
-- [ ] HDD platter mode: move the head (seek), tap as the sector passes (rotation)
-- [ ] Access time breakdown shown after each read (seek + rotation + transfer + controller)
-- [ ] Sequential vs. random contracts behave differently on the HDD
-- [ ] Latency figures checked against the textbook and labeled approximate
 
-### Economy and UI
-- [x] Contracts for made-up clients ("FAIRVIEW SAVINGS: TOTAL 107 BILLION DEPOSITS"), never the same client twice on the board
-- [x] Contract board (endless): random jobs in STARTER / STANDARD / ADVANCED, each with its whole-job time on your CPU and its own deadline; locked if your CPU can't make it, half pay if your run's pace is late. Later: instruction mix, access pattern
-- [ ] Pay formula: base × speed bonus × accuracy bonus (flat pay for now; overclocking bonus)
-- [x] Shop: CPU parts (tiers 2–6), clock upgrades (to 4 GHz), overclocking, cooling, chip repair, the L1 cache. Later: L2 / L3, RAM, HDD
-- [ ] **Debt deadline (next; contract deadlines are done; it becomes the campaign's goal):** a calendar (each contract costs setup time + its CPU time) and one far debt deadline; possibly quarterly installments. Original idea: pay off a debt before an in-game deadline. Each contract costs game time = its CPU time (instructions × CPI × period), where the song is a sample of a much bigger job and your song CPI applies to the rest. The board shows each contract's estimate at your current CPU ("317 years" at 1 MHz → days late game; keep the numbers real, roughly a 10^4–10^5× total speedup). Clock upgrades shorten the time and raise the tempo (decided again: steeper curve, see above). Open: what missing the deadline does; fixed tempo per tier or a small step per tier
-- [x] Results screen: instructions, cycles, CPI, clock period, CPU time, the whole contract's time, pay
-- [x] All prices and balance numbers in one data file (`data/economy.ts`)
-- [x] Save/load progress (browser storage; now 3 slots, below)
-- [x] Main menu: continue, new campaign, load game, practice and briefing for your CPU, settings; each era's selection style (`ui/list.ts`)
-- [x] Main menu as the game's disk (DIR / ls listing, folders, README.TXT and CREDITS.TXT to read, SHUTDOWN.EXE), more glow on dark screens, reverse video on the green CRT
-- [ ] Check in a real browser: no pile of sounds after switching away from the window and back (fix reasoned from Phaser's pause-on-blur, not reproduced headless)
-- [x] Intro: the computer powers on (a CRT's line opening out, an LCD's backlight) and boots from the save (CPU, clock and cycle time, a trip to RAM in cycles, cache, cooler, wear) in each era's style, then types the commands that start the game, the contracts' programs pouring out as they load; any key skips; quicker after the first time. The menu then types its title in and reveals its rows, with code scrolling in the margins
-- [x] Save slots: 3 campaign slots and a developer save, export / import as a file, delete; the old save moves to slot 1; briefings read are kept per save
-- [x] Settings screen: relaxed mode, calibration, volume, computer hum, CRT effects strength, era, dark mode
-- [x] Developer screen (backquote on the main menu, its own save): the console cheats, any briefing, practice, the board
-- [ ] Campaign goal: the debt deadline (below) as the campaign's ending, then free play on the endless board
-- [ ] Report card on the main menu (with the learning objective tracking)
-- [ ] Playtest the intro and menu in a real browser: the boot's pace, the power-on and typing sounds, the hum fading in
-- [x] One place per thing: eras described once (`ui/eras.ts`), every screen on one base and kit (`ui/screen.ts`, `ui/theme.ts`, `ui/widgets.ts`, `ui/list.ts`), every sound a named cue through buses with one table of levels (`audio/cues.ts`, `audio/mix.ts`)
-- [x] Split the song screen (`scenes/PipelineScene.ts`, 2,187 lines to 746) into parts in `song/`: highway, panel, bus, gauge, replay controls, results, and its words
-- [ ] Replays: clicking empty space doesn't close the explanation box (clicking the box or Space does); found while testing, it predates the split
-- [ ] Listen in a real browser after the sound restructure: every sound should be unchanged, the modern era's hum without whine or drive
+**Audio and art**
+- [ ] Sounds for branch flushes (a wrong guess is silent) and page faults
+- [ ] Decide: let the game play an edited sound file in place of a synthesized sound when one exists (the recorded keys already work this way); the music stays synthesized
+- [ ] Decide whether sprites are needed (the art is the four era looks and the 3D chip)
 
-### Audio and art
-- [x] Synthesized music whose tempo follows the clock speed (`audio/music.ts`: five layers, one per occupied pipeline stage; the beat is the clock, so clock upgrades and the dial change the tempo)
-- [x] Menu sound: an old computer's hum (fan, mains hum, CRT whine, hard drive seeks) on the title, board, shop and briefings, and mechanical key presses for menu actions; `M` toggles the hum
-- [x] Sound effects: hits (a pitch per unit), stalls, a buzz for every mistake (wrong unit, off beat, missed, wasted stall, data-hazard flush) and for overheating, memory waits (a drone and ticks, then a click when the data arrives)
-- [ ] Sound effects for branch flushes (a wrong guess is silent so far) and page faults
-- [x] Every sound exported as WAV files for the team (`npm run export-sounds`, into `sound-export/`)
-- [ ] Decide: let the game play an edited file in place of a synthesized sound when one exists (the recorded keys already work this way); the music stays synthesized
-- [ ] Sprites: none yet. The art so far is the four era looks and the 3D chip; decide whether sprites are still needed
-- [x] Shop: the chip as a spinning 3D model (own renderer) built from the parts owned, drawn as wireframe / flat / low-poly / smooth by era
-- [x] Terminal look with four eras (green CRT → modern terminal), previewable with keys 1–4
-- [x] 64-bit era: JetBrains Mono, the screen's real resolution, sub-pixel motion, eased transitions (listing slide, glides, page slides)
-- [x] 64-bit era as a terminal window (title bar with a prompt per screen) on black, with teal accents and an LCD subpixel grid
-- [x] 32-bit era as a mid-90s desktop app (gray 3D window on teal, notes as buttons, sunken fields, blue selection bar)
-- [x] 32-bit dark mode (D on the title screen); the shop's selected item, contract cards and the song's key labels are buttons that press in
-- [x] 16-bit era as a DOS app (blue text mode, menu and status bars, double-line boxes, drop shadows, EGA chip)
-- [x] CRT scanlines, phosphor stripes and vignette as a fine overlay at the screen's resolution
-- [x] A period font per era: IBM BIOS (8-bit), IBM VGA (16-bit), IBM XGA (32-bit) from The Ultimate Oldschool PC Font Pack; JetBrains Mono (64-bit)
-- [ ] Playtest the 64-bit era on a real screen with `?fps`: smoothness, ligatures (`<-` drawn as an arrow) kept or not
-- [ ] Drive the era from the player's CPU word size instead of the preview keys
+**Known issues**
+- [ ] Replays: clicking empty space doesn't close the explanation box (clicking the box or Space does); predates the song screen's split
 
-### Education: briefing → practice → play for every concept
-- [x] Briefing system: paged concept cards (picture, ≤ 3 short lines, an analogy, then "how it plays")
-- [x] Practice mode: notes wait at the hit line, first-time callouts explain each instruction, wrong keys explain instead of stalling
-- [x] Tier 1 lesson: what a CPU does, the clock, functional units, registers vs memory, how it plays, scoring
-- [x] Tier 2 lesson: pipelining (laundry analogy), data hazards, stalls (+ tier 2 practice)
-- [x] Tier 3 lesson: forwarding
-- [x] Branch prediction lesson (tier 4)
-- [x] Memory wall lesson (the trip, cycles per trip by clock, the floor chart) and cache lesson (desk, lines and blocks, the address split, locality, three kinds of miss, how it plays, score); practice narrates the first miss, hit and store
-- [ ] Storage lessons: RAM / page faults, HDD
-- [ ] Track hazard-decision accuracy (learning objective 1) and show it after each contract
+## Needs a real browser
 
-### Tier 2–3 play screen (design: player is the control unit)
-- [x] Pipeline shown on the highway: hit line = ID, EX / MEM / WB rows below; a link from a waiting note to the instruction computing its register; registers still being computed marked in the panel
-- [x] "Pipeline fill" feel: clock never changes; music adds one layer per occupied stage; a flush strikes out notes and drops layers, then refills; live throughput meter
-- [x] STALL key (Space) inserts a bubble; stall rules follow the textbook 5-stage pipeline (distance 1 → 2 stalls, distance 2 → 1)
-- [x] Routing into a hazard shows the stale value read next to the correct one, then flushes
-- [x] Forwarding (tier 3): ALU→ALU needs 0 stalls, load-use needs 1; forwarded values shown jumping up a wire; results compare with/without forwarding
-- [x] Branch prediction keys (tier 4): J = guess not taken, K = guess taken; a wrong guess strikes out the fetched instruction
-- [x] Branch hint (tier 4): note glows in the color of what the branch did last time; history in the listing
-- [x] Hardware predictors (tiers 5-6): 1-bit and 2-bit, guessing first with the player following or overriding; nested-loop SUM GRID where 2-bit beats 1-bit (7 vs 10 misses)
-- [x] Results compare single-cycle vs pipelined CPU time (CPI up, period down, faster overall)
-- [x] Tier switch on the title screen (`T`), removed once the shop sold the tiers (`cheat.tier()` sets the tier for testing)
-- [ ] Playtest tier 2 in a real browser: timing, music mix, readability
-- [x] Results on notes, a bus carrying results to registers / memory, and a 2x replay (picked from five views tried in playtest)
-- [x] Tier 2 program listing that scrolls with the instruction in ID and tags each line with its stage
-- [x] Plain-English stage labels (FETCH / DECODE / EXECUTE / MEMORY / WRITE BACK); results wait until the last instruction leaves WB
-- [x] Replay after every run, with speed control, pause, and click-anything explanations (`data/glossary.ts`)
-- [x] Panel split into titled PROGRAM / REGISTERS / MEMORY boxes; hover outline on clickable things in replays
-- [x] Tier 1 replay and explanations (tier 1 now plays on the shared pipeline screen)
-- [ ] Run logic accepts several presses per beat (ready for superscalar chords later)
-
-**Done when:** a new player can go from tier 1 to tier 3 and buy an HDD in one ~30-minute session, the CPI numbers are verified by tests, and the game runs from a plain static server.
+Headless testing can't judge these:
+- [ ] The beat in sync by ear; the timing windows on tiers 1–2; the music's mix; readability while playing
+- [ ] Every sound after the sound system's restructure (should be unchanged; the modern era's hum has no whine or drive); the boot's pace, power-on and typing sounds, the hum fading in
+- [ ] No pile of sounds after switching away from the window and back (fixed by reasoning from Phaser's pause-on-blur, not reproduced)
+- [ ] The 64-bit era with `?fps`: smoothness; keep or drop the font's ligatures (`<-` drawn as an arrow)
 
 ## Later (not part of the MVP)
 
-- Idea, not decided: on contracts that fight the cache, a programmer's fix on the job sheet before the song (pad the array so it stops colliding, swap the loops to read a grid by row); the song plays the fixed program and results compare. A decision for direct-mapped caches, which have none of their own; could be a second measurable learning objective
-- Pipeline designer (cut the datapath; stalls stay manual at every depth; open: hold Space until the hazard clears), after L2 / L3 and pages + HDD
-- Stretch, in priority order: SSD flash mode → dual-issue → NVMe mode → out-of-order + renaming, report card, before/after check
-- Submission: see "Before submission" at the top
+- Idea: on contracts that fight the cache, a programmer's fix on the job sheet before the song (pad the array, swap the loops of a grid); the song plays the fixed program and results compare. A decision for direct-mapped caches, which have none of their own; could be a second measurable learning objective
+- Pipeline designer: cut the datapath to choose the depth; stalls stay manual (open: hold Space until the hazard clears). After L2 / L3 and pages + HDD
+- Stretch, in priority order: SSD flash mode → dual-issue → NVMe mode → out-of-order + renaming, a before/after check
+
+## Done
+
+Details are in `CHANGELOG.md`.
+
+- **Foundations:** the technology decisions (Decisions table); the beat clock on the audio clock, timing windows and calibration; the note highway; the single-cycle CPU, assembler and register panel; relaxed mode (wider windows, slower beat)
+- **CPU model** (tested against hand-worked counts): the 5-stage pipeline with hazards and stalls; forwarding; branches decided in DECODE with the player guessing (tier 4), 1-bit and 2-bit predictors (tiers 5–6); the memory wall (RAM 60 ns, so cycles grow with the clock); the L1 cache (16 bytes, direct-mapped, write-through with a write buffer) with miss kinds; instructions, cycles, CPI and CPU time
+- **The song:** the highway as the pipeline (EX / MEM / WB rows, links from waiting notes to their producers); results on notes and the bus to the panel; the scrolling listing; replays with speed, pause and click-to-learn; the count-in and key registers; the clock dial, overclocking, heat, wear and fire, an overheat stopping the clock; cache misses freezing the song
+- **Economy and progress:** contracts for made-up clients with generated programs and deadlines (late = half pay); the board; the shop (CPU parts, clock, overclocking, cooling, repair, L1); results as charts; every number in `data/economy.ts`; three save slots and a developer save, with export / import
+- **Menus:** the intro (the computer powers on and boots from the save); the main menu as the computer's disk; settings; the developer screen
+- **Education:** briefing → practice → play for tiers 1–6, overclocking, the memory wall and the cache
+- **Look and sound:** four eras (green CRT, DOS app, 90s desktop with a dark mode, modern terminal on an LCD) with period fonts; the 3D chip; the CRT overlay; synthesized music in layers, menu sounds, the hum and the boot's sounds; recorded keys; every sound exportable as WAV
+- **Code:** one place per thing (eras, the screen kit, the sound system), the song screen in parts, a guide to extending it in `CLAUDE.md`
