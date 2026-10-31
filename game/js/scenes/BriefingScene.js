@@ -1,13 +1,11 @@
-import { playMenuMusic, uiSound } from '../audio/menu.js';
 import { LESSONS, TIER1_LESSON } from '../data/lessons.js';
-import { keyOf, onKeyDown } from '../input/keys.js';
 import { updateProgress } from '../save.js';
+import { Screen } from '../ui/screen.js';
+import { ALPHA } from '../ui/theme.js';
 import { drawDiagram } from '../visual/diagrams.js';
-import { cssColor, currentEra, TerminalLook } from '../visual/terminal.js';
-import { isSmooth, textBase, WIDTH } from '../visual/display.js';
+import { isSmooth, WIDTH } from '../visual/display.js';
 /** Paged concept cards shown before a concept is practiced and played. */
-export class BriefingScene extends Phaser.Scene {
-    look;
+export class BriefingScene extends Screen {
     lesson = TIER1_LESSON;
     page = 0;
     then;
@@ -27,25 +25,23 @@ export class BriefingScene extends Phaser.Scene {
         this.page = 0;
     }
     create() {
-        this.look = new TerminalLook(this, currentEra());
+        this.setUp();
         this.layer = this.add.container(0, 0);
         this.render();
         this.slideIn(0);
-        playMenuMusic(this);
         this.input.on('pointerdown', () => this.next());
-        onKeyDown(this, (event) => {
-            const key = keyOf(event);
-            if (key === 'Enter' || key === ' ' || key === 'ArrowRight')
-                this.next();
-            else if (key === 'ArrowLeft')
-                this.turn(-1);
-            // Q too: Vimium-style extensions swallow Escape while a text field has focus.
-            else if ((key === 'Escape' || key === 'Q') && !this.mandatory)
-                this.scene.start('title');
-        });
     }
-    update() {
-        this.look.update();
+    onKey(key) {
+        if (key === 'Enter' || key === ' ' || key === 'ArrowRight')
+            this.next();
+        else if (key === 'ArrowLeft')
+            this.turn(-1);
+        // Q too: Vimium-style extensions swallow Escape while a text field has focus.
+        else if ((key === 'Escape' || key === 'Q') && !this.mandatory)
+            this.back();
+        else
+            return false;
+        return true;
     }
     next() {
         if (this.page < this.lesson.pages.length - 1) {
@@ -69,7 +65,7 @@ export class BriefingScene extends Phaser.Scene {
         const page = Phaser.Math.Clamp(this.page + delta, 0, this.lesson.pages.length - 1);
         if (page === this.page)
             return;
-        uiSound(this, 'move');
+        this.cue('move');
         this.page = page;
         this.render();
         this.slideIn(delta);
@@ -89,27 +85,18 @@ export class BriefingScene extends Phaser.Scene {
         const page = this.lesson.pages[this.page];
         const last = this.page === this.lesson.pages.length - 1;
         const text = (x, y, content, size, alpha = 1, bold = false) => {
-            const t = this.add
-                .text(x, y, content, {
-                ...textBase(),
-                fontSize: `${size}px`,
-                fontStyle: bold ? 'bold' : '',
-                color: cssColor(this.look.era.fg),
-            })
-                .setOrigin(0.5)
-                .setAlpha(alpha);
+            const t = this.text(x, y, content, size).setAlpha(alpha).setFontStyle(bold ? 'bold' : '');
             this.layer.add(t);
             return t;
         };
         text(cx, 26, this.lesson.title, 16, 0.6);
         text(width - 40, 26, `${this.page + 1}/${this.lesson.pages.length}`, 16, 0.6).setOrigin(1, 0.5);
         text(cx, 70, page.title, 30, 1, true);
-        this.layer.add(drawDiagram(this, page.diagram, cx, 205, this.look.era));
+        this.layer.add(drawDiagram(this, page.diagram, cx, 205, this.era));
         page.lines.forEach((line, i) => text(cx, 340 + i * 32, line, 20));
         text(cx, 450, page.analogy, 18, 0.75);
-        text(cx, 508, last
-            ? `[<-] BACK      [ENTER] ${this.finishLabel()}`
-            : `[<-] BACK      [ENTER] NEXT${this.mandatory ? '' : '      [Q] SKIP'}`, 16, 0.6);
+        const keys = last ? ['[<-] BACK', `[ENTER] ${this.finishLabel()}`] : ['[<-] BACK', '[ENTER] NEXT', ...(this.mandatory ? [] : ['[Q] SKIP'])];
+        this.layer.add(this.hints(...keys).setAlpha(ALPHA.subtitle));
     }
 }
 //# sourceMappingURL=BriefingScene.js.map

@@ -1,4 +1,4 @@
-import { output } from './output.ts';
+import { bus } from './mix.ts';
 
 // Five synth layers, one per pipeline stage: a full pipeline plays the full
 // song, and a flush strips it back down. Am - F - C - G, one chord per bar.
@@ -16,15 +16,15 @@ const ARP_PATTERN = [0, 1, 2, 1];
 const semitones = (base: number, steps: number) => base * 2 ** (steps / 12);
 
 export class LayeredMusic {
-  private readonly ctx: AudioContext;
+  private readonly ctx: BaseAudioContext;
   private readonly out: GainNode;
   private readonly noise: AudioBuffer;
 
-  constructor(ctx: AudioContext, volume = 0.6) {
+  constructor(ctx: BaseAudioContext) {
     this.ctx = ctx;
+    // Its own gain into the music bus (audio/mix.ts), so a song's music can fade apart from the rest.
     this.out = ctx.createGain();
-    this.out.gain.value = volume;
-    this.out.connect(output(ctx));
+    this.out.connect(bus(ctx, 'music'));
     this.noise = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.25), ctx.sampleRate);
     const data = this.noise.getChannelData(0);
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;

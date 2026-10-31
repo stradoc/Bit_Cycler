@@ -8,7 +8,7 @@ import { perfectRun } from '../sim/pipeline.js';
 import { Chip, relativePower, steadyTemperature, THERMAL } from '../sim/thermal.js';
 import { branchHint, hintColor } from './branchHint.js';
 import { codeLine } from './codeLine.js';
-import { cssColor } from './terminal.js';
+import { cssColor } from '../ui/eras.js';
 import { textBase } from './display.js';
 /** Small drawing kit for lesson diagrams, in the current era's colors. */
 class Sketch {

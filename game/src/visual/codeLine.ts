@@ -1,5 +1,5 @@
 import type { Token } from '../sim/isa.ts';
-import { cssColor, type SyntaxColors } from './terminal.ts';
+import { cssColor, type SyntaxColors } from '../ui/eras.ts';
 import { textBase } from './display.ts';
 
 type CodeLineOptions = {

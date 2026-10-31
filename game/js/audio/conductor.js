@@ -1,4 +1,4 @@
-import { blip } from './sfx.js';
+import { cueOn } from './cues.js';
 import { beatAtTime, timeOfBeat } from './timing.js';
 // How far ahead (seconds) beats are scheduled, and how often (ms) we top up.
 // setInterval only wakes the scheduler; the beat times themselves come from
@@ -12,7 +12,8 @@ export class Conductor {
     bpm;
     /** Player calibration (seconds). Positive = the player hears audio later than reported. */
     offset = 0;
-    clickVolume = 0.15;
+    /** The metronome's loudness: 1 as designed (alone, for calibration), lower under music, 0 silent. */
+    clickLevel = 1;
     /** Called as each beat is scheduled, with its exact audio time (for music). */
     onBeat;
     /** Beat times follow the current tempo from this anchor (the beat and audio time of the last tempo change). */
@@ -88,7 +89,7 @@ export class Conductor {
         return timeOfBeat(beat - this.anchor.beat, this.anchor.time, this.bpm);
     }
     click(beat, time) {
-        blip(this.ctx, beat % 4 === 0 ? 1760 : 880, time, 0.05, 'square', this.clickVolume);
+        cueOn(this.ctx, beat % 4 === 0 ? 'downbeat' : 'beat', { at: time, volume: this.clickLevel });
     }
 }
 //# sourceMappingURL=conductor.js.map

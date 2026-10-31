@@ -113,7 +113,7 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 - [x] Results screen: instructions, cycles, CPI, clock period, CPU time, the whole contract's time, pay
 - [x] All prices and balance numbers in one data file (`data/economy.ts`)
 - [x] Save/load progress (browser storage; now 3 slots, below)
-- [x] Main menu: continue, new campaign, load game, practice and briefing for your CPU, settings; each era's selection style (`visual/listMenu.ts`)
+- [x] Main menu: continue, new campaign, load game, practice and briefing for your CPU, settings; each era's selection style (`ui/list.ts`)
 - [x] Main menu as the game's disk (DIR / ls listing, folders, README.TXT and CREDITS.TXT to read, SHUTDOWN.EXE), more glow on dark screens, reverse video on the green CRT
 - [ ] Check in a real browser: no pile of sounds after switching away from the window and back (fix reasoned from Phaser's pause-on-blur, not reproduced headless)
 - [x] Intro: the computer powers on (a CRT's line opening out, an LCD's backlight) and boots from the save (CPU, clock and cycle time, a trip to RAM in cycles, cache, cooler, wear) in each era's style, then types the commands that start the game, the contracts' programs pouring out as they load; any key skips; quicker after the first time. The menu then types its title in and reveals its rows, with code scrolling in the margins
@@ -123,12 +123,18 @@ Goal: prove the "beat = clock cycle" idea is fun before building systems around 
 - [ ] Campaign goal: the debt deadline (below) as the campaign's ending, then free play on the endless board
 - [ ] Report card on the main menu (with the learning objective tracking)
 - [ ] Playtest the intro and menu in a real browser: the boot's pace, the power-on and typing sounds, the hum fading in
+- [x] One place per thing: eras described once (`ui/eras.ts`), every screen on one base and kit (`ui/screen.ts`, `ui/theme.ts`, `ui/widgets.ts`, `ui/list.ts`), every sound a named cue through buses with one table of levels (`audio/cues.ts`, `audio/mix.ts`)
+- [x] Split the song screen (`scenes/PipelineScene.ts`, 2,187 lines to 746) into parts in `song/`: highway, panel, bus, gauge, replay controls, results, and its words
+- [ ] Replays: clicking empty space doesn't close the explanation box (clicking the box or Space does); found while testing, it predates the split
+- [ ] Listen in a real browser after the sound restructure: every sound should be unchanged, the modern era's hum without whine or drive
 
 ### Audio and art
 - [x] Synthesized music whose tempo follows the clock speed (`audio/music.ts`: five layers, one per occupied pipeline stage; the beat is the clock, so clock upgrades and the dial change the tempo)
 - [x] Menu sound: an old computer's hum (fan, mains hum, CRT whine, hard drive seeks) on the title, board, shop and briefings, and mechanical key presses for menu actions; `M` toggles the hum
 - [x] Sound effects: hits (a pitch per unit), stalls, a buzz for every mistake (wrong unit, off beat, missed, wasted stall, data-hazard flush) and for overheating, memory waits (a drone and ticks, then a click when the data arrives)
 - [ ] Sound effects for branch flushes (a wrong guess is silent so far) and page faults
+- [x] Every sound exported as WAV files for the team (`npm run export-sounds`, into `sound-export/`)
+- [ ] Decide: let the game play an edited file in place of a synthesized sound when one exists (the recorded keys already work this way); the music stays synthesized
 - [ ] Sprites: none yet. The art so far is the four era looks and the 3D chip; decide whether sprites are still needed
 - [x] Shop: the chip as a spinning 3D model (own renderer) built from the parts owned, drawn as wireframe / flat / low-poly / smooth by era
 - [x] Terminal look with four eras (green CRT → modern terminal), previewable with keys 1–4

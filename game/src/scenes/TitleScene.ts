@@ -1,15 +1,16 @@
-import { lineSound, loadMenuSounds, playMenuMusic, powerOffSound, stopMenuMusic, toggleMenuMusic, typeSound, uiSound } from '../audio/menu.ts';
+import { powerOff, stopHum } from '../audio/sound.ts';
 import { programListing } from '../data/boot.ts';
 import { LESSONS } from '../data/lessons.ts';
 import { banner, commandLine, CREDITS, listCommand, listingFooter, listingLine, readCommand, README, type TextFile } from '../data/menuFiles.ts';
 import { formatMhz, formatMoney } from '../format.ts';
-import { keyOf, onKeyDown } from '../input/keys.ts';
 import { activeSlot, CAMPAIGN_SLOTS, getProgress, hasSave, newGame, slotName } from '../save.ts';
 import { getSettings, updateSettings } from '../settings.ts';
 import { ratedMhz, tierOf } from '../sim/progress.ts';
-import { ListMenu } from '../visual/listMenu.ts';
-import { cssColor, currentEra, ERAS, TerminalLook } from '../visual/terminal.ts';
-import { HEIGHT, textBase, WIDTH } from '../visual/display.ts';
+import { cssColor, ERAS } from '../ui/eras.ts';
+import { ListMenu } from '../ui/list.ts';
+import { Screen } from '../ui/screen.ts';
+import { ALPHA, LAYOUT } from '../ui/theme.ts';
+import { HEIGHT, WIDTH } from '../visual/display.ts';
 
 /** What a file on the menu's disk does when opened. */
 type Action = 'continue' | 'new' | 'practice' | 'saves' | 'briefings' | 'settings' | 'readme' | 'credits' | 'shutdown' | 'up' | 'lesson';
@@ -41,8 +42,6 @@ const CODE_COLUMNS = [24, 740];
 const CODE_TOP = 24;
 const CODE_BOTTOM = 430;
 const CODE_WIDTH = 196;
-/** Extra glow on dark screens: the modern terminal's, and a little on the green CRT (which glows already). */
-const MENU_GLOW = { crt: 0.5, modern: 1 };
 
 /**
  * The main menu, as the game's own disk: programs to run (continue, a new
@@ -51,8 +50,7 @@ const MENU_GLOW = { crt: 0.5, modern: 1 };
  * (data/menuFiles.ts). The backquote key opens the developer screen, which
  * isn't listed.
  */
-export class TitleScene extends Phaser.Scene {
-  private look!: TerminalLook;
+export class TitleScene extends Screen {
   private menu!: ListMenu;
   private folder: Folder = 'root';
   private entries: Entry[] = [];
@@ -90,22 +88,20 @@ export class TitleScene extends Phaser.Scene {
   }
 
   create(data?: { selected?: string; folder?: Folder }): void {
-    this.look = new TerminalLook(this, currentEra());
-    const { era } = this.look;
-    if (!era.window) this.look.glow(MENU_GLOW.crt);
-    else if (era.window.style === 'modern') this.look.glow(MENU_GLOW.modern);
+    this.setUp({ glow: 'menu' });
+    const { era } = this;
     this.scrollingCode();
-    const title = this.text(WIDTH / 2, 62, 'BIT CYCLER', 52).setOrigin(0.5).setColor(cssColor(era.accent));
-    const tagline = this.text(WIDTH / 2, 102, 'A CPU TYCOON WHERE EVERY BEAT IS ONE CLOCK CYCLE', 13).setOrigin(0.5).setAlpha(0.6);
+    const title = this.text(WIDTH / 2, 62, 'BIT CYCLER', 52).setColor(cssColor(era.accent));
+    const tagline = this.text(WIDTH / 2, 102, 'A CPU TYCOON WHERE EVERY BEAT IS ONE CLOCK CYCLE', 13).setAlpha(ALPHA.subtitle);
     this.prompt = this.text(LIST_X, 138, '', 15).setOrigin(0, 0.5);
-    this.menu = new ListMenu(this, this.look, LIST_X, LIST_TOP, 500, ROW_H, 16);
+    this.menu = new ListMenu(this, era, { x: LIST_X, top: LIST_TOP, width: 500, rowHeight: ROW_H, size: 16 });
     // Block letters close up (no line spacing), so their half blocks join into whole letters.
-    this.viewerTitle = this.text(LIST_X, LIST_TOP - 18, '', 16).setLineSpacing(0).setColor(cssColor(era.accent)).setVisible(false);
-    this.viewer = this.text(LIST_X, LIST_TOP + 46, '', 16).setLineSpacing(6).setVisible(false);
+    this.viewerTitle = this.textAt(LIST_X, LIST_TOP - 18, '', 16).setLineSpacing(0).setColor(cssColor(era.accent)).setVisible(false);
+    this.viewer = this.textAt(LIST_X, LIST_TOP + 46, '', 16).setLineSpacing(6).setVisible(false);
     this.footer = this.text(LIST_X, 446, '', 14).setOrigin(0, 0.5).setAlpha(0.7);
-    this.about = this.text(WIDTH / 2, 472, '', 14).setOrigin(0.5).setAlpha(0.85);
-    const status = this.text(WIDTH / 2, 498, this.statusLine(), 14).setOrigin(0.5).setAlpha(0.65);
-    const hints = this.text(WIDTH / 2, 524, '[UP/DOWN] CHOOSE   [ENTER] OPEN   [ESC] BACK   [M] COMPUTER HUM', 13).setOrigin(0.5).setAlpha(0.55);
+    this.about = this.aboutLine();
+    const status = this.text(WIDTH / 2, LAYOUT.message, this.statusLine(), 14).setAlpha(0.65);
+    const hints = this.hints('[UP/DOWN] CHOOSE', '[ENTER] OPEN', '[ESC] BACK', '[M] COMPUTER HUM');
     this.lower = [status, hints];
     this.openFolder(data?.folder ?? 'root', data?.selected);
 
@@ -113,23 +109,6 @@ export class TitleScene extends Phaser.Scene {
       this.cameras.main.fadeIn(300, 0, 0, 0);
       this.arrive(title, tagline, [this.footer, this.about, status, hints]);
     }
-    this.bindKeys();
-    playMenuMusic(this);
-    loadMenuSounds(this);
-    // Phaser starts a scene with its last data when given none, as every "back to the title" is: forget it.
-    this.sys.settings.data = {};
-  }
-
-  update(): void {
-    this.look.update();
-  }
-
-  private text(x: number, y: number, content: string, size: number): Phaser.GameObjects.Text {
-    return this.add.text(x, y, content, { ...textBase(), fontSize: `${size}px`, color: cssColor(this.look.era.fg) });
-  }
-
-  private eraIndex(): number {
-    return getSettings().eraIndex;
   }
 
   private statusLine(): string {
@@ -190,7 +169,7 @@ export class TitleScene extends Phaser.Scene {
     this.viewerTitle.setVisible(false);
     for (const text of this.lower) text.setVisible(true);
     this.entries = folder === 'root' ? this.rootEntries() : this.briefingEntries();
-    const era = this.eraIndex();
+    const { era } = this;
     this.prompt.setText(commandLine(era, FOLDER_PATH[folder], listCommand(era)));
     const start = this.entries.findIndex((entry) => entry.action === selected || entry.lessonId === selected);
     this.menu.setRows(
@@ -198,7 +177,7 @@ export class TitleScene extends Phaser.Scene {
       Math.max(0, start),
     );
     this.footer.setText(listingFooter(era, this.entries.length));
-    this.about.setY(472);
+    this.about.setY(LAYOUT.about);
     this.showAbout();
   }
 
@@ -206,14 +185,15 @@ export class TitleScene extends Phaser.Scene {
   private openText(file: TextFile): void {
     this.reading = file;
     this.page = 0;
-    const era = this.eraIndex();
+    const { era } = this;
     this.prompt.setText(commandLine(era, FOLDER_PATH[this.folder], readCommand(era, file.title, 'TXT')));
     this.menu.showRows(0);
     this.viewerTitle.setText(banner(file.title).join('\n')).setVisible(true);
     this.viewer.setVisible(true);
     this.footer.setText('');
     for (const text of this.lower) text.setVisible(false);
-    this.about.setY(512);
+    // The page line takes the hints' place.
+    this.about.setY(LAYOUT.hints);
     this.showPage();
   }
 
@@ -232,7 +212,7 @@ export class TitleScene extends Phaser.Scene {
     const page = this.page + delta;
     if (page >= file.pages.length) return this.closeText();
     if (page < 0) return;
-    uiSound(this, 'move');
+    this.cue('move');
     this.page = page;
     this.showPage();
   }
@@ -249,51 +229,50 @@ export class TitleScene extends Phaser.Scene {
 
   // ---- keys ----
 
-  private bindKeys(): void {
-    onKeyDown(this, (event) => {
-      if (this.menu.busy || this.off) return;
-      // A key while the menu is still arriving just shows all of it.
-      if (this.finishArrival) return this.finishArrival();
-      const key = keyOf(event);
-      if (this.reading) {
-        if (['ArrowRight', 'ArrowDown', 'Enter', ' '].includes(key)) this.turnPage(1);
-        else if (key === 'ArrowLeft' || key === 'ArrowUp') this.turnPage(-1);
-        else if (['Escape', 'Q', 'Backspace'].includes(key)) {
-          uiSound(this, 'back');
-          this.closeText();
-        }
-        return;
+  protected onKey(key: string): boolean | void {
+    if (this.menu.busy || this.off) return true;
+    // A key while the menu is still arriving just shows all of it.
+    if (this.finishArrival) {
+      this.finishArrival();
+      return true;
+    }
+    if (this.reading) {
+      if (['ArrowRight', 'ArrowDown', 'Enter', ' '].includes(key)) this.turnPage(1);
+      else if (key === 'ArrowLeft' || key === 'ArrowUp') this.turnPage(-1);
+      else if (['Escape', 'Q', 'Backspace'].includes(key)) {
+        this.cue('back');
+        this.closeText();
       }
-      if (key === 'ArrowUp' || key === 'ArrowDown') {
-        this.menu.move(key === 'ArrowUp' ? -1 : 1);
-        this.showAbout();
-      } else if (key === 'Enter' || key === ' ') {
-        const entry = this.entries[this.menu.selected];
-        if (!entry) return;
-        if (entry.locked) {
-          uiSound(this, 'error');
-          return;
-        }
-        uiSound(this, 'confirm');
-        this.menu.press(() => this.open(entry));
-      } else if ((key === 'Escape' || key === 'Backspace' || key === 'Q') && this.folder !== 'root') {
-        uiSound(this, 'back');
-        this.openFolder('root', 'briefings');
-      } else if (key === 'M') {
-        toggleMenuMusic(this);
-      } else if (key === '`') {
-        // Hidden: the developer screen.
-        uiSound(this, 'confirm');
-        this.scene.start('dev');
-      } else if (/^[1-4]$/.test(key) && ERAS.at(Number(key) - 1)) {
-        // Quick era preview (also in the settings), rebuilt so every text picks up the era's font.
-        updateSettings({ eraIndex: Number(key) - 1 });
-        this.restartHere();
-      } else if (key === 'D' && ERAS.at(getSettings().eraIndex)?.dark) {
-        updateSettings({ dark: !getSettings().dark });
-        this.restartHere();
+      return true;
+    }
+    if (key === 'ArrowUp' || key === 'ArrowDown') {
+      this.menu.move(key === 'ArrowUp' ? -1 : 1);
+      this.showAbout();
+    } else if (key === 'Enter' || key === ' ') {
+      const entry = this.entries[this.menu.selected];
+      if (!entry) return true;
+      if (entry.locked) {
+        this.cue('error');
+        return true;
       }
-    });
+      this.cue('confirm');
+      this.menu.press(() => this.open(entry));
+    } else if ((key === 'Escape' || key === 'Backspace' || key === 'Q') && this.folder !== 'root') {
+      this.cue('back');
+      this.openFolder('root', 'briefings');
+    } else if (key === '`') {
+      // Hidden: the developer screen.
+      this.cue('confirm');
+      this.scene.start('dev');
+    } else if (/^[1-4]$/.test(key) && ERAS.at(Number(key) - 1)) {
+      // Quick era preview (also in the settings), rebuilt so every text picks up the era's font.
+      updateSettings({ eraIndex: Number(key) - 1 });
+      this.restartHere();
+    } else if (key === 'D' && ERAS.at(getSettings().eraIndex)?.dark) {
+      updateSettings({ dark: !getSettings().dark });
+      this.restartHere();
+    } else return false;
+    return true;
   }
 
   private restartHere(): void {
@@ -352,7 +331,7 @@ export class TitleScene extends Phaser.Scene {
   private arrive(title: Phaser.GameObjects.Text, tagline: Phaser.GameObjects.Text, fades: Phaser.GameObjects.Text[]): void {
     const name = title.text;
     const command = this.prompt.text;
-    const promptEnd = command.length - listCommand(this.eraIndex()).length;
+    const promptEnd = command.length - listCommand(this.era).length;
     const taglineAlpha = tagline.alpha;
     const alphas = fades.map((text) => text.alpha);
     const at = (ms: number, action: () => void) => this.arrival.push(this.time.delayedCall(ms, action));
@@ -366,7 +345,7 @@ export class TitleScene extends Phaser.Scene {
     for (let typed = 1; typed <= name.length; typed++, t += 110) {
       at(t, () => {
         title.setText(name.slice(0, typed) + (typed < name.length ? '█' : ''));
-        typeSound(this);
+        this.cue('letter');
       });
     }
     t += 250;
@@ -377,7 +356,7 @@ export class TitleScene extends Phaser.Scene {
     for (let typed = promptEnd + 1; typed <= command.length; typed++, t += 120) {
       at(t, () => {
         this.prompt.setText(`${command.slice(0, typed)}█`);
-        typeSound(this);
+        this.cue('letter');
       });
     }
     t += 300;
@@ -386,7 +365,7 @@ export class TitleScene extends Phaser.Scene {
       at(t, () => {
         // The last row shows them all, so a folder with more files isn't cut short later.
         this.menu.showRows(row < this.entries.length ? row : Number.POSITIVE_INFINITY);
-        lineSound(this);
+        this.cue('line');
       });
     }
     at(t, () => fades.forEach((text, i) => this.tweens.add({ targets: text, alpha: alphas[i], duration: 450, delay: i * 120 })));
@@ -412,12 +391,11 @@ export class TitleScene extends Phaser.Scene {
    */
   private shutdown(): void {
     this.off = true;
-    const { era } = this.look;
-    const crt = era.lcd === 0;
-    stopMenuMusic();
-    powerOffSound(this, crt);
+    const { era } = this;
+    stopHum();
+    powerOff(this, era);
     const camera = this.cameras.main;
-    if (!crt) {
+    if (era.computer.display !== 'crt') {
       camera.fadeOut(700, 0, 0, 0);
       camera.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => this.scene.start('boot'));
       return;
@@ -427,7 +405,7 @@ export class TitleScene extends Phaser.Scene {
     const half = HEIGHT / 2 + 100 - 1;
     const top = this.add.rectangle(WIDTH / 2, -100, wide, half, 0x000000).setOrigin(0.5, 0).setScale(1, 0).setDepth(2000);
     const bottom = this.add.rectangle(WIDTH / 2, HEIGHT + 100, wide, half, 0x000000).setOrigin(0.5, 1).setScale(1, 0).setDepth(2000);
-    const line = this.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, 3, era.window ? 0xffffff : era.fire[0]).setDepth(2001).setAlpha(0);
+    const line = this.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, 3, era.computer.beam).setDepth(2001).setAlpha(0);
     this.tweens.add({ targets: [top, bottom], scaleY: 1, duration: 220, ease: 'Cubic.In' });
     this.tweens.chain({
       targets: line,
@@ -454,7 +432,7 @@ export class TitleScene extends Phaser.Scene {
       // More lines than the column shows, each column starting at a different place.
       const block: string[] = [];
       for (let i = 0; block.length < 34; i++) block.push(listing[(i + column * 11) % listing.length]);
-      const code = this.text(x, CODE_TOP, block.join('\n'), 12).setLineSpacing(4).setAlpha(0.14).setMask(mask);
+      const code = this.textAt(x, CODE_TOP, block.join('\n'), 12).setLineSpacing(4).setAlpha(0.14).setMask(mask);
       const once = code.height;
       code.setText([...block, ...block].join('\n'));
       const loop = code.height - once;

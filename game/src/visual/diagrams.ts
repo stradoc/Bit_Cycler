@@ -9,7 +9,7 @@ import { perfectRun } from '../sim/pipeline.ts';
 import { Chip, relativePower, steadyTemperature, THERMAL } from '../sim/thermal.ts';
 import { branchHint, hintColor } from './branchHint.ts';
 import { codeLine } from './codeLine.ts';
-import { cssColor, type Era } from './terminal.ts';
+import { cssColor, type Era } from '../ui/eras.ts';
 import { textBase } from './display.ts';
 
 type Parts = Phaser.GameObjects.GameObject[];

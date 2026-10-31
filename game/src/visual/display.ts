@@ -9,7 +9,7 @@
 // when the game under it is chunky.
 
 import { getSettings } from '../settings.ts';
-import type { Era } from './terminal.ts';
+import type { Era } from '../ui/eras.ts';
 
 export const WIDTH = 960;
 export const HEIGHT = 540;
@@ -62,10 +62,10 @@ function nativeScale(): number {
 
 /** Sets the canvas up for an era: its size, how the browser stretches it, and the font texts use. */
 export function applyEra(game: Phaser.Game, era: Era): void {
-  smooth = era.smooth;
-  hires = era.hires;
+  smooth = era.screen.smooth;
+  hires = era.screen.hires;
   font = era.font;
-  frame = era.window ? FRAMES[era.window.style] : NO_FRAME;
+  frame = era.screen.frame ? FRAMES[era.screen.frame.style] : NO_FRAME;
   const next = hires ? nativeScale() : 1;
   if (next !== scale || game.scale.width !== WIDTH * next) {
     scale = next;
@@ -90,8 +90,8 @@ const NEUTRAL = 128;
  * The CRT effects setting scales them down, to nothing at 0.
  */
 function crtOverlay(game: Phaser.Game, era: Era): void {
-  const scanlines = era.scanlines * getSettings().crt;
-  const vignette = era.vignette * getSettings().crt;
+  const scanlines = era.screen.scanlines * getSettings().crt;
+  const vignette = era.screen.vignette * getSettings().crt;
   if (!crt) {
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;pointer-events:none;z-index:2;mix-blend-mode:soft-light;image-rendering:pixelated';

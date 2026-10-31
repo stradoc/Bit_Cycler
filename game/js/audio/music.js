@@ -1,4 +1,4 @@
-import { output } from './output.js';
+import { bus } from './mix.js';
 // Five synth layers, one per pipeline stage: a full pipeline plays the full
 // song, and a flush strips it back down. Am - F - C - G, one chord per bar.
 const ROOTS = [110, 87.31, 130.81, 98]; // A2, F2, C3, G2
@@ -15,11 +15,11 @@ export class LayeredMusic {
     ctx;
     out;
     noise;
-    constructor(ctx, volume = 0.6) {
+    constructor(ctx) {
         this.ctx = ctx;
+        // Its own gain into the music bus (audio/mix.ts), so a song's music can fade apart from the rest.
         this.out = ctx.createGain();
-        this.out.gain.value = volume;
-        this.out.connect(output(ctx));
+        this.out.connect(bus(ctx, 'music'));
         this.noise = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.25), ctx.sampleRate);
         const data = this.noise.getChannelData(0);
         for (let i = 0; i < data.length; i++)

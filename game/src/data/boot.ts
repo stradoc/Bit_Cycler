@@ -3,7 +3,8 @@
 // save: the CPU, its clock and how long one cycle lasts, what a trip to RAM
 // costs in cycles (the memory wall), the cache, the cooler and any wear. So
 // the boot changes as the CPU is upgraded. Each era boots the way its
-// machines did; the wording is generic, not any real product's.
+// computer did (ui/eras.ts: its BIOS, drive and shell); the wording is
+// generic, not any real product's.
 
 import { COOLING } from './economy.ts';
 import { programByName } from './programs.ts';
@@ -11,9 +12,10 @@ import { formatDuration, formatMhz, formatMoney } from '../format.ts';
 import { MEMORY_TIMING, ramCycles, SHOWN_BYTES } from '../sim/memory.ts';
 import { ratedMhz, tierOf, type Progress } from '../sim/progress.ts';
 import { THERMAL } from '../sim/thermal.ts';
+import type { Era } from '../ui/eras.ts';
 
 /**
- * A sound the computer makes at a step (audio/menu.ts `bootSound`): the POST
+ * A sound the computer makes at a step (a cue in audio/cues.ts): the POST
  * beep when the self test passes, a floppy or hard drive reading.
  */
 export type BootSound = 'beep' | 'floppy' | 'disk';
@@ -34,20 +36,21 @@ export type BootStep =
 const WORD_BITS = 8;
 
 /**
- * The boot for the era at `eraIndex` (0-3: the 8-bit to 64-bit look),
- * reporting `progress` (null: no save yet) from the save slot `slot`.
+ * The boot on the era's computer, reporting `progress` (null: no save yet)
+ * from the save slot `slot`.
  */
-export function bootScript(progress: Progress | null, slot: { readonly id: string; readonly name: string }, eraIndex: number): BootStep[] {
+export function bootScript(progress: Progress | null, slot: { readonly id: string; readonly name: string }, era: Era): BootStep[] {
+  const { computer } = era;
   const facts = progress && hardware(progress);
   const job = progress ? `${slot.name}: ${formatMoney(progress.money)}, ${progress.board.length} CONTRACTS WAITING` : 'NO SAVE YET: START A NEW CAMPAIGN';
   const print = (text: string, pause?: number, sound?: BootSound): BootStep => ({ kind: 'print', text, pause, sound });
-  // The self test passing: one short beep.
-  const memory: BootStep = { kind: 'count', text: 'MEMORY TEST: ', to: SHOWN_BYTES, done: ' BYTES OK', sound: 'beep' };
-  // The programs come off a floppy on the 8-bit computer, a hard drive later, a silent SSD on the modern one.
-  const drive: BootSound | undefined = eraIndex === 0 ? 'floppy' : eraIndex < 3 ? 'disk' : undefined;
+  // The self test passing: one short beep from the PC speaker.
+  const memory: BootStep = { kind: 'count', text: 'MEMORY TEST: ', to: SHOWN_BYTES, done: ' BYTES OK', sound: era.sound.beep ? 'beep' : undefined };
+  // The programs come off a floppy or a hard drive; an SSD is silent.
+  const drive: BootSound | undefined = computer.drive === 'ssd' ? undefined : computer.drive;
   const loading: BootStep = { kind: 'scroll', lines: programListing(progress), sound: drive };
 
-  if (eraIndex >= 3) {
+  if (computer.shell) {
     // A modern boot log in a terminal window, then a shell.
     const ok = (text: string): BootStep => ({ kind: 'print', text, tag: 'OK', pause: 90 });
     const lines: BootStep[] = facts
@@ -71,7 +74,6 @@ export function bootScript(progress: Progress | null, slot: { readonly id: strin
     ];
   }
 
-  const banner = ['BIT CYCLER BIOS 1.0', 'BIT CYCLER BIOS 2.0', 'BIT CYCLER BIOS 4.0'][eraIndex] ?? 'BIT CYCLER BIOS';
   const report: BootStep[] = facts
     ? [
         print(`CPU:    ${facts.cpu}`),
@@ -83,10 +85,10 @@ export function bootScript(progress: Progress | null, slot: { readonly id: strin
         ...(facts.wear ? [print(`WARNING: CHIP WORN, ${facts.wear}`, 300)] : []),
       ]
     : [memory, print('CPU:    NOT CONFIGURED')];
-  const head = [print(banner, 200), print(''), ...report, print('')];
+  const head = [print(computer.bios, 200), print(''), ...report, print('')];
 
-  if (eraIndex === 0) {
-    // An early micro: a one-letter drive prompt.
+  if (computer.drive === 'floppy') {
+    // An early micro booting from a floppy: a one-letter drive prompt.
     return [
       ...head,
       { kind: 'type', prompt: 'A>', text: `LOAD SAVE${slot.id.toUpperCase()}`, sound: 'floppy' },
@@ -105,7 +107,7 @@ export function bootScript(progress: Progress | null, slot: { readonly id: strin
     { kind: 'type', prompt: 'C:\\CYCLER>', text: `CYCLER /SLOT:${slot.id.toUpperCase()}`, sound: 'disk' },
     print(job, 150),
     loading,
-    ...(eraIndex === 2 ? [print('STARTING THE DESKTOP...', 300)] : []),
+    ...(era.kind === 'desktop' ? [print('STARTING THE DESKTOP...', 300)] : []),
     { kind: 'clear' },
   ];
 }

@@ -1,70 +1,10 @@
-// The terminal look modernizes as the CPU's word size grows: from a flickering
-// green-phosphor CRT to a flat modern terminal. This is era styling, not a
-// claim that word size affects the display.
+// How a screen is drawn in its era (ui/eras.ts): the canvas and camera
+// (visual/display.ts), the window or DOS bars around the layout, an LCD's
+// subpixel grid, and the CRT's glow, curve and flicker.
 import { getSettings } from '../settings.js';
-import { bevel, CLASSIC, CLASSIC_DARK, palette } from './bevel.js';
+import { cssColor, palette } from '../ui/eras.js';
+import { bevel } from '../ui/widgets.js';
 import { applyEra, DOS_BAR, fitCamera, HEIGHT, pixelScale, textBase, WIDTH, WINDOW_BAR } from './display.js';
-/** The 32-bit era's dark variant: charcoal windows, light text, the bright VGA colors. */
-const CLASSIC_DARK_ERA = {
-    name: '32-BIT', fg: 0xe0e0e0, dim: 0x6a6a6a, bg: CLASSIC_DARK.face,
-    syntax: { op: 0x55ffff, reg: 0x55ff55, num: 0xffff55, label: 0xff77ff, punct: 0xa0a0a0 },
-    taken: 0x5fb3ff, notTaken: 0xffa040,
-    fire: [0xffff60, 0xff8000, 0xc00000],
-    bloom: 0, scanlines: 0, curve: 0, vignette: 0, flicker: 0,
-    font: "'IBM XGA', monospace", hires: true, smooth: false, accent: 0x7ab8ff, lcd: 0, chip: 'lowpoly',
-    window: { style: 'classic', desk: 0x1c2a33, bar: 0x1c2f5e, bar2: 0x4a6aa5, title: 0xf0f0f0, border: CLASSIC_DARK.dark, palette: CLASSIC_DARK },
-};
-export const ERAS = [
-    {
-        name: '8-BIT', fg: 0x39ff14, dim: 0x0f4a06, bg: 0x030803,
-        syntax: { op: 0x39ff14, reg: 0x2ccc10, num: 0x1f9a0b, label: 0x1f9a0b, punct: 0x177508 },
-        taken: 0x39ff14, notTaken: 0x26b80d,
-        fire: [0xd8ffc8, 0x39ff14, 0x1f9a0b],
-        bloom: 1.8, scanlines: 0.4, curve: 0.02, vignette: 0.4, flicker: 0.02,
-        // The original IBM PC's ROM font, drawn tall as CGA text looked on screen.
-        font: "'IBM BIOS', monospace", hires: false, smooth: false, accent: 0x39ff14, lcd: 0, chip: 'wire',
-    },
-    {
-        // A late-80s DOS app in text mode on a CRT: blue, the 16-color palette, double-line boxes, drop shadows.
-        name: '16-BIT', fg: 0xd0d0d0, dim: 0x3a3ac8, bg: 0x0000aa,
-        syntax: { op: 0xffffff, reg: 0xffff55, num: 0x55ff55, label: 0xff55ff, punct: 0xaaaaaa },
-        taken: 0x55ffff, notTaken: 0xffaa00,
-        fire: [0xffff55, 0xff5555, 0xaa0000],
-        bloom: 0, scanlines: 0.22, curve: 0, vignette: 0.25, flicker: 0,
-        // DOS's own: the VGA text-mode font.
-        font: "'IBM VGA', monospace", hires: true, smooth: false, accent: 0x55ffff, lcd: 0, chip: 'flat',
-        window: {
-            style: 'dos', desk: 0x0000aa, bar: 0xaaaaaa, bar2: 0xaaaaaa, title: 0x000000, border: 0x000000,
-            palette: { light: 0xffffff, soft: 0xaaaaaa, face: 0xaaaaaa, shadow: 0x000000, dark: 0x000000, field: 0x0000aa, select: 0x00aaaa, selectText: 0x000000 },
-        },
-    },
-    {
-        // A mid-90s desktop: a gray window with 3D edges on teal, black text, the 16-color VGA palette.
-        name: '32-BIT', fg: 0x000000, dim: 0x808080, bg: CLASSIC.face,
-        syntax: { op: 0x000080, reg: 0x008080, num: 0x800000, label: 0x800080, punct: 0x606060 },
-        taken: 0x0050c8, notTaken: 0xb85c00,
-        fire: [0xffff60, 0xff8000, 0xc00000],
-        bloom: 0, scanlines: 0, curve: 0, vignette: 0, flicker: 0,
-        // A thin early-90s PC font, closer to the period's light interface text than DOS's heavy one.
-        font: "'IBM XGA', monospace", hires: true, smooth: false, accent: 0x000080, lcd: 0, chip: 'lowpoly',
-        window: { style: 'classic', desk: 0x008080, bar: 0x000080, bar2: 0x1084d0, title: 0xffffff, border: CLASSIC.dark, palette: CLASSIC },
-        dark: CLASSIC_DARK_ERA,
-    },
-    {
-        // A terminal window on a modern LCD: black, with colored accents and syntax.
-        name: '64-BIT', fg: 0xe6e6e6, dim: 0x30343c, bg: 0x000000,
-        syntax: { op: 0x7ee787, reg: 0x79c0ff, num: 0xffd479, label: 0xd2a8ff, punct: 0x8b949e },
-        taken: 0x56b4e9, notTaken: 0xe69f00,
-        fire: [0xfff3b0, 0xff8c1a, 0xd62a0a],
-        bloom: 0, scanlines: 0, curve: 0, vignette: 0, flicker: 0,
-        // A modern programmer's font, at full resolution.
-        font: "'JetBrains Mono', monospace", hires: true, smooth: true,
-        accent: 0x4fd6be,
-        window: { style: 'modern', desk: 0x14171d, bar: 0x22262e, bar2: 0x22262e, title: 0x9aa3b2, border: 0x3a404c },
-        lcd: 0.5,
-        chip: 'smooth',
-    },
-];
 /**
  * Adds a glow (bloom) of `strength` around bright things. Phaser's bloom
  * doesn't add its halo to the picture: it averages the picture with its
@@ -75,15 +15,6 @@ export const ERAS = [
 function addGlow(fx, strength) {
     fx.addBloom(0xffffff, 1, 1, 1, strength / 2, 4);
     fx.addColorMatrix().brightness(2);
-}
-/** The era the settings choose: its index, and its dark variant if dark mode is on and it has one. */
-export function currentEra() {
-    const { eraIndex, dark } = getSettings();
-    const era = ERAS.at(eraIndex) ?? ERAS[0];
-    return dark && era.dark ? era.dark : era;
-}
-export function cssColor(color) {
-    return `#${color.toString(16).padStart(6, '0')}`;
 }
 const LCD_TEXTURE = 'lcd';
 /** The DOS menu bar's items, and which one each screen is. */
@@ -127,9 +58,9 @@ export class TerminalLook {
         applyEra(this.scene.game, era);
         const camera = this.scene.cameras.main;
         fitCamera(camera);
-        camera.setBackgroundColor(era.window?.desk ?? era.bg).setAlpha(1);
+        camera.setBackgroundColor(era.screen.frame?.desk ?? era.bg).setAlpha(1);
         this.drawChrome(era);
-        this.screenEffects(era.bloom);
+        this.screenEffects(era.screen.glow);
     }
     /** The camera's glow and screen curve; the CRT effects setting turns both down with the overlay. */
     screenEffects(bloom) {
@@ -140,8 +71,8 @@ export class TerminalLook {
         const { crt } = getSettings();
         if (bloom * crt > 0)
             addGlow(fx, bloom * crt);
-        if (this.era.curve * crt > 0)
-            fx.addBarrel(1 + this.era.curve * crt);
+        if (this.era.screen.curve * crt > 0)
+            fx.addBarrel(1 + this.era.screen.curve * crt);
     }
     /**
      * The modern era: a terminal window (black body, a title bar with three
@@ -154,7 +85,7 @@ export class TerminalLook {
             part.destroy();
         this.chrome = [];
         const { scene } = this;
-        const frame = this.windowed ? era.window : undefined;
+        const frame = this.windowed ? era.screen.frame : undefined;
         if (frame?.style === 'classic') {
             this.chrome.push(...this.classicWindow(frame));
         }
@@ -181,7 +112,7 @@ export class TerminalLook {
                 .setDepth(991);
             this.chrome.push(body, bar, title);
         }
-        if (era.lcd > 0) {
+        if (era.screen.lcd > 0) {
             if (!scene.textures.exists(LCD_TEXTURE)) {
                 // One LCD pixel: red, green and blue stripes, and a dark gap below them.
                 const tile = scene.textures.createCanvas(LCD_TEXTURE, 3, 3);
@@ -207,7 +138,7 @@ export class TerminalLook {
                 .setOrigin(0)
                 .setTileScale(scale / zoom)
                 .setDepth(1001)
-                .setAlpha(era.lcd)
+                .setAlpha(era.screen.lcd)
                 .setBlendMode(Phaser.BlendModes.MULTIPLY);
             this.chrome.push(grid);
         }
@@ -291,7 +222,7 @@ export class TerminalLook {
         addGlow(fx, amount);
     }
     update() {
-        const flicker = this.era.flicker * getSettings().crt;
+        const flicker = this.era.screen.flicker * getSettings().crt;
         if (flicker > 0)
             this.scene.cameras.main.setAlpha(1 - Math.random() * flicker);
     }

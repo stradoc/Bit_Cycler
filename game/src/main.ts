@@ -11,7 +11,7 @@ import { ShopScene } from './scenes/ShopScene.ts';
 import { TitleScene } from './scenes/TitleScene.ts';
 import { updateSettings } from './settings.ts';
 import { applyEra, fitCamera, HEIGHT, isHires, loadFonts, showFps, WIDTH } from './visual/display.ts';
-import { currentEra, ERAS } from './visual/terminal.ts';
+import { currentEra, ERAS } from './ui/eras.ts';
 
 keepKeyboardFocus();
 await loadFonts();

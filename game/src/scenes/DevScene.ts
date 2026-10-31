@@ -1,17 +1,13 @@
-import { playMenuMusic, uiSound } from '../audio/menu.ts';
 import { cheatFlags } from '../cheatFlags.ts';
 import { CLOCK, COOLING } from '../data/economy.ts';
 import { LESSONS } from '../data/lessons.ts';
 import { folderPath } from '../data/menuFiles.ts';
 import { formatMhz, formatMoney } from '../format.ts';
-import { getSettings } from '../settings.ts';
-import { keyOf, onKeyDown } from '../input/keys.ts';
 import { activeSlot, getProgress, newGame, slotName, switchSlot, updateProgress, type SlotId } from '../save.ts';
 import { fillBoard, ratedMhz, tierOf, withEverything, withTier, type Progress } from '../sim/progress.ts';
 import { THERMAL } from '../sim/thermal.ts';
-import { ListMenu, type MenuRow } from '../visual/listMenu.ts';
-import { cssColor, currentEra, TerminalLook } from '../visual/terminal.ts';
-import { textBase, WIDTH } from '../visual/display.ts';
+import { ListMenu, type MenuRow } from '../ui/list.ts';
+import { Screen } from '../ui/screen.ts';
 
 type Row =
   | 'tier' | 'clock' | 'money' | 'cooling' | 'cache' | 'overclock' | 'wear' | 'everything' | 'board' | 'lessons' | 'autoplay'
@@ -31,8 +27,7 @@ let returnSlot: SlotId | undefined;
  * It plays its own save, so testing never touches a campaign; BACK returns to
  * the slot you came from.
  */
-export class DevScene extends Phaser.Scene {
-  private look!: TerminalLook;
+export class DevScene extends Screen {
   private menu!: ListMenu;
   private lesson = 0;
   private confirmReset = false;
@@ -51,24 +46,13 @@ export class DevScene extends Phaser.Scene {
       returnSlot = activeSlot();
       switchSlot('dev');
     }
-    this.look = new TerminalLook(this, currentEra());
-    this.text(WIDTH / 2, 28, `DEVELOPER MODE: ${folderPath(getSettings().eraIndex, ['DEV'])}`, 22).setFontStyle('bold').setColor(cssColor(this.look.era.accent));
-    this.text(WIDTH / 2, 56, 'A SEPARATE SAVE FOR TESTING: NOTHING HERE TOUCHES YOUR CAMPAIGN SLOTS.', 13).setAlpha(0.6);
-    this.menu = new ListMenu(this, this.look, 190, 88, 580, 25, 15);
+    this.setUp();
+    this.header(`DEVELOPER MODE: ${folderPath(this.era, ['DEV'])}`, 'A SEPARATE SAVE FOR TESTING: NOTHING HERE TOUCHES YOUR CAMPAIGN SLOTS.');
+    this.menu = new ListMenu(this, this.era, { x: 190, top: 94, width: 580, rowHeight: 23, size: 15 });
     this.menu.setRows(this.rows(), data?.selected ?? 0);
-    this.about = this.text(WIDTH / 2, 494, '', 14).setAlpha(0.8);
-    this.text(WIDTH / 2, 522, '[UP/DOWN] CHOOSE    [LEFT/RIGHT] CHANGE    [ENTER] DO IT    [Q] BACK', 14).setAlpha(0.6);
+    this.about = this.aboutLine();
+    this.hints('[UP/DOWN] CHOOSE', '[LEFT/RIGHT] CHANGE', '[ENTER] DO IT', '[Q] BACK');
     this.showAbout();
-    this.bindKeys();
-    playMenuMusic(this);
-  }
-
-  update(): void {
-    this.look.update();
-  }
-
-  private text(x: number, y: number, content: string, size: number): Phaser.GameObjects.Text {
-    return this.add.text(x, y, content, { ...textBase(), fontSize: `${size}px`, color: cssColor(this.look.era.fg) }).setOrigin(0.5);
   }
 
   private rows(): MenuRow[] {
@@ -107,28 +91,26 @@ export class DevScene extends Phaser.Scene {
     this.showAbout();
   }
 
-  private bindKeys(): void {
-    onKeyDown(this, (event) => {
-      if (this.menu.busy) return;
-      const key = keyOf(event);
-      if (key === 'ArrowUp' || key === 'ArrowDown') {
-        this.confirmReset = false;
-        this.menu.move(key === 'ArrowUp' ? -1 : 1);
-        this.refresh();
-      } else if (key === 'ArrowLeft' || key === 'ArrowRight') {
-        this.step(ROWS[this.menu.selected], key === 'ArrowLeft' ? -1 : 1);
-      } else if (key === 'Enter' || key === ' ') {
-        uiSound(this, 'confirm');
-        this.menu.press(() => this.choose(ROWS[this.menu.selected]));
-      } else if (key === 'Escape' || key === 'Q') {
-        this.leave();
-      }
-    });
+  protected onKey(key: string): boolean | void {
+    if (this.menu.busy) return true;
+    if (key === 'ArrowUp' || key === 'ArrowDown') {
+      this.confirmReset = false;
+      this.menu.move(key === 'ArrowUp' ? -1 : 1);
+      this.refresh();
+    } else if (key === 'ArrowLeft' || key === 'ArrowRight') {
+      this.step(ROWS[this.menu.selected], key === 'ArrowLeft' ? -1 : 1);
+    } else if (key === 'Enter' || key === ' ') {
+      this.cue('confirm');
+      this.menu.press(() => this.choose(ROWS[this.menu.selected]));
+    } else if (key === 'Escape' || key === 'Q') {
+      this.leave();
+    } else return false;
+    return true;
   }
 
   private edit(change: (p: Progress) => Progress): void {
     updateProgress(change);
-    uiSound(this, 'move');
+    this.cue('move');
     this.refresh();
   }
 
@@ -151,7 +133,7 @@ export class DevScene extends Phaser.Scene {
         return this.edit((p) => ({ ...p, chipMaxDial: Phaser.Math.Clamp(Math.round((p.chipMaxDial + delta * THERMAL.damagePerOverheat) * 100) / 100, 1, THERMAL.maxDial) }));
       case 'briefing':
         this.lesson = Phaser.Math.Wrap(this.lesson + delta, 0, LESSON_IDS.length);
-        uiSound(this, 'move');
+        this.cue('move');
         return this.refresh();
       case 'cache':
       case 'overclock':
@@ -191,7 +173,7 @@ export class DevScene extends Phaser.Scene {
       case 'reset':
         if (!this.confirmReset) {
           this.confirmReset = true;
-          uiSound(this, 'error');
+          this.cue('error');
           return this.refresh();
         }
         this.confirmReset = false;
@@ -206,9 +188,8 @@ export class DevScene extends Phaser.Scene {
 
   /** Back to the main menu, playing the campaign slot you came from. */
   private leave(): void {
-    uiSound(this, 'back');
     switchSlot(returnSlot ?? '1');
     returnSlot = undefined;
-    this.scene.start('title');
+    this.back();
   }
 }

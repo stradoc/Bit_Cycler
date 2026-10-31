@@ -1,4 +1,4 @@
-import type { Era } from './terminal.ts';
+import type { Era } from '../ui/eras.ts';
 
 // How hot the screen looks, building up in stages as the chip heats:
 //   warm  a red glow behind the highway

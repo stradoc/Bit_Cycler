@@ -11,7 +11,7 @@ import { ShopScene } from './scenes/ShopScene.js';
 import { TitleScene } from './scenes/TitleScene.js';
 import { updateSettings } from './settings.js';
 import { applyEra, fitCamera, HEIGHT, isHires, loadFonts, showFps, WIDTH } from './visual/display.js';
-import { currentEra, ERAS } from './visual/terminal.js';
+import { currentEra, ERAS } from './ui/eras.js';
 keepKeyboardFocus();
 await loadFonts();
 // ?era=1..4 in the URL overrides the saved era (handy for previews).

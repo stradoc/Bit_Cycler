@@ -2,7 +2,7 @@ import { CLOCK, COOLING } from '../data/economy.ts';
 import { formatMhz } from '../format.ts';
 import { ratedMhz, tierOf, type Progress } from '../sim/progress.ts';
 import { THERMAL } from '../sim/thermal.ts';
-import type { Era } from './terminal.ts';
+import type { Era } from '../ui/eras.ts';
 
 // The shop's chip as a small spinning 3D model, drawn the way 3D looked in
 // each era: a green wireframe (8-bit), flat-shaded polygons in the 16 EGA

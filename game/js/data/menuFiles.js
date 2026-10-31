@@ -3,47 +3,45 @@
 // short capital names with a <DIR> column on the retro screens, a shell's
 // lowercase names on the modern terminal. The idea comes from games whose
 // menus are a computer's file system; every name and line here is our own.
-/** Era 3 (64-bit) is a modern shell; the others list files like DOS. */
-const isModern = (eraIndex) => eraIndex >= 3;
+// How names and paths look comes from the era's computer (ui/eras.ts).
 /** A file as the era names it: "CONTINUE.EXE" / "continue.exe"; a folder (no extension) "SAVES" / "saves/". */
-export function fileName(name, ext, eraIndex) {
-    if (isModern(eraIndex))
+export function fileName(name, ext, era) {
+    if (era.computer.shell)
         return (ext ? `${name}.${ext}` : `${name}/`).toLowerCase();
     return ext ? `${name}.${ext}` : name;
 }
 /** One line of a folder's listing: the name, its type (or <DIR>) and a note, in columns. */
-export function listingLine(name, ext, note, eraIndex) {
-    if (isModern(eraIndex))
-        return `${fileName(name, ext, eraIndex).padEnd(14)}${note}`;
+export function listingLine(name, ext, note, era) {
+    if (era.computer.shell)
+        return `${fileName(name, ext, era).padEnd(14)}${note}`;
     return `${name.padEnd(9)}${(ext || '<DIR>').padEnd(6)}${note}`;
 }
 /** Where a folder is: "A:", "C:\BITCYCLR\BRIEFS", "~/bit-cycler/briefs". */
-export function folderPath(eraIndex, folders = []) {
-    if (isModern(eraIndex))
-        return ['~/bit-cycler', ...folders.map((f) => f.toLowerCase())].join('/');
-    const root = eraIndex === 0 ? 'A:' : 'C:\\BITCYCLR';
-    return [root, ...folders].join('\\');
+export function folderPath(era, folders = []) {
+    if (era.computer.shell)
+        return [era.computer.root, ...folders.map((f) => f.toLowerCase())].join('/');
+    return [era.computer.root, ...folders].join('\\');
 }
 /** A file's full path, for a screen's title: "C:\BITCYCLR\SETTINGS.CFG". */
-export function filePath(eraIndex, folders, name, ext) {
-    return `${folderPath(eraIndex, folders)}${isModern(eraIndex) ? '/' : '\\'}${fileName(name, ext, eraIndex)}`;
+export function filePath(era, folders, name, ext) {
+    return `${folderPath(era, folders)}${era.computer.shell ? '/' : '\\'}${fileName(name, ext, era)}`;
 }
 /** A command typed at the folder's prompt: "C:\BITCYCLR>DIR", "player@bit-cycler:~/bit-cycler$ ls". */
-export function commandLine(eraIndex, folders, command) {
-    const path = folderPath(eraIndex, folders);
-    return isModern(eraIndex) ? `player@bit-cycler:${path}$ ${command}` : `${path}>${command}`;
+export function commandLine(era, folders, command) {
+    const path = folderPath(era, folders);
+    return era.computer.shell ? `player@bit-cycler:${path}$ ${command}` : `${path}>${command}`;
 }
 /** The era's command for listing a folder. */
-export function listCommand(eraIndex) {
-    return isModern(eraIndex) ? 'ls' : 'DIR';
+export function listCommand(era) {
+    return era.computer.shell ? 'ls' : 'DIR';
 }
 /** The era's command for printing a text file. */
-export function readCommand(eraIndex, name, ext) {
-    return `${isModern(eraIndex) ? 'cat' : 'TYPE'} ${fileName(name, ext, eraIndex)}`;
+export function readCommand(era, name, ext) {
+    return `${era.computer.shell ? 'cat' : 'TYPE'} ${fileName(name, ext, era)}`;
 }
 /** The count under a listing: "9 FILE(S)" / "total 9". */
-export function listingFooter(eraIndex, files) {
-    return isModern(eraIndex) ? `total ${files}` : `${String(files).padStart(8)} FILE(S)`;
+export function listingFooter(era, files) {
+    return era.computer.shell ? `total ${files}` : `${String(files).padStart(8)} FILE(S)`;
 }
 /** Letters for the big titles, 5 x 5 pixels each ('#' lit). */
 const BLOCK_LETTERS = {

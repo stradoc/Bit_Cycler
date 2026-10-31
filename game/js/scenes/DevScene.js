@@ -1,17 +1,13 @@
-import { playMenuMusic, uiSound } from '../audio/menu.js';
 import { cheatFlags } from '../cheatFlags.js';
 import { CLOCK, COOLING } from '../data/economy.js';
 import { LESSONS } from '../data/lessons.js';
 import { folderPath } from '../data/menuFiles.js';
 import { formatMhz, formatMoney } from '../format.js';
-import { getSettings } from '../settings.js';
-import { keyOf, onKeyDown } from '../input/keys.js';
 import { activeSlot, getProgress, newGame, slotName, switchSlot, updateProgress } from '../save.js';
 import { fillBoard, ratedMhz, tierOf, withEverything, withTier } from '../sim/progress.js';
 import { THERMAL } from '../sim/thermal.js';
-import { ListMenu } from '../visual/listMenu.js';
-import { cssColor, currentEra, TerminalLook } from '../visual/terminal.js';
-import { textBase, WIDTH } from '../visual/display.js';
+import { ListMenu } from '../ui/list.js';
+import { Screen } from '../ui/screen.js';
 const ROWS = [
     'tier', 'clock', 'money', 'cooling', 'cache', 'overclock', 'wear', 'everything', 'board', 'lessons', 'autoplay', 'briefing', 'practice', 'play', 'reset', 'back',
 ];
@@ -25,8 +21,7 @@ let returnSlot;
  * It plays its own save, so testing never touches a campaign; BACK returns to
  * the slot you came from.
  */
-export class DevScene extends Phaser.Scene {
-    look;
+export class DevScene extends Screen {
     menu;
     lesson = 0;
     confirmReset = false;
@@ -42,22 +37,13 @@ export class DevScene extends Phaser.Scene {
             returnSlot = activeSlot();
             switchSlot('dev');
         }
-        this.look = new TerminalLook(this, currentEra());
-        this.text(WIDTH / 2, 28, `DEVELOPER MODE: ${folderPath(getSettings().eraIndex, ['DEV'])}`, 22).setFontStyle('bold').setColor(cssColor(this.look.era.accent));
-        this.text(WIDTH / 2, 56, 'A SEPARATE SAVE FOR TESTING: NOTHING HERE TOUCHES YOUR CAMPAIGN SLOTS.', 13).setAlpha(0.6);
-        this.menu = new ListMenu(this, this.look, 190, 88, 580, 25, 15);
+        this.setUp();
+        this.header(`DEVELOPER MODE: ${folderPath(this.era, ['DEV'])}`, 'A SEPARATE SAVE FOR TESTING: NOTHING HERE TOUCHES YOUR CAMPAIGN SLOTS.');
+        this.menu = new ListMenu(this, this.era, { x: 190, top: 94, width: 580, rowHeight: 23, size: 15 });
         this.menu.setRows(this.rows(), data?.selected ?? 0);
-        this.about = this.text(WIDTH / 2, 494, '', 14).setAlpha(0.8);
-        this.text(WIDTH / 2, 522, '[UP/DOWN] CHOOSE    [LEFT/RIGHT] CHANGE    [ENTER] DO IT    [Q] BACK', 14).setAlpha(0.6);
+        this.about = this.aboutLine();
+        this.hints('[UP/DOWN] CHOOSE', '[LEFT/RIGHT] CHANGE', '[ENTER] DO IT', '[Q] BACK');
         this.showAbout();
-        this.bindKeys();
-        playMenuMusic(this);
-    }
-    update() {
-        this.look.update();
-    }
-    text(x, y, content, size) {
-        return this.add.text(x, y, content, { ...textBase(), fontSize: `${size}px`, color: cssColor(this.look.era.fg) }).setOrigin(0.5);
     }
     rows() {
         const p = getProgress();
@@ -92,31 +78,31 @@ export class DevScene extends Phaser.Scene {
         this.menu.setRows(this.rows());
         this.showAbout();
     }
-    bindKeys() {
-        onKeyDown(this, (event) => {
-            if (this.menu.busy)
-                return;
-            const key = keyOf(event);
-            if (key === 'ArrowUp' || key === 'ArrowDown') {
-                this.confirmReset = false;
-                this.menu.move(key === 'ArrowUp' ? -1 : 1);
-                this.refresh();
-            }
-            else if (key === 'ArrowLeft' || key === 'ArrowRight') {
-                this.step(ROWS[this.menu.selected], key === 'ArrowLeft' ? -1 : 1);
-            }
-            else if (key === 'Enter' || key === ' ') {
-                uiSound(this, 'confirm');
-                this.menu.press(() => this.choose(ROWS[this.menu.selected]));
-            }
-            else if (key === 'Escape' || key === 'Q') {
-                this.leave();
-            }
-        });
+    onKey(key) {
+        if (this.menu.busy)
+            return true;
+        if (key === 'ArrowUp' || key === 'ArrowDown') {
+            this.confirmReset = false;
+            this.menu.move(key === 'ArrowUp' ? -1 : 1);
+            this.refresh();
+        }
+        else if (key === 'ArrowLeft' || key === 'ArrowRight') {
+            this.step(ROWS[this.menu.selected], key === 'ArrowLeft' ? -1 : 1);
+        }
+        else if (key === 'Enter' || key === ' ') {
+            this.cue('confirm');
+            this.menu.press(() => this.choose(ROWS[this.menu.selected]));
+        }
+        else if (key === 'Escape' || key === 'Q') {
+            this.leave();
+        }
+        else
+            return false;
+        return true;
     }
     edit(change) {
         updateProgress(change);
-        uiSound(this, 'move');
+        this.cue('move');
         this.refresh();
     }
     /** Left / right: a setting one step down or up. */
@@ -138,7 +124,7 @@ export class DevScene extends Phaser.Scene {
                 return this.edit((p) => ({ ...p, chipMaxDial: Phaser.Math.Clamp(Math.round((p.chipMaxDial + delta * THERMAL.damagePerOverheat) * 100) / 100, 1, THERMAL.maxDial) }));
             case 'briefing':
                 this.lesson = Phaser.Math.Wrap(this.lesson + delta, 0, LESSON_IDS.length);
-                uiSound(this, 'move');
+                this.cue('move');
                 return this.refresh();
             case 'cache':
             case 'overclock':
@@ -177,7 +163,7 @@ export class DevScene extends Phaser.Scene {
             case 'reset':
                 if (!this.confirmReset) {
                     this.confirmReset = true;
-                    uiSound(this, 'error');
+                    this.cue('error');
                     return this.refresh();
                 }
                 this.confirmReset = false;
@@ -191,10 +177,9 @@ export class DevScene extends Phaser.Scene {
     }
     /** Back to the main menu, playing the campaign slot you came from. */
     leave() {
-        uiSound(this, 'back');
         switchSlot(returnSlot ?? '1');
         returnSlot = undefined;
-        this.scene.start('title');
+        this.back();
     }
 }
 //# sourceMappingURL=DevScene.js.map

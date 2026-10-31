@@ -1,11 +1,11 @@
-import { bootSound, lineSound, loadMenuSounds, playMenuMusic, powerOnSound, startupChime, typeSound } from '../audio/menu.js';
+import { audioOf, powerOn, startHum, startupChime } from '../audio/sound.js';
 import { bootScript } from '../data/boot.js';
 import { banner } from '../data/menuFiles.js';
-import { onKeyDown } from '../input/keys.js';
 import { activeSlot, getProgress, hasSave, slotName } from '../save.js';
 import { getSettings, updateSettings } from '../settings.js';
-import { cssColor, currentEra, TerminalLook } from '../visual/terminal.js';
-import { HEIGHT, textBase, WIDTH } from '../visual/display.js';
+import { cssColor } from '../ui/eras.js';
+import { Screen } from '../ui/screen.js';
+import { HEIGHT, WIDTH } from '../visual/display.js';
 const LEFT = 36;
 const TOP = 34;
 const LINE_H = 22;
@@ -17,8 +17,6 @@ const FAST = 0.5;
 const WARM_UP_MS = 1100;
 /** How fast the loading scroll pours out, per line (ms). */
 const SCROLL_MS = 24;
-/** Extra glow on the boot's dark screen, like a bright terminal in a dark room. */
-const BOOT_GLOW = 1.2;
 /** Tags of a modern boot log: "[  OK  ]" in green, "[ WARN ]" in orange. */
 const TAGS = { OK: '[  OK  ] ', WARN: '[ WARN ] ' };
 /**
@@ -28,8 +26,7 @@ const TAGS = { OK: '[  OK  ] ', WARN: '[ WARN ] ' };
  * (data/boot.ts), and commands type themselves to start the game. Any key
  * skips to the main menu.
  */
-export class BootScene extends Phaser.Scene {
-    look;
+export class BootScene extends Screen {
     stage = 'off';
     steps = [];
     index = 0;
@@ -37,6 +34,8 @@ export class BootScene extends Phaser.Scene {
     /** Lines on screen, each one or two texts (a log tag and its line). */
     rows = [];
     cursor;
+    /** "Press any key to power on". */
+    standby;
     fg = 0;
     constructor() {
         super('boot');
@@ -47,67 +46,59 @@ export class BootScene extends Phaser.Scene {
         this.rows = [];
     }
     create() {
-        const era = currentEra();
-        // The era's window or DOS bars only appear once the program is running.
-        this.look = new TerminalLook(this, era, false);
+        // Every era boots on black, so all of them can glow; the era's window or DOS bars only appear once the
+        // program is running, and the hum starts with the power button.
+        this.setUp({ hum: false, glow: 'boot', windowed: false });
+        const { era } = this;
         // DOS and the 90s desktop boot in a PC's plain gray text on black; their program's screen comes after.
-        const plain = era.window?.style === 'dos' || era.window?.style === 'classic';
-        this.fg = plain ? 0xaaaaaa : era.fg;
+        this.fg = era.computer.bootText;
         this.cameras.main.setBackgroundColor(0x000000);
-        // Every era boots on black, so all of them can glow.
-        this.look.glow(BOOT_GLOW);
         this.speed = getSettings().bootSeen ? FAST : 1;
-        loadMenuSounds(this);
-        this.steps = bootScript(hasSave() ? getProgress() : null, { id: activeSlot(), name: slotName(activeSlot()) }, getSettings().eraIndex);
-        const off = this.add
-            .text(WIDTH / 2, HEIGHT / 2, 'PRESS ANY KEY TO POWER ON', { ...textBase(), fontSize: '14px', color: '#808080' })
-            .setOrigin(0.5)
-            .setAlpha(0.6);
+        this.steps = bootScript(hasSave() ? getProgress() : null, { id: activeSlot(), name: slotName(activeSlot()) }, era);
+        const off = this.text(WIDTH / 2, HEIGHT / 2, 'PRESS ANY KEY TO POWER ON', 14).setColor('#808080').setAlpha(0.6);
+        this.standby = off;
         // The power prompt breathes slowly, like a standby light.
         this.tweens.add({ targets: off, alpha: 0.2, duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
-        this.cursor = this.text(0, 0, '█').setVisible(false);
+        this.cursor = this.line(0, 0, '█').setVisible(false);
         this.time.addEvent({
             delay: CURSOR_BLINK_MS,
             loop: true,
             callback: () => this.cursor.setAlpha(this.cursor.alpha > 0 ? 0 : 1),
         });
-        const press = () => {
-            if (this.stage === 'off') {
-                off.destroy();
-                this.powerOn();
-            }
-            else {
-                this.finish();
-            }
-        };
-        onKeyDown(this, press);
-        this.input.on('pointerdown', press);
+        this.input.on('pointerdown', () => this.press());
     }
-    update() {
-        this.look.update();
+    /** Any key or click: the power button, then (while it boots) skip to the menu. */
+    onKey() {
+        this.press();
+        return true;
     }
-    text(x, y, content, color = this.fg) {
-        return this.add.text(x, y, content, { ...textBase(), fontSize: '16px', color: cssColor(color) });
+    press() {
+        if (this.stage !== 'off')
+            return this.finish();
+        this.standby?.destroy();
+        this.powerOn();
+    }
+    /** A line of the boot's text (top-left at x, y). */
+    line(x, y, content, color = this.fg) {
+        return this.textAt(x, y, content, 16).setColor(cssColor(color));
     }
     /** The power button: the screen comes on, then the boot starts. */
     powerOn() {
         this.stage = 'on';
-        if (this.sound instanceof Phaser.Sound.WebAudioSoundManager)
-            void this.sound.context.resume();
-        const { era } = this.look;
-        const lcd = era.lcd > 0;
-        powerOnSound(this, !lcd);
+        void audioOf(this)?.resume();
+        const { era } = this;
+        powerOn(this, era);
         // The power supply's fan and the hard drive start turning with the switch, and take a few seconds to reach speed.
-        this.time.delayedCall(150, () => playMenuMusic(this, true));
-        if (lcd) {
+        this.time.delayedCall(150, () => startHum(this, true));
+        if (era.computer.display === 'lcd') {
             // An LCD's backlight fades up, and the terminal window is already open.
             this.look.setWindowed(true);
-            this.cameras.main.setBackgroundColor(era.window?.desk ?? era.bg).fadeIn(600, 0, 0, 0);
+            this.cameras.main.setBackgroundColor(era.screen.frame?.desk ?? era.bg).fadeIn(600, 0, 0, 0);
             this.time.delayedCall(WARM_UP_MS, () => this.next());
             return;
         }
         // A CRT: a bright line across the middle, opening out to the whole screen.
-        const beam = this.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, 3, era.window ? 0xffffff : era.fire[0]).setScale(0, 1);
+        const beam = this.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, 3, era.computer.beam).setScale(0, 1);
         this.tweens.chain({
             targets: beam,
             tweens: [
@@ -136,7 +127,7 @@ export class BootScene extends Phaser.Scene {
                 return this.wait(step.pause ?? 130, () => {
                     this.addLine(step.text, step.tag);
                     if (step.text)
-                        lineSound(this);
+                        this.cue('line');
                     this.playStepSound(step.sound);
                     this.next();
                 });
@@ -191,12 +182,12 @@ export class BootScene extends Phaser.Scene {
             return;
         if (typed >= text.length) {
             return this.wait(250, () => {
-                typeSound(this, 'enter');
+                this.cue('enter');
                 this.wait(150, () => this.playStepSound(sound));
                 this.wait(550, () => this.next());
             });
         }
-        typeSound(this, text[typed] === ' ' ? 'space' : 'letter');
+        this.cue(text[typed] === ' ' ? 'space' : 'letter');
         line.setText(prompt + text.slice(0, typed + 1));
         this.placeCursor();
         this.wait(65 + Math.random() * 85, () => this.typeInto(line, prompt, text, typed + 1, sound));
@@ -204,7 +195,7 @@ export class BootScene extends Phaser.Scene {
     /** A step's sound, if it has one, unless the boot was skipped. */
     playStepSound(sound) {
         if (sound && this.stage === 'on')
-            bootSound(this, sound);
+            this.cue(sound);
     }
     /** Prints `lines` a frame or two apart, so the screen scrolls past faster than anyone can read. */
     pour(lines, done) {
@@ -215,7 +206,7 @@ export class BootScene extends Phaser.Scene {
         this.addLine(lines[done]).setAlpha(0.75);
         // Lines pouring out tick too, softly and only every few, or it would be a buzz.
         if (done % 3 === 0)
-            lineSound(this, 0.5);
+            this.cue('line', { volume: 0.5 });
         this.wait(SCROLL_MS, () => this.pour(lines, done + 1));
     }
     /** A new line at the bottom (scrolling up once the screen is full); returns its text. */
@@ -231,12 +222,12 @@ export class BootScene extends Phaser.Scene {
         const row = [];
         let x = LEFT;
         if (tag) {
-            const { era } = this.look;
-            const mark = this.text(x, y, TAGS[tag], tag === 'OK' ? era.syntax.op : era.fire[1]);
+            const { era } = this;
+            const mark = this.line(x, y, TAGS[tag], tag === 'OK' ? era.syntax.op : this.colors.warn);
             row.push(mark);
             x += mark.width;
         }
-        const line = this.text(x, y, content);
+        const line = this.line(x, y, content);
         row.push(line);
         this.rows.push(row);
         this.placeCursor();
@@ -262,21 +253,19 @@ export class BootScene extends Phaser.Scene {
                 part.destroy();
         this.rows = [];
         this.cursor.setVisible(false);
-        const { era } = this.look;
         // On the black boot screen, the title in a bright color the era owns.
-        const color = era.window?.style === 'dos' ? 0x55ffff : era.window?.style === 'classic' ? 0xffffff : era.accent;
         const lines = banner('BIT CYCLER');
-        const title = this.add.text(WIDTH / 2, 0, lines.join('\n'), { ...textBase(), fontSize: '30px', color: cssColor(color) }).setLineSpacing(0);
+        const title = this.textAt(WIDTH / 2, 0, lines.join('\n'), 30).setColor(cssColor(this.era.computer.splash)).setLineSpacing(0);
         title.setScale(Math.min(1.6, 840 / title.width)).setOrigin(0.5, 0);
         // Placed by its full size, before it starts empty and builds up.
         const height = title.displayHeight;
         title.setY(HEIGHT / 2 - 40 - height / 2).setText('');
-        const tagline = this.text(WIDTH / 2, title.y + height + 28, 'A CPU TYCOON WHERE EVERY BEAT IS ONE CLOCK CYCLE').setOrigin(0.5, 0).setAlpha(0);
+        const tagline = this.line(WIDTH / 2, title.y + height + 28, 'A CPU TYCOON WHERE EVERY BEAT IS ONE CLOCK CYCLE').setOrigin(0.5, 0).setAlpha(0);
         const chime = startupChime(this);
         lines.forEach((_, row) => {
             this.time.delayedCall(140 * row, () => {
                 title.setText(lines.slice(0, row + 1).join('\n'));
-                lineSound(this);
+                this.cue('line');
             });
         });
         this.tweens.add({ targets: tagline, alpha: 0.8, delay: 600, duration: 700 });

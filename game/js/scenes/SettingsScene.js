@@ -1,12 +1,12 @@
 import { Conductor } from '../audio/conductor.js';
-import { playMenuMusic, stopMenuMusic, toggleMenuMusic, uiSound } from '../audio/menu.js';
-import { setVolume } from '../audio/output.js';
+import { audioOf, setVolume, startHum, stopHum, toggleHum } from '../audio/sound.js';
 import { filePath } from '../data/menuFiles.js';
-import { keyOf, onKeyDown } from '../input/keys.js';
 import { getSettings, updateSettings } from '../settings.js';
-import { ListMenu } from '../visual/listMenu.js';
-import { cssColor, currentEra, ERAS, TerminalLook } from '../visual/terminal.js';
-import { textBase, WIDTH } from '../visual/display.js';
+import { ERAS } from '../ui/eras.js';
+import { ListMenu } from '../ui/list.js';
+import { Screen } from '../ui/screen.js';
+import { ALPHA, LAYOUT, TEXT } from '../ui/theme.js';
+import { WIDTH } from '../visual/display.js';
 const CALIBRATION_BPM = 120;
 const OFFSET_STEP_MS = 5;
 const ROWS = ['relaxed', 'calibrate', 'volume', 'hum', 'crt', 'era', 'dark', 'back'];
@@ -23,8 +23,7 @@ const ABOUT = {
 const onOff = (on) => (on ? 'ON' : 'OFF');
 const percent = (value) => `${Math.round(value * 100)}%`;
 /** Settings: relaxed mode, audio calibration, volume, the menu hum, CRT effects, the era and dark mode. */
-export class SettingsScene extends Phaser.Scene {
-    look;
+export class SettingsScene extends Screen {
     menu;
     about;
     readout;
@@ -40,25 +39,22 @@ export class SettingsScene extends Phaser.Scene {
         this.lastBeat = -1;
     }
     create(data) {
-        this.look = new TerminalLook(this, currentEra());
-        const { era } = this.look;
-        this.text(WIDTH / 2, 40, filePath(getSettings().eraIndex, [], 'SETTINGS', 'CFG'), 24).setFontStyle('bold');
-        this.menu = new ListMenu(this, this.look, 250, 104, 460, 34, 18);
+        this.setUp();
+        const { era } = this;
+        this.header(filePath(era, [], 'SETTINGS', 'CFG'), 'HOW THE GAME PLAYS, SOUNDS AND LOOKS.');
+        this.menu = new ListMenu(this, era, { x: 250, top: 112, width: 460, rowHeight: 34, size: 18 });
         this.menu.setRows(this.rows(), data?.selected ?? 0);
-        this.about = this.text(WIDTH / 2, 386, '', 14).setAlpha(0.8).setWordWrapWidth(860).setAlign('center');
-        this.ledBase = this.add.rectangle(WIDTH / 2, 436, 20, 20, era.dim).setVisible(false);
-        this.ledLight = this.add.rectangle(WIDTH / 2, 436, 20, 20, era.fg).setAlpha(0);
-        this.readout = this.text(WIDTH / 2, 470, '', 15).setAlpha(0.8);
-        this.text(WIDTH / 2, 512, '[UP/DOWN] CHOOSE    [LEFT/RIGHT] CHANGE    [ENTER] SELECT    [Q] BACK', 14).setAlpha(0.6);
+        this.ledBase = this.add.rectangle(WIDTH / 2, 410, 20, 20, era.dim).setVisible(false);
+        this.ledLight = this.add.rectangle(WIDTH / 2, 410, 20, 20, era.fg).setAlpha(0);
+        this.about = this.aboutLine();
+        // The calibration's readout, where the other screens put their messages.
+        this.readout = this.text(WIDTH / 2, LAYOUT.message, '', TEXT.small + 1).setAlpha(ALPHA.about);
+        this.hints('[UP/DOWN] CHOOSE', '[LEFT/RIGHT] CHANGE', '[ENTER] SELECT', '[Q] BACK');
         this.showAbout();
-        this.bindKeys();
-        playMenuMusic(this);
         this.events.once('shutdown', () => this.calibration?.stop());
-        // Opened from the menu, it starts at the top (Phaser would reuse the row from the last rebuild).
-        this.sys.settings.data = {};
     }
     update() {
-        this.look.update();
+        super.update();
         if (!this.calibration)
             return;
         const beat = Math.floor(this.calibration.currentBeat());
@@ -70,9 +66,6 @@ export class SettingsScene extends Phaser.Scene {
         this.ledLight.setAlpha(1).setScale(beat % 4 === 0 ? 1.6 : 1);
         this.tweens.add({ targets: this.ledLight, alpha: 0, scale: 1, duration: 180 });
         this.showReadout();
-    }
-    text(x, y, content, size) {
-        return this.add.text(x, y, content, { ...textBase(), fontSize: `${size}px`, color: cssColor(this.look.era.fg) }).setOrigin(0.5);
     }
     rows() {
         const s = getSettings();
@@ -97,40 +90,38 @@ export class SettingsScene extends Phaser.Scene {
     showAbout() {
         this.about.setText(ABOUT[ROWS[this.menu.selected]]);
     }
-    bindKeys() {
-        onKeyDown(this, (event) => {
-            if (this.menu.busy)
-                return;
-            const key = keyOf(event);
-            if (this.calibration) {
-                // Calibrating: the arrows move the offset; Enter or Q stops.
-                if (key === 'ArrowLeft' || key === 'ArrowRight')
-                    this.adjustOffset(key === 'ArrowLeft' ? -OFFSET_STEP_MS : OFFSET_STEP_MS);
-                else if (key === 'Enter' || key === ' ' || key === 'Escape' || key === 'Q')
-                    this.toggleCalibration();
-                return;
-            }
-            if (key === 'ArrowUp' || key === 'ArrowDown') {
-                this.menu.move(key === 'ArrowUp' ? -1 : 1);
-                this.showAbout();
-            }
-            else if (key === 'ArrowLeft' || key === 'ArrowRight') {
-                this.change(ROWS[this.menu.selected], key === 'ArrowLeft' ? -1 : 1);
-            }
-            else if (key === 'Enter' || key === ' ') {
-                const row = ROWS[this.menu.selected];
-                uiSound(this, 'confirm');
-                this.menu.press(() => (row === 'back' ? this.scene.start('title', { selected: 'settings' }) : row === 'calibrate' ? this.toggleCalibration() : this.change(row, 1)));
-            }
-            else if (key === 'M') {
-                toggleMenuMusic(this);
-                this.refresh();
-            }
-            else if (key === 'Escape' || key === 'Q') {
-                uiSound(this, 'back');
-                this.scene.start('title', { selected: 'settings' });
-            }
-        });
+    onKey(key) {
+        if (this.menu.busy)
+            return true;
+        if (this.calibration) {
+            // Calibrating: the arrows move the offset; Enter or Q stops.
+            if (key === 'ArrowLeft' || key === 'ArrowRight')
+                this.adjustOffset(key === 'ArrowLeft' ? -OFFSET_STEP_MS : OFFSET_STEP_MS);
+            else if (key === 'Enter' || key === ' ' || key === 'Escape' || key === 'Q')
+                this.toggleCalibration();
+            return true;
+        }
+        if (key === 'ArrowUp' || key === 'ArrowDown') {
+            this.menu.move(key === 'ArrowUp' ? -1 : 1);
+            this.showAbout();
+        }
+        else if (key === 'ArrowLeft' || key === 'ArrowRight') {
+            this.change(ROWS[this.menu.selected], key === 'ArrowLeft' ? -1 : 1);
+        }
+        else if (key === 'Enter' || key === ' ') {
+            const row = ROWS[this.menu.selected];
+            this.cue('confirm');
+            this.menu.press(() => (row === 'back' ? this.scene.start('title', { selected: 'settings' }) : row === 'calibrate' ? this.toggleCalibration() : this.change(row, 1)));
+        }
+        else if (key === 'Escape' || key === 'Q') {
+            this.back('title', { selected: 'settings' });
+        }
+        else
+            return false;
+        return true;
+    }
+    humToggled() {
+        this.refresh();
     }
     /** Left (-1) or right (+1) on a row: on / off settings flip, the others step. */
     change(row, step) {
@@ -140,10 +131,10 @@ export class SettingsScene extends Phaser.Scene {
                 updateSettings({ relaxed: !s.relaxed });
                 break;
             case 'volume':
-                setVolume(this.context(), Phaser.Math.Clamp(Math.round(s.volume * 10 + step) / 10, 0, 1));
+                setVolume(audioOf(this), Phaser.Math.Clamp(Math.round(s.volume * 10 + step) / 10, 0, 1));
                 break;
             case 'hum':
-                toggleMenuMusic(this);
+                toggleHum(this);
                 break;
             case 'crt':
                 updateSettings({ crt: Phaser.Math.Clamp(Math.round(s.crt * 4 + step) / 4, 0, 1) });
@@ -153,22 +144,19 @@ export class SettingsScene extends Phaser.Scene {
                 return this.rebuild();
             case 'dark':
                 if (!ERAS.at(s.eraIndex)?.dark)
-                    return uiSound(this, 'error');
+                    return this.cue('error');
                 updateSettings({ dark: !s.dark });
                 return this.rebuild();
             default:
                 return;
         }
-        uiSound(this, 'move');
+        this.cue('move');
         this.refresh();
     }
     /** The screen's look changed: rebuilt, so every text and effect picks it up. */
     rebuild() {
-        uiSound(this, 'move');
+        this.cue('move');
         this.scene.restart({ selected: this.menu.selected });
-    }
-    context() {
-        return this.sound instanceof Phaser.Sound.WebAudioSoundManager ? this.sound.context : undefined;
     }
     toggleCalibration() {
         if (this.calibration) {
@@ -176,15 +164,15 @@ export class SettingsScene extends Phaser.Scene {
             this.calibration = undefined;
             this.ledBase.setVisible(false);
             this.readout.setText('');
-            playMenuMusic(this);
+            startHum(this);
             return;
         }
-        const ctx = this.context();
+        const ctx = audioOf(this);
         if (!ctx)
             return;
         void ctx.resume();
         // Calibration needs to hear the click alone.
-        stopMenuMusic();
+        stopHum();
         this.calibration = new Conductor(ctx, CALIBRATION_BPM);
         this.calibration.offset = getSettings().offset;
         this.calibration.start();
