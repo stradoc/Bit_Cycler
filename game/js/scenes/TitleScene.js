@@ -2,11 +2,11 @@ import { powerOff, stopHum } from '../audio/sound.js';
 import { programListing } from '../data/boot.js';
 import { LESSONS } from '../data/lessons.js';
 import { banner, commandLine, CREDITS, listCommand, listingFooter, listingLine, readCommand, README } from '../data/menuFiles.js';
-import { formatMhz, formatMoney } from '../format.js';
+import { formatMoney } from '../format.js';
 import { activeSlot, CAMPAIGN_SLOTS, getProgress, hasSave, newGame, slotName } from '../save.js';
 import { getSettings, updateSettings } from '../settings.js';
-import { ratedMhz, tierOf } from '../sim/progress.js';
-import { cssColor, ERAS } from '../ui/eras.js';
+import { cpuLine, tierOf } from '../sim/progress.js';
+import { baseEra, cssColor } from '../ui/eras.js';
 import { ListMenu } from '../ui/list.js';
 import { Screen } from '../ui/screen.js';
 import { ALPHA, LAYOUT } from '../ui/theme.js';
@@ -89,8 +89,7 @@ export class TitleScene extends Screen {
         if (!hasSave())
             return 'NO SAVE YET: RUN NEWGAME';
         const progress = getProgress();
-        const tier = tierOf(progress);
-        return `${slotName(activeSlot())}: ${formatMoney(progress.money)}   TIER ${tier.number} ${tier.name} AT ${formatMhz(ratedMhz(progress))}`;
+        return `${slotName(activeSlot())}: ${formatMoney(progress.money)}   ${cpuLine(progress)}`;
     }
     // ---- the disk ----
     rootEntries() {
@@ -239,12 +238,8 @@ export class TitleScene extends Screen {
             this.cue('confirm');
             this.scene.start('dev');
         }
-        else if (/^[1-4]$/.test(key) && ERAS.at(Number(key) - 1)) {
-            // Quick era preview (also in the settings), rebuilt so every text picks up the era's font.
-            updateSettings({ eraIndex: Number(key) - 1 });
-            this.restartHere();
-        }
-        else if (key === 'D' && ERAS.at(getSettings().eraIndex)?.dark) {
+        else if (key === 'D' && baseEra().dark) {
+            // Dark mode (also in the settings), rebuilt so every text picks up the new colors.
             updateSettings({ dark: !getSettings().dark });
             this.restartHere();
         }

@@ -22,6 +22,16 @@ test('a save from before slots (the progress alone) loads, missing fields taking
   assert.deepEqual(saved.progress.parts, ['pipeline']);
   assert.equal(saved.progress.cacheLevels, 0); // saved before the cache existed
   assert.deepEqual(saved.progress.seenLessons, []); // the settings kept these then
+  assert.equal(saved.progress.wordBits, 16); // saved before the chips: the pipeline needs the 16-bit one
+});
+
+test('a save from before the chips gets the narrowest chip its parts and clock need', () => {
+  const chipFor = (old: object) => parseSave(JSON.stringify({ ...old, board: [], nextId: 1 }))?.progress.wordBits;
+  assert.equal(chipFor({ money: 0, parts: [], clockLevel: 0 }), 8);
+  assert.equal(chipFor({ money: 0, parts: ['pipeline', 'forwarding'], clockLevel: 2 }), 32);
+  assert.equal(chipFor({ money: 0, parts: [], clockLevel: CLOCK.factors.length - 1 }), 64); // 4 GHz runs only on 64-bit
+  // A save's own chip stays, even one wider than it needs.
+  assert.equal(chipFor({ money: 0, parts: [], clockLevel: 0, wordBits: 64 }), 64);
 });
 
 test('text that is not a save is refused', () => {
@@ -41,6 +51,7 @@ test('an edited save is pulled back into range', () => {
     overclocking: 'yes',
     chipMaxDial: 9,
     seenLessons: ['tier1', 42],
+    wordBits: 12,
   };
   const saved = parseSave(saveText(edited as unknown as Progress, SAVED_AT));
   assert.ok(saved);
@@ -54,6 +65,7 @@ test('an edited save is pulled back into range', () => {
   assert.equal(p.chipMaxDial, THERMAL.maxDial);
   assert.deepEqual(p.seenLessons, ['tier1']);
   assert.ok(p.cooling < COOLING.length);
+  assert.equal(p.wordBits, 64); // no 12-bit chip: the narrowest that runs the top clock
 });
 
 test('contracts saved before deadlines existed are dropped', () => {

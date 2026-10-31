@@ -35,6 +35,14 @@ export abstract class Screen extends Phaser.Scene {
     return this.look.era;
   }
 
+  /**
+   * The era has changed since this screen was drawn (a new chip, another
+   * save), so it should be drawn again: restart it with what it needs to carry on.
+   */
+  protected eraChanged(): boolean {
+    return currentEra() !== this.era;
+  }
+
   /** The era's colors by what they're for (text, accent, warn, danger...). */
   protected get colors(): ReturnType<typeof colorsOf> {
     return colorsOf(this.look.era);

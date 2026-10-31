@@ -23,7 +23,9 @@ Each song opens with a short count-in naming the loop's key registers (`NEXT`, `
 
 **Menus.** Arrows choose, `Enter` opens, `Esc` or `Q` goes back, `M` turns the computer's hum on or off. On the main menu: CONTINUE, NEWGAME, PRACTICE (your CPU, with notes that wait for you), SAVES (three slots, export and import), BRIEFS (reread lessons), SETTINGS, README.TXT and CREDITS.TXT, SHUTDOWN. On the board: `S` opens the shop. In the shop: `Enter` buys, `B` goes back to the board.
 
-**Settings.** Relaxed mode (wider timing and a slower beat), audio calibration (line the light up with the click), volume, the hum, CRT effects, the screen's era (green CRT, DOS, a 90s desktop, a modern terminal) and dark mode for the 90s desktop.
+**Settings.** Relaxed mode (wider timing and a slower beat), audio calibration (line the light up with the click), volume, the hum, CRT effects and dark mode for the 90s desktop.
+
+**Eras.** Your computer's look follows its CPU chip. Each wider chip you buy in the shop moves it into the next era: a green CRT (8-bit), DOS (16-bit), a 90s desktop (32-bit) and a modern terminal (64-bit).
 
 **New hardware comes with a briefing** (a few cards on the idea), then a practice, then the real thing.
 

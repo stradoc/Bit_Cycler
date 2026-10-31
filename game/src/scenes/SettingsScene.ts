@@ -2,7 +2,7 @@ import { Conductor } from '../audio/conductor.ts';
 import { audioOf, setVolume, startHum, stopHum, toggleHum } from '../audio/sound.ts';
 import { filePath } from '../data/menuFiles.ts';
 import { getSettings, updateSettings } from '../settings.ts';
-import { ERAS } from '../ui/eras.ts';
+import { baseEra } from '../ui/eras.ts';
 import { ListMenu } from '../ui/list.ts';
 import { Screen } from '../ui/screen.ts';
 import { ALPHA, LAYOUT, TEXT } from '../ui/theme.ts';
@@ -11,8 +11,8 @@ import { WIDTH } from '../visual/display.ts';
 const CALIBRATION_BPM = 120;
 const OFFSET_STEP_MS = 5;
 
-type Row = 'relaxed' | 'calibrate' | 'volume' | 'hum' | 'crt' | 'era' | 'dark' | 'back';
-const ROWS: readonly Row[] = ['relaxed', 'calibrate', 'volume', 'hum', 'crt', 'era', 'dark', 'back'];
+type Row = 'relaxed' | 'calibrate' | 'volume' | 'hum' | 'crt' | 'dark' | 'back';
+const ROWS: readonly Row[] = ['relaxed', 'calibrate', 'volume', 'hum', 'crt', 'dark', 'back'];
 
 const ABOUT: Readonly<Record<Row, string>> = {
   relaxed: 'WIDER TIMING WINDOWS AND THE BEAT AT 80%: FOR LEARNING, OR WHEN THE BEAT IS TOO FAST.',
@@ -20,7 +20,6 @@ const ABOUT: Readonly<Record<Row, string>> = {
   volume: 'EVERY SOUND IN THE GAME.',
   hum: "THE OLD COMPUTER'S HUM IN THE MENUS: FAN, MAINS HUM, HARD DRIVE.",
   crt: 'SCANLINES, GLOW, CURVE AND FLICKER ON THE CRT SCREENS. TURN THEM DOWN IF THEY TIRE YOUR EYES.',
-  era: "THE SCREEN'S LOOK: GREEN CRT, DOS, 90s DESKTOP, MODERN TERMINAL. A PREVIEW FOR NOW.",
   dark: 'DARK WINDOWS FOR THE 90s DESKTOP.',
   back: 'BACK TO THE MAIN MENU.',
 };
@@ -28,7 +27,7 @@ const ABOUT: Readonly<Record<Row, string>> = {
 const onOff = (on: boolean) => (on ? 'ON' : 'OFF');
 const percent = (value: number) => `${Math.round(value * 100)}%`;
 
-/** Settings: relaxed mode, audio calibration, volume, the menu hum, CRT effects, the era and dark mode. */
+/** Settings: relaxed mode, audio calibration, volume, the menu hum, CRT effects and dark mode. The era follows your CPU chip. */
 export class SettingsScene extends Screen {
   private menu!: ListMenu;
   private about!: Phaser.GameObjects.Text;
@@ -79,14 +78,13 @@ export class SettingsScene extends Screen {
   private rows(): { label: string; value?: string; dim?: boolean }[] {
     const s = getSettings();
     const offsetMs = Math.round(s.offset * 1000);
-    const hasDark = Boolean(ERAS.at(s.eraIndex)?.dark);
+    const hasDark = Boolean(baseEra().dark);
     const values: Record<Row, [string, string | undefined]> = {
       relaxed: ['RELAXED MODE', onOff(s.relaxed)],
       calibrate: ['CALIBRATE AUDIO', `${offsetMs > 0 ? '+' : ''}${offsetMs} MS`],
       volume: ['VOLUME', percent(s.volume)],
       hum: ['COMPUTER HUM', onOff(s.music)],
       crt: ['CRT EFFECTS', percent(s.crt)],
-      era: ['ERA', ERAS.at(s.eraIndex)?.name ?? ''],
       dark: ['DARK MODE', hasDark ? onOff(s.dark) : '32-BIT ONLY'],
       back: ['BACK', undefined],
     };
@@ -145,11 +143,8 @@ export class SettingsScene extends Screen {
       case 'crt':
         updateSettings({ crt: Phaser.Math.Clamp(Math.round(s.crt * 4 + step) / 4, 0, 1) });
         return this.rebuild();
-      case 'era':
-        updateSettings({ eraIndex: Phaser.Math.Wrap(s.eraIndex + step, 0, ERAS.length) });
-        return this.rebuild();
       case 'dark':
-        if (!ERAS.at(s.eraIndex)?.dark) return this.cue('error');
+        if (!baseEra().dark) return this.cue('error');
         updateSettings({ dark: !s.dark });
         return this.rebuild();
       default:

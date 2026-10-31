@@ -2,7 +2,6 @@ export type Settings = {
   /** Audio calibration offset in seconds. */
   readonly offset: number;
   readonly relaxed: boolean;
-  readonly eraIndex: number;
   /** The menus' computer hum (fan, mains hum, hard drive) on or off (M). */
   readonly music: boolean;
   /** Dark mode, for eras that have a dark variant (the 32-bit desktop). */
@@ -16,7 +15,7 @@ export type Settings = {
 };
 
 const STORAGE_KEY = 'bit-cycler-settings';
-const DEFAULTS: Settings = { offset: 0, relaxed: false, eraIndex: 0, music: true, dark: false, volume: 1, crt: 1, bootSeen: false };
+const DEFAULTS: Settings = { offset: 0, relaxed: false, music: true, dark: false, volume: 1, crt: 1, bootSeen: false };
 
 let current: Settings | undefined;
 

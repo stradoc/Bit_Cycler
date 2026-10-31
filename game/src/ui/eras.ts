@@ -1,7 +1,9 @@
-// Everything that changes from one era to the next, in one place. The look
-// modernizes as the CPU's word size grows: a flickering green-phosphor CRT, a
-// DOS app, a mid-90s desktop, a terminal window on a modern LCD. This is era
-// styling, not a claim that word size affects the display.
+// Everything that changes from one era to the next, in one place. The era is
+// the computer you own: it follows the CPU chip in the save (its word size,
+// data/economy.ts CHIPS), and the look modernizes as the chips get wider: a
+// flickering green-phosphor CRT, a DOS app, a mid-90s desktop, a terminal
+// window on a modern LCD. This is the look of each period's computers, not a
+// claim that word size changes the screen.
 //
 // An era says what its computer is like; the shared modules read it and do
 // the rest: the screen's rendering (visual/display.ts, visual/terminal.ts),
@@ -9,6 +11,8 @@
 // (data/boot.ts, data/menuFiles.ts) and the sound (audio/). Changing an era,
 // or adding one, happens here.
 
+import type { WordBits } from '../data/economy.ts';
+import { getProgress } from '../save.ts';
 import type { TokenKind } from '../sim/isa.ts';
 import { getSettings } from '../settings.ts';
 import type { ChipStyle } from '../visual/chip3d.ts';
@@ -66,6 +70,8 @@ export type Frame = {
 
 export type Era = {
   readonly name: string;
+  /** The chip whose era this is: buying it moves the computer here. */
+  readonly bits: WordBits;
   readonly kind: EraKind;
 
   // ---- colors ----
@@ -136,7 +142,7 @@ export type Era = {
 
   /** How the shop's spinning chip is drawn: the way 3D looked at the time (visual/chip3d.ts). */
   readonly chip: ChipStyle;
-  /** A dark variant of this era, chosen in the settings. */
+  /** A dark variant of this era, chosen in the settings (the era itself never is). */
   readonly dark?: Era;
 };
 
@@ -145,7 +151,7 @@ const NO_CRT = { scanlines: 0, curve: 0, vignette: 0, flicker: 0, lcd: 0 } as co
 
 /** A mid-90s desktop: a gray window with 3D edges on teal, black text, the 16-color VGA palette. */
 const DESKTOP: Era = {
-  name: '32-BIT', kind: 'desktop',
+  name: '32-BIT', bits: 32, kind: 'desktop',
   fg: 0x000000, dim: 0x808080, bg: CLASSIC.face, accent: 0x000080,
   syntax: { op: 0x000080, reg: 0x008080, num: 0x800000, label: 0x800080, punct: 0x606060 },
   taken: 0x0050c8, notTaken: 0xb85c00,
@@ -163,7 +169,7 @@ const DESKTOP: Era = {
 
 export const ERAS: readonly Era[] = [
   {
-    name: '8-BIT', kind: 'terminal',
+    name: '8-BIT', bits: 8, kind: 'terminal',
     fg: 0x39ff14, dim: 0x0f4a06, bg: 0x030803, accent: 0x39ff14,
     syntax: { op: 0x39ff14, reg: 0x2ccc10, num: 0x1f9a0b, label: 0x1f9a0b, punct: 0x177508 },
     taken: 0x39ff14, notTaken: 0x26b80d,
@@ -177,7 +183,7 @@ export const ERAS: readonly Era[] = [
   },
   {
     // A late-80s DOS app in text mode on a CRT: blue, the 16-color palette, double-line boxes, drop shadows.
-    name: '16-BIT', kind: 'dos',
+    name: '16-BIT', bits: 16, kind: 'dos',
     fg: 0xd0d0d0, dim: 0x3a3ac8, bg: 0x0000aa, accent: 0x55ffff,
     syntax: { op: 0xffffff, reg: 0xffff55, num: 0x55ff55, label: 0xff55ff, punct: 0xaaaaaa },
     taken: 0x55ffff, notTaken: 0xffaa00,
@@ -211,7 +217,7 @@ export const ERAS: readonly Era[] = [
   },
   {
     // A terminal window on a modern LCD: black, with colored accents and syntax.
-    name: '64-BIT', kind: 'modern',
+    name: '64-BIT', bits: 64, kind: 'modern',
     fg: 0xe6e6e6, dim: 0x30343c, bg: 0x000000, accent: 0x4fd6be,
     syntax: { op: 0x7ee787, reg: 0x79c0ff, num: 0xffd479, label: 0xd2a8ff, punct: 0x8b949e },
     taken: 0x56b4e9, notTaken: 0xe69f00,
@@ -228,11 +234,23 @@ export const ERAS: readonly Era[] = [
   },
 ];
 
-/** The era the settings choose: its index, and its dark variant if dark mode is on and it has one. */
+/** An era shown for this session only (?era=N, for previews and testing), in place of the save's. */
+let preview: Era | undefined;
+
+/** Shows ERAS[index] until the page reloads; undefined goes back to the save's era. */
+export function previewEra(index: number | undefined): void {
+  preview = index === undefined ? undefined : ERAS.at(index);
+}
+
+/** The era of the computer you own: the active save's chip (or a preview), before dark mode. */
+export function baseEra(): Era {
+  return preview ?? ERAS.find((era) => era.bits === getProgress().wordBits) ?? ERAS[0];
+}
+
+/** The era on screen: the save's, in its dark variant if dark mode is on and it has one. */
 export function currentEra(): Era {
-  const { eraIndex, dark } = getSettings();
-  const era = ERAS.at(eraIndex) ?? ERAS[0];
-  return dark && era.dark ? era.dark : era;
+  const era = baseEra();
+  return getSettings().dark && era.dark ? era.dark : era;
 }
 
 export function cssColor(color: number): string {

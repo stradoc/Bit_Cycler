@@ -51,7 +51,7 @@ Add these to the URL, e.g. `http://localhost:8000/?scene=play&autoplay`. Any `?s
 | `&autoplay` | Every note played perfectly (demos, checking results) |
 | `?scene=briefing&lesson=tier2` | Open a lesson directly |
 | `?money=5000` | Set the money |
-| `?era=1` … `?era=4` | Start in an era (8/16/32/64-bit look) |
+| `?era=1` … `?era=4` | Show an era (8/16/32/64-bit look) until the page reloads; otherwise the save's CPU chip decides |
 | `?fps` | Frames per second and the canvas size in the corner |
 
 ## Testing cheats
@@ -64,8 +64,9 @@ Or type them in the browser's console (F12, then Console) while the game runs; `
 | --- | --- |
 | `cheat.status()` | What you have now |
 | `cheat.money(5000)` | Set your money |
-| `cheat.tier(4)` | Set your CPU tier (1–6) |
-| `cheat.clock(5)` | Clock upgrade level (0–10; 10 = 4 GHz pipelined) |
+| `cheat.chip(32)` | Your CPU chip (8, 16, 32, 64): sets the era, drops parts it can't run |
+| `cheat.tier(4)` | Set your CPU tier (1–6), on a chip that runs it |
+| `cheat.clock(5)` | Clock upgrade level (0–10; 10 = 4 GHz pipelined), on a chip that runs it |
 | `cheat.cooling(2)` | Cooler: 0 stock, 1 heatsink, 2 fan |
 | `cheat.cache()` / `cheat.cache(false)` | Own / remove the L1 cache |
 | `cheat.overclock()` / `cheat.overclock(false)` | Own / remove the overclocking upgrade |

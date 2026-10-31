@@ -1,11 +1,50 @@
 // Every price and balance number for the contract board and shop, in one place.
-/** CPU parts, bought in this order: each one is the next tier. */
+/**
+ * CPU chips by word size, bought in this order: each is a new generation,
+ * wider and built with smaller transistors, and it sets the era (ui/eras.ts).
+ * The order follows when each feature reached real microprocessors (the
+ * design doc's "Eras and upgrade order"): a chip goes on sale once you own
+ * tier `afterTier`, and the CPU parts that need it say so (CPU_PARTS' `bits`).
+ * `maxClock` is the highest clock step (an index into CLOCK.factors) the chip
+ * runs: about 4 MHz at 8-bit, 16 MHz at 16-bit (with the pipeline's 4x),
+ * 2 GHz at 32-bit, and 4 GHz at 64-bit, where real clocks stopped climbing
+ * (the power wall). Prices are provisional until the balance pass.
+ */
+export const CHIPS = [
+    { bits: 8, name: '8-BIT CPU', price: 0, afterTier: 1, maxClock: 2, about: 'The chip you start with.' },
+    {
+        bits: 16,
+        name: '16-BIT CPU',
+        price: 250,
+        afterTier: 1,
+        maxClock: 2,
+        about: 'The next chip generation, built with smaller transistors. The 5-stage pipeline needs it. Your computer moves on to the 16-bit era.',
+    },
+    {
+        bits: 32,
+        name: '32-BIT CPU',
+        price: 450,
+        afterTier: 2,
+        maxClock: 9,
+        about: 'Smaller transistors again: the clock can climb to 2 GHz. Forwarding and branch prediction need it. Your computer moves on to the 32-bit era.',
+    },
+    {
+        bits: 64,
+        name: '64-BIT CPU',
+        price: 3000,
+        afterTier: 6,
+        maxClock: 10,
+        about: 'The last generation: the clock reaches 4 GHz, and there it stops, as real clocks did (the power wall). Your computer moves on to the 64-bit era.',
+    },
+];
+/** CPU parts, bought in this order: each one is the next tier, and needs a chip at least `bits` wide. */
 export const CPU_PARTS = [
     {
         id: 'pipeline',
         name: '5-STAGE PIPELINE',
         price: 300,
         tier: 2,
+        bits: 16,
         about: 'Splits each instruction into 5 short stages, so 5 run at once. CPI rises a little, but each stage is short, so the clock can run 4x faster.',
     },
     {
@@ -13,6 +52,7 @@ export const CPU_PARTS = [
         name: 'FORWARDING UNIT',
         price: 500,
         tier: 3,
+        bits: 32,
         about: 'Hands a result straight from EXECUTE or MEMORY to the next instruction, so most stalls disappear.',
     },
     {
@@ -20,6 +60,7 @@ export const CPU_PARTS = [
         name: 'BRANCH GUESSING',
         price: 700,
         tier: 4,
+        bits: 32,
         about: 'Lets fetch follow a guess about each branch, so a right guess loses no cycle. You make the guesses.',
     },
     {
@@ -27,6 +68,7 @@ export const CPU_PARTS = [
         name: '1-BIT PREDICTOR',
         price: 900,
         tier: 5,
+        bits: 32,
         about: 'Hardware that guesses each branch from what it did last time. You can follow it or override it.',
     },
     {
@@ -34,6 +76,7 @@ export const CPU_PARTS = [
         name: '2-BIT PREDICTOR',
         price: 1200,
         tier: 6,
+        bits: 32,
         about: 'A counter per branch: one surprise only weakens it, so loops are guessed better.',
     },
 ];
@@ -42,7 +85,7 @@ export const BASE_MHZ = { singleCycle: 1, pipelined: 4 };
 /**
  * Clock upgrades: each level multiplies the rated clock (a smaller, faster
  * process). A fully upgraded pipeline runs at 4 GHz, like a modern desktop.
- * prices[i] buys level i + 1.
+ * prices[i] buys level i + 1. Each chip stops at its own level (CHIPS' `maxClock`).
  */
 export const CLOCK = {
     factors: [1, 2, 4, 8, 16, 32, 64, 125, 250, 500, 1000],

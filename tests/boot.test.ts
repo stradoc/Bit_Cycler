@@ -21,7 +21,7 @@ const maxed = fillBoard(withEverything(NEW_GAME), () => 0.5);
 test('the boot reports the save: CPU, clock, the trip to RAM in cycles, cache, cooler', () => {
   for (const era of ERAS) {
     const text = screen(bootScript(forwarding, SLOT, era)).join('\n');
-    assert.match(text, /8-BIT, TIER 3 FORWARDING/, `era ${era.name}`);
+    assert.match(text, /32-BIT, TIER 3 FORWARDING/, `era ${era.name}`); // forwarding runs on the 32-bit chip
     assert.match(text, /64 MHz, A CYCLE EVERY 16 ns/, `era ${era.name}`);
     assert.match(text, /A TRIP TAKES 60 ns = 4 CYCLES/, `era ${era.name}`); // 60 ns at 64 MHz: 3.84, so 4
     assert.match(text, /NONE/, `era ${era.name}`); // no cache yet
@@ -32,7 +32,7 @@ test('the boot reports the save: CPU, clock, the trip to RAM in cycles, cache, c
 test('upgrades change the boot', () => {
   for (const era of ERAS) {
     const text = screen(bootScript(maxed, SLOT, era)).join('\n');
-    assert.match(text, /TIER 6 2-BIT PREDICTOR/, `era ${era.name}`);
+    assert.match(text, /64-BIT, TIER 6 2-BIT PREDICTOR/, `era ${era.name}`);
     assert.match(text, /4 GHz, A CYCLE EVERY 0.25 ns/, `era ${era.name}`);
     assert.match(text, /61 ns = 244 CYCLES/, `era ${era.name}`); // checking L1 on the way: 61 ns
     assert.match(text, /16 BYTES, DIRECT-MAPPED/, `era ${era.name}`);

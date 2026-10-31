@@ -1,9 +1,9 @@
 import { SECTIONS } from '../data/economy.js';
 import { programByName } from '../data/programs.js';
 import { playContract } from '../flow.js';
-import { formatCount, formatDuration, formatMhz, formatMoney } from '../format.js';
+import { formatCount, formatDuration, formatMoney } from '../format.js';
 import { getProgress } from '../save.js';
-import { contractSeconds, isLocked, isTight, jobItems, ratedMhz, tierOf } from '../sim/progress.js';
+import { contractSeconds, cpuLine, isLocked, isTight, jobItems } from '../sim/progress.js';
 import { THERMAL } from '../sim/thermal.js';
 import { cssColor } from '../ui/eras.js';
 import { Screen } from '../ui/screen.js';
@@ -40,9 +40,8 @@ export class BoardScene extends Screen {
         this.setUp();
         const progress = getProgress();
         const { era } = this;
-        const tier = tierOf(progress);
         const worn = progress.chipMaxDial < THERMAL.maxDial ? `   CHIP WORN: MAX ${Math.round(progress.chipMaxDial * 100)}%` : '';
-        this.header('CONTRACT BOARD', `YOUR CPU: TIER ${tier.number} ${tier.name} AT ${formatMhz(ratedMhz(progress))}${worn}`);
+        this.header('CONTRACT BOARD', `YOUR CPU: ${cpuLine(progress)}${worn}`);
         this.corner(formatMoney(progress.money));
         SECTIONS.forEach((section, column) => {
             this.text(COLUMN_X[column], 104, section.name, 18).setFontStyle('bold').setColor(cssColor(era.accent));

@@ -1,15 +1,15 @@
 import { cheatFlags } from '../cheatFlags.js';
-import { CLOCK, COOLING } from '../data/economy.js';
+import { CHIPS, CLOCK, COOLING } from '../data/economy.js';
 import { LESSONS } from '../data/lessons.js';
 import { folderPath } from '../data/menuFiles.js';
 import { formatMhz, formatMoney } from '../format.js';
 import { activeSlot, getProgress, newGame, slotName, switchSlot, updateProgress } from '../save.js';
-import { fillBoard, ratedMhz, tierOf, withEverything, withTier } from '../sim/progress.js';
+import { bitsName, chipOf, fillBoard, fitChip, ratedMhz, tierOf, withEverything, withTier, withWordBits } from '../sim/progress.js';
 import { THERMAL } from '../sim/thermal.js';
 import { ListMenu } from '../ui/list.js';
 import { Screen } from '../ui/screen.js';
 const ROWS = [
-    'tier', 'clock', 'money', 'cooling', 'cache', 'overclock', 'wear', 'everything', 'board', 'lessons', 'autoplay', 'briefing', 'practice', 'play', 'reset', 'back',
+    'chip', 'tier', 'clock', 'money', 'cooling', 'cache', 'overclock', 'wear', 'everything', 'board', 'lessons', 'autoplay', 'briefing', 'practice', 'play', 'reset', 'back',
 ];
 const MONEY_STEPS = [0, 100, 500, 1_000, 5_000, 10_000, 100_000];
 const LESSON_IDS = Object.keys(LESSONS);
@@ -39,7 +39,7 @@ export class DevScene extends Screen {
         }
         this.setUp();
         this.header(`DEVELOPER MODE: ${folderPath(this.era, ['DEV'])}`, 'A SEPARATE SAVE FOR TESTING: NOTHING HERE TOUCHES YOUR CAMPAIGN SLOTS.');
-        this.menu = new ListMenu(this, this.era, { x: 190, top: 94, width: 580, rowHeight: 23, size: 15 });
+        this.menu = new ListMenu(this, this.era, { x: 190, top: 94, width: 580, rowHeight: 21, size: 15 });
         this.menu.setRows(this.rows(), data?.selected ?? 0);
         this.about = this.aboutLine();
         this.hints('[UP/DOWN] CHOOSE', '[LEFT/RIGHT] CHANGE', '[ENTER] DO IT', '[Q] BACK');
@@ -50,6 +50,7 @@ export class DevScene extends Screen {
         const tier = tierOf(p);
         const onOff = (on) => (on ? 'ON' : 'OFF');
         const values = {
+            chip: ['CPU CHIP (ERA)', bitsName(p.wordBits)],
             tier: ['CPU TIER', `${tier.number}: ${tier.name}`],
             clock: ['CLOCK UPGRADES', `LEVEL ${p.clockLevel}: ${formatMhz(ratedMhz(p))}`],
             money: ['MONEY', formatMoney(p.money)],
@@ -71,7 +72,7 @@ export class DevScene extends Screen {
     }
     showAbout() {
         const row = ROWS[this.menu.selected];
-        const steps = ['tier', 'clock', 'money', 'cooling', 'wear', 'briefing'].includes(row);
+        const steps = ['chip', 'tier', 'clock', 'money', 'cooling', 'wear', 'briefing'].includes(row);
         this.about.setText(steps ? '[LEFT/RIGHT] TO CHANGE' : row === 'back' ? `BACK TO THE MAIN MENU, PLAYING ${slotName(returnSlot ?? '1')} AGAIN.` : '');
     }
     refresh() {
@@ -103,16 +104,27 @@ export class DevScene extends Screen {
     edit(change) {
         updateProgress(change);
         this.cue('move');
-        this.refresh();
+        // A different chip is a different era: the screen is rebuilt in its look.
+        if (this.eraChanged())
+            this.scene.restart({ selected: this.menu.selected });
+        else
+            this.refresh();
     }
     /** Left / right: a setting one step down or up. */
     step(row, delta) {
         const clampInt = (n, max) => Math.max(0, Math.min(max, n));
         switch (row) {
+            case 'chip':
+                // A narrower chip takes off the parts it can't run and lowers the clock to its top step.
+                return this.edit((p) => {
+                    const at = CHIPS.indexOf(chipOf(p));
+                    return withWordBits(p, CHIPS[clampInt(at + delta, CHIPS.length - 1)].bits);
+                });
             case 'tier':
+                // A tier or clock the chip can't run fits the chip that can.
                 return this.edit((p) => withTier(p, Phaser.Math.Clamp(tierOf(p).number + delta, 1, 6)));
             case 'clock':
-                return this.edit((p) => ({ ...p, clockLevel: clampInt(p.clockLevel + delta, CLOCK.factors.length - 1) }));
+                return this.edit((p) => fitChip({ ...p, clockLevel: clampInt(p.clockLevel + delta, CLOCK.factors.length - 1) }));
             case 'money':
                 return this.edit((p) => {
                     const next = delta > 0 ? MONEY_STEPS.find((m) => m > p.money) : [...MONEY_STEPS].reverse().find((m) => m < p.money);

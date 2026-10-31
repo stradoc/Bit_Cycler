@@ -9,10 +9,8 @@ import { COOLING } from './economy.js';
 import { programByName } from './programs.js';
 import { formatDuration, formatMhz, formatMoney } from '../format.js';
 import { MEMORY_TIMING, ramCycles, SHOWN_BYTES } from '../sim/memory.js';
-import { ratedMhz, tierOf } from '../sim/progress.js';
+import { cpuName, ratedMhz } from '../sim/progress.js';
 import { THERMAL } from '../sim/thermal.js';
-/** The CPU's word size: always 8-bit until the word size upgrade exists. */
-const WORD_BITS = 8;
 /**
  * The boot on the era's computer, reporting `progress` (null: no save yet)
  * from the save slot `slot`.
@@ -108,13 +106,12 @@ export function programListing(progress) {
 }
 /** What the boot reports about the player's computer. */
 function hardware(progress) {
-    const tier = tierOf(progress);
     const mhz = ratedMhz(progress);
     const cache = progress.cacheLevels > 0;
     const cycles = ramCycles(mhz, cache);
     const ramNs = MEMORY_TIMING.ramNs + (cache ? MEMORY_TIMING.l1Ns : 0);
     return {
-        cpu: `${WORD_BITS}-BIT, TIER ${tier.number} ${tier.name}`,
+        cpu: cpuName(progress),
         clock: `${formatMhz(mhz)}, A CYCLE EVERY ${formatDuration(1 / (mhz * 1e6))}`,
         ram: `A TRIP TAKES ${ramNs} ns = ${cycles} CYCLE${cycles === 1 ? '' : 'S'}`,
         cache: cache ? '16 BYTES, DIRECT-MAPPED' : 'NONE',

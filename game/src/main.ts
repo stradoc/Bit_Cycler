@@ -9,16 +9,15 @@ import { SavesScene } from './scenes/SavesScene.ts';
 import { SettingsScene } from './scenes/SettingsScene.ts';
 import { ShopScene } from './scenes/ShopScene.ts';
 import { TitleScene } from './scenes/TitleScene.ts';
-import { updateSettings } from './settings.ts';
 import { applyEra, fitCamera, HEIGHT, isHires, loadFonts, showFps, WIDTH } from './visual/display.ts';
-import { currentEra, ERAS } from './ui/eras.ts';
+import { currentEra, ERAS, previewEra } from './ui/eras.ts';
 
 keepKeyboardFocus();
 await loadFonts();
 
-// ?era=1..4 in the URL overrides the saved era (handy for previews).
+// ?era=1..4 in the URL shows that era instead of the save's, until the page reloads (previews and testing).
 const eraParam = Number(new URLSearchParams(location.search).get('era'));
-if (eraParam >= 1 && eraParam <= ERAS.length) updateSettings({ eraIndex: eraParam - 1 });
+if (eraParam >= 1 && eraParam <= ERAS.length) previewEra(eraParam - 1);
 
 const game = new Phaser.Game({
   type: Phaser.AUTO,

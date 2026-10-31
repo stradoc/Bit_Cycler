@@ -1,9 +1,10 @@
-// The player's progress: money, CPU parts, clock, memory and cooling
-// upgrades, chip wear, and the contract board. Pure functions over a plain object, so the
+// The player's progress: money, the CPU chip (its word size) and parts, clock,
+// memory and cooling upgrades, chip wear, and the contract board. Pure functions over a plain object, so the
 // rules are testable; game/src/save.ts stores it.
 
 import {
   BASE_MHZ,
+  CHIPS,
   CLOCK,
   CONTRACTS_PER_SECTION,
   COOLING,
@@ -16,6 +17,7 @@ import {
   TIGHT_SHARE,
   type PartId,
   type SectionId,
+  type WordBits,
 } from '../data/economy.ts';
 import { programByName } from '../data/programs.ts';
 import { generateProgram } from './generator.ts';
@@ -42,6 +44,8 @@ export type Contract = {
 
 export type Progress = {
   readonly money: number;
+  /** The CPU chip's word size (CHIPS): it sets the era and the highest clock step. */
+  readonly wordBits: WordBits;
   /** CPU parts owned, in the order bought (each is the next tier). */
   readonly parts: readonly PartId[];
   /** Index into CLOCK.factors. */
@@ -62,6 +66,7 @@ export type Progress = {
 
 export const NEW_GAME: Progress = {
   money: 0,
+  wordBits: 8,
   parts: [],
   clockLevel: 0,
   cacheLevels: 0,
@@ -80,6 +85,59 @@ export type Random = () => number;
 
 export function tierOf(progress: Progress): Tier {
   return tierByNumber(1 + progress.parts.length);
+}
+
+/** A CPU chip: a word size, the tier it follows and its top clock step. */
+export type CpuChip = (typeof CHIPS)[number];
+
+/** The chip `bits` wide, if there is one (a cheat, an edited save). */
+export function chipByBits(bits: number): CpuChip | undefined {
+  return CHIPS.find((chip) => chip.bits === bits);
+}
+
+/** The chip you own. */
+export function chipOf(progress: Progress): CpuChip {
+  return chipByBits(progress.wordBits) ?? CHIPS[0];
+}
+
+/** A word size the way every screen writes it: "16-BIT". */
+export function bitsName(bits: number): string {
+  return `${bits}-BIT`;
+}
+
+/** Your CPU in words, as the screens and the boot show it: "16-BIT, TIER 2 PIPELINE". */
+export function cpuName(progress: Progress): string {
+  const tier = tierOf(progress);
+  return `${bitsName(progress.wordBits)}, TIER ${tier.number} ${tier.name}`;
+}
+
+/** Your CPU and its rated clock: "16-BIT, TIER 2 PIPELINE AT 16 MHz". */
+export function cpuLine(progress: Progress): string {
+  return `${cpuName(progress)} AT ${formatMhz(ratedMhz(progress))}`;
+}
+
+/** The narrowest chip that runs these CPU parts and this clock step. */
+export function chipNeeded(progress: Progress): WordBits {
+  const parts = CPU_PARTS.filter((part) => progress.parts.includes(part.id));
+  const bits = Math.max(8, ...parts.map((part) => part.bits));
+  return (CHIPS.find((chip) => chip.bits >= bits && chip.maxClock >= progress.clockLevel) ?? CHIPS[CHIPS.length - 1]).bits;
+}
+
+/** `progress` on a chip wide enough for its parts and clock (an old save, a cheat). */
+export function fitChip(progress: Progress): Progress {
+  const bits = chipNeeded(progress);
+  return bits > progress.wordBits ? { ...progress, wordBits: bits } : progress;
+}
+
+/**
+ * A copy of `progress` on the `bits` chip, for testing: the CPU parts it
+ * can't run are taken off (from the last bought), and the clock comes down to its top step.
+ */
+export function withWordBits(progress: Progress, bits: WordBits): Progress {
+  const chip = chipByBits(bits) ?? CHIPS[0];
+  // Parts are bought in order and each needs a chip at least as wide as the last one's, so this keeps the first few.
+  const parts = progress.parts.filter((id) => (CPU_PARTS.find((part) => part.id === id)?.bits ?? 8) <= chip.bits);
+  return { ...progress, wordBits: chip.bits, parts, clockLevel: Math.min(progress.clockLevel, chip.maxClock) };
 }
 
 export function isPipelined(progress: Progress): boolean {
@@ -174,16 +232,17 @@ export function jobItems(contract: Contract): number {
   return contract.instructions / (executed / spec.elements);
 }
 
-/** A copy of `progress` with exactly the CPU parts for `tier` (1-6), for testing (cheat.tier). */
+/** A copy of `progress` with exactly the CPU parts for `tier` (1-6), on a chip that runs them, for testing (cheat.tier). */
 export function withTier(progress: Progress, tier: number): Progress {
   const count = Math.max(0, Math.min(CPU_PARTS.length, Math.round(tier) - 1));
-  return { ...progress, parts: CPU_PARTS.slice(0, count).map((part) => part.id) };
+  return fitChip({ ...progress, parts: CPU_PARTS.slice(0, count).map((part) => part.id) });
 }
 
 /** A copy of `progress` with every part, the top clock, the best cooler, a new chip and $100,000, for testing. */
 export function withEverything(progress: Progress): Progress {
   return {
     ...withTier(progress, CPU_PARTS.length + 1),
+    wordBits: CHIPS[CHIPS.length - 1].bits,
     money: 100_000,
     clockLevel: CLOCK.factors.length - 1,
     cooling: COOLING.length - 1,
@@ -244,7 +303,7 @@ export function completeContract(progress: Progress, id: number, random: Random,
 
 export type ShopItem = {
   readonly key: string;
-  readonly group: 'CPU' | 'CLOCK' | 'MEMORY' | 'COOLING' | 'REPAIR';
+  readonly group: 'CPU' | 'CLOCK' | 'MEMORY' | 'COOLING';
   /** The briefing that plays (and must be read) right after buying it. */
   readonly lessonId?: string;
   readonly name: string;
@@ -261,30 +320,36 @@ function repairSteps(progress: Progress): number {
 
 /** Everything in the shop, with what buying it does. */
 export function shopItems(progress: Progress): ShopItem[] {
-  const items: ShopItem[] = CPU_PARTS.map((part, i) => ({
-    key: part.id,
-    group: 'CPU',
-    name: part.name,
-    price: part.price,
-    state: progress.parts.includes(part.id) ? 'owned' : i === progress.parts.length ? 'buy' : 'later',
-    lessonId: tierByNumber(part.tier).lessonId,
-    about: part.about,
-    apply: (p) => ({ ...p, parts: [...p.parts, part.id] }),
+  // The CPU group in the order history went: each chip comes after the tier it follows, so a
+  // part that needs a wider chip is listed below it. A part waits for the one before it and for its chip.
+  const parts = CPU_PARTS.map((part, i) => ({
+    order: part.tier,
+    item: {
+      key: part.id,
+      group: 'CPU',
+      name: part.name,
+      price: part.price,
+      state: progress.parts.includes(part.id) ? 'owned' : i === progress.parts.length && progress.wordBits >= part.bits ? 'buy' : 'later',
+      lessonId: tierByNumber(part.tier).lessonId,
+      about: part.about,
+      apply: (p: Progress) => ({ ...p, parts: [...p.parts, part.id] }),
+    } satisfies ShopItem,
   }));
-  const level = progress.clockLevel;
-  const next = level + 1 < CLOCK.factors.length ? level + 1 : undefined;
-  const mhzAt = (l: number) => (isPipelined(progress) ? BASE_MHZ.pipelined : BASE_MHZ.singleCycle) * CLOCK.factors[l];
-  items.push({
-    key: 'clock',
-    group: 'CLOCK',
-    name: next === undefined ? 'CLOCK: FASTEST THERE IS' : `FASTER CLOCK: ${formatMhz(mhzAt(next))}`,
-    price: next === undefined ? 0 : CLOCK.prices[level],
-    state: next === undefined ? 'max' : 'buy',
-    // The first clock that outruns RAM comes with the memory wall's briefing.
-    lessonId: next !== undefined && !pastMemoryWall(progress) && pastMemoryWall({ ...progress, clockLevel: next }) ? 'memwall' : undefined,
-    about: next === undefined ? 'Your clock is fully upgraded.' : clockAbout(progress, mhzAt(level), mhzAt(next)),
-    apply: (p) => ({ ...p, clockLevel: Math.min(CLOCK.factors.length - 1, p.clockLevel + 1) }),
-  });
+  const nextChip = CHIPS.find((chip) => chip.bits > progress.wordBits);
+  const chips = CHIPS.slice(1).map((chip) => ({
+    order: chip.afterTier + 0.5,
+    item: {
+      key: `chip${chip.bits}`,
+      group: 'CPU',
+      name: chip.name,
+      price: chip.price,
+      state: progress.wordBits >= chip.bits ? 'owned' : chip === nextChip && tierOf(progress).number >= chip.afterTier ? 'buy' : 'later',
+      about: chip.about,
+      apply: (p: Progress) => ({ ...p, wordBits: chip.bits }),
+    } satisfies ShopItem,
+  }));
+  const items: ShopItem[] = [...parts, ...chips].sort((a, b) => a.order - b.order).map(({ item }) => item);
+  items.push(clockItem(progress));
   items.push({
     key: 'overclock',
     group: 'CLOCK',
@@ -324,7 +389,8 @@ export function shopItems(progress: Progress): ShopItem[] {
   const steps = repairSteps(progress);
   items.push({
     key: 'repair',
-    group: 'REPAIR',
+    // Repairs undo heat damage, so they sit with the coolers (and the list fits above the about line).
+    group: 'COOLING',
     name: steps > 0 ? `REPAIR CHIP: MAX ${Math.round(progress.chipMaxDial * 100)}% -> ${Math.round(THERMAL.maxDial * 100)}%` : 'REPAIR CHIP',
     price: steps * REPAIR_PRICE_PER_STEP,
     state: steps > 0 ? 'buy' : 'max',
@@ -332,6 +398,36 @@ export function shopItems(progress: Progress): ShopItem[] {
     apply: (p) => ({ ...p, chipMaxDial: THERMAL.maxDial }),
   });
   return items;
+}
+
+/** The next clock step, up to the chip's top step. */
+function clockItem(progress: Progress): ShopItem {
+  const level = progress.clockLevel;
+  const top = chipOf(progress).maxClock;
+  const next = level < top ? level + 1 : undefined;
+  const mhzAt = (l: number) => (isPipelined(progress) ? BASE_MHZ.pipelined : BASE_MHZ.singleCycle) * CLOCK.factors[l];
+  const base = { key: 'clock', group: 'CLOCK', apply: (p: Progress) => ({ ...p, clockLevel: Math.min(top, p.clockLevel + 1) }) } as const;
+  if (next !== undefined) {
+    return {
+      ...base,
+      name: `FASTER CLOCK: ${formatMhz(mhzAt(next))}`,
+      price: CLOCK.prices[level],
+      state: 'buy',
+      // The first clock that outruns RAM comes with the memory wall's briefing.
+      lessonId: !pastMemoryWall(progress) && pastMemoryWall({ ...progress, clockLevel: next }) ? 'memwall' : undefined,
+      about: clockAbout(progress, mhzAt(level), mhzAt(next)),
+    };
+  }
+  const last = level >= CLOCK.factors.length - 1;
+  return {
+    ...base,
+    name: last ? 'CLOCK: FASTEST THERE IS' : 'CLOCK: TOP SPEED FOR THIS CHIP',
+    price: 0,
+    state: 'max',
+    about: last
+      ? 'Clocks stopped climbing about here: going faster takes more power than a chip can get rid of as heat (the power wall). More speed has to come from doing more each cycle.'
+      : "This chip's transistors can't switch any faster. The next chip, with smaller transistors, goes higher.",
+  };
 }
 
 /**

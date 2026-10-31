@@ -1,7 +1,7 @@
 import { briefAfterPurchase } from '../flow.ts';
 import { formatMhz, formatMoney } from '../format.ts';
 import { getProgress, setProgress } from '../save.ts';
-import { buy, ratedMhz, shopItems, tierOf, type ShopItem } from '../sim/progress.ts';
+import { bitsName, buy, cpuLine, ratedMhz, shopItems, type ShopItem } from '../sim/progress.ts';
 import { ListMenu, type MenuRow } from '../ui/list.ts';
 import { Screen } from '../ui/screen.ts';
 import { chipInfo, ChipView } from '../visual/chip3d.ts';
@@ -9,7 +9,7 @@ import { chipInfo, ChipView } from '../visual/chip3d.ts';
 const LIST_X = 56;
 const LIST_RIGHT = 590;
 const LIST_TOP = 100;
-const ROW_H = 21;
+const ROW_H = 19;
 /** The spinning chip's center, and its info lines under it. */
 const CHIP_X = 770;
 const CHIP_Y = 210;
@@ -43,7 +43,8 @@ export class ShopScene extends Screen {
     this.busy = false;
   }
 
-  create(): void {
+  /** `selected` and `message`: where a restart for a new era (after buying a chip) leaves off. */
+  create(data?: { selected?: number; message?: string }): void {
     this.setUp();
     this.chip = new ChipView(this, this.era, CHIP_X, CHIP_Y);
     this.chipInfo = this.text(CHIP_X, INFO_Y, '', 14).setOrigin(0.5, 0).setAlign('center').setLineSpacing(4);
@@ -54,7 +55,8 @@ export class ShopScene extends Screen {
     this.about = this.aboutLine();
     this.message = this.messageLine();
     this.hints('[UP/DOWN] CHOOSE', '[ENTER] BUY', '[B] CONTRACT BOARD', '[M] HUM', '[Q] MAIN MENU');
-    this.refresh(Math.max(0, shopItems(getProgress()).findIndex((item) => item.state === 'buy')));
+    this.refresh(data?.selected ?? Math.max(0, shopItems(getProgress()).findIndex((item) => item.state === 'buy')));
+    if (data?.message) this.message.setText(data.message);
   }
 
   protected onKey(key: string): boolean | void {
@@ -109,15 +111,20 @@ export class ShopScene extends Screen {
     if (lessonId !== undefined) {
       this.busy = true;
       this.time.delayedCall(SHAKE_MS + 300, () => briefAfterPurchase(this, lessonId));
+    } else if (this.eraChanged()) {
+      // A new chip moves the computer into its era: the shop comes back in the new look.
+      this.busy = true;
+      const selected = this.menu.selected;
+      const message = `YOUR COMPUTER IS NOW ${bitsName(bought.wordBits)}.`;
+      this.time.delayedCall(SHAKE_MS + 300, () => this.scene.restart({ selected, message }));
     }
   }
 
   /** Everything that changes with a purchase: the list, the money, the CPU line and the chip. */
   private refresh(selected = this.menu.selected): void {
     const progress = getProgress();
-    const tier = tierOf(progress);
     this.money.setText(formatMoney(progress.money));
-    this.cpu.setText(`YOUR CPU: TIER ${tier.number} ${tier.name} AT ${formatMhz(ratedMhz(progress))}`);
+    this.cpu.setText(`YOUR CPU: ${cpuLine(progress)}`);
     let group = '';
     const rows = shopItems(progress).map((item): MenuRow => {
       const heading = item.group !== group ? item.group : undefined;

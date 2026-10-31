@@ -1,9 +1,9 @@
 import { SECTIONS } from '../data/economy.ts';
 import { programByName } from '../data/programs.ts';
 import { playContract } from '../flow.ts';
-import { formatCount, formatDuration, formatMhz, formatMoney } from '../format.ts';
+import { formatCount, formatDuration, formatMoney } from '../format.ts';
 import { getProgress } from '../save.ts';
-import { contractSeconds, isLocked, isTight, jobItems, ratedMhz, tierOf, type Contract } from '../sim/progress.ts';
+import { contractSeconds, cpuLine, isLocked, isTight, jobItems, type Contract } from '../sim/progress.ts';
 import { THERMAL } from '../sim/thermal.ts';
 import { cssColor } from '../ui/eras.ts';
 import { Screen } from '../ui/screen.ts';
@@ -56,9 +56,8 @@ export class BoardScene extends Screen {
     const progress = getProgress();
     const { era } = this;
 
-    const tier = tierOf(progress);
     const worn = progress.chipMaxDial < THERMAL.maxDial ? `   CHIP WORN: MAX ${Math.round(progress.chipMaxDial * 100)}%` : '';
-    this.header('CONTRACT BOARD', `YOUR CPU: TIER ${tier.number} ${tier.name} AT ${formatMhz(ratedMhz(progress))}${worn}`);
+    this.header('CONTRACT BOARD', `YOUR CPU: ${cpuLine(progress)}${worn}`);
     this.corner(formatMoney(progress.money));
 
     SECTIONS.forEach((section, column) => {

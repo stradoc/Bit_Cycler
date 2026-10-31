@@ -1,14 +1,14 @@
 import { briefAfterPurchase } from '../flow.js';
 import { formatMhz, formatMoney } from '../format.js';
 import { getProgress, setProgress } from '../save.js';
-import { buy, ratedMhz, shopItems, tierOf } from '../sim/progress.js';
+import { bitsName, buy, cpuLine, ratedMhz, shopItems } from '../sim/progress.js';
 import { ListMenu } from '../ui/list.js';
 import { Screen } from '../ui/screen.js';
 import { chipInfo, ChipView } from '../visual/chip3d.js';
 const LIST_X = 56;
 const LIST_RIGHT = 590;
 const LIST_TOP = 100;
-const ROW_H = 21;
+const ROW_H = 19;
 /** The spinning chip's center, and its info lines under it. */
 const CHIP_X = 770;
 const CHIP_Y = 210;
@@ -38,7 +38,8 @@ export class ShopScene extends Screen {
         this.shakeUntil = 0;
         this.busy = false;
     }
-    create() {
+    /** `selected` and `message`: where a restart for a new era (after buying a chip) leaves off. */
+    create(data) {
         this.setUp();
         this.chip = new ChipView(this, this.era, CHIP_X, CHIP_Y);
         this.chipInfo = this.text(CHIP_X, INFO_Y, '', 14).setOrigin(0.5, 0).setAlign('center').setLineSpacing(4);
@@ -49,7 +50,9 @@ export class ShopScene extends Screen {
         this.about = this.aboutLine();
         this.message = this.messageLine();
         this.hints('[UP/DOWN] CHOOSE', '[ENTER] BUY', '[B] CONTRACT BOARD', '[M] HUM', '[Q] MAIN MENU');
-        this.refresh(Math.max(0, shopItems(getProgress()).findIndex((item) => item.state === 'buy')));
+        this.refresh(data?.selected ?? Math.max(0, shopItems(getProgress()).findIndex((item) => item.state === 'buy')));
+        if (data?.message)
+            this.message.setText(data.message);
     }
     onKey(key) {
         if (this.busy || this.menu.busy)
@@ -105,13 +108,19 @@ export class ShopScene extends Screen {
             this.busy = true;
             this.time.delayedCall(SHAKE_MS + 300, () => briefAfterPurchase(this, lessonId));
         }
+        else if (this.eraChanged()) {
+            // A new chip moves the computer into its era: the shop comes back in the new look.
+            this.busy = true;
+            const selected = this.menu.selected;
+            const message = `YOUR COMPUTER IS NOW ${bitsName(bought.wordBits)}.`;
+            this.time.delayedCall(SHAKE_MS + 300, () => this.scene.restart({ selected, message }));
+        }
     }
     /** Everything that changes with a purchase: the list, the money, the CPU line and the chip. */
     refresh(selected = this.menu.selected) {
         const progress = getProgress();
-        const tier = tierOf(progress);
         this.money.setText(formatMoney(progress.money));
-        this.cpu.setText(`YOUR CPU: TIER ${tier.number} ${tier.name} AT ${formatMhz(ratedMhz(progress))}`);
+        this.cpu.setText(`YOUR CPU: ${cpuLine(progress)}`);
         let group = '';
         const rows = shopItems(progress).map((item) => {
             const heading = item.group !== group ? item.group : undefined;

@@ -2,27 +2,26 @@ import { Conductor } from '../audio/conductor.js';
 import { audioOf, setVolume, startHum, stopHum, toggleHum } from '../audio/sound.js';
 import { filePath } from '../data/menuFiles.js';
 import { getSettings, updateSettings } from '../settings.js';
-import { ERAS } from '../ui/eras.js';
+import { baseEra } from '../ui/eras.js';
 import { ListMenu } from '../ui/list.js';
 import { Screen } from '../ui/screen.js';
 import { ALPHA, LAYOUT, TEXT } from '../ui/theme.js';
 import { WIDTH } from '../visual/display.js';
 const CALIBRATION_BPM = 120;
 const OFFSET_STEP_MS = 5;
-const ROWS = ['relaxed', 'calibrate', 'volume', 'hum', 'crt', 'era', 'dark', 'back'];
+const ROWS = ['relaxed', 'calibrate', 'volume', 'hum', 'crt', 'dark', 'back'];
 const ABOUT = {
     relaxed: 'WIDER TIMING WINDOWS AND THE BEAT AT 80%: FOR LEARNING, OR WHEN THE BEAT IS TOO FAST.',
     calibrate: 'LINE THE LIGHT UP WITH THE CLICK, SO NOTES ARE JUDGED BY WHAT YOU HEAR.',
     volume: 'EVERY SOUND IN THE GAME.',
     hum: "THE OLD COMPUTER'S HUM IN THE MENUS: FAN, MAINS HUM, HARD DRIVE.",
     crt: 'SCANLINES, GLOW, CURVE AND FLICKER ON THE CRT SCREENS. TURN THEM DOWN IF THEY TIRE YOUR EYES.',
-    era: "THE SCREEN'S LOOK: GREEN CRT, DOS, 90s DESKTOP, MODERN TERMINAL. A PREVIEW FOR NOW.",
     dark: 'DARK WINDOWS FOR THE 90s DESKTOP.',
     back: 'BACK TO THE MAIN MENU.',
 };
 const onOff = (on) => (on ? 'ON' : 'OFF');
 const percent = (value) => `${Math.round(value * 100)}%`;
-/** Settings: relaxed mode, audio calibration, volume, the menu hum, CRT effects, the era and dark mode. */
+/** Settings: relaxed mode, audio calibration, volume, the menu hum, CRT effects and dark mode. The era follows your CPU chip. */
 export class SettingsScene extends Screen {
     menu;
     about;
@@ -70,14 +69,13 @@ export class SettingsScene extends Screen {
     rows() {
         const s = getSettings();
         const offsetMs = Math.round(s.offset * 1000);
-        const hasDark = Boolean(ERAS.at(s.eraIndex)?.dark);
+        const hasDark = Boolean(baseEra().dark);
         const values = {
             relaxed: ['RELAXED MODE', onOff(s.relaxed)],
             calibrate: ['CALIBRATE AUDIO', `${offsetMs > 0 ? '+' : ''}${offsetMs} MS`],
             volume: ['VOLUME', percent(s.volume)],
             hum: ['COMPUTER HUM', onOff(s.music)],
             crt: ['CRT EFFECTS', percent(s.crt)],
-            era: ['ERA', ERAS.at(s.eraIndex)?.name ?? ''],
             dark: ['DARK MODE', hasDark ? onOff(s.dark) : '32-BIT ONLY'],
             back: ['BACK', undefined],
         };
@@ -139,11 +137,8 @@ export class SettingsScene extends Screen {
             case 'crt':
                 updateSettings({ crt: Phaser.Math.Clamp(Math.round(s.crt * 4 + step) / 4, 0, 1) });
                 return this.rebuild();
-            case 'era':
-                updateSettings({ eraIndex: Phaser.Math.Wrap(s.eraIndex + step, 0, ERAS.length) });
-                return this.rebuild();
             case 'dark':
-                if (!ERAS.at(s.eraIndex)?.dark)
+                if (!baseEra().dark)
                     return this.cue('error');
                 updateSettings({ dark: !s.dark });
                 return this.rebuild();

@@ -1,8 +1,8 @@
 import { folderPath } from '../data/menuFiles.js';
 import { downloadText, pickTextFile } from '../files.js';
-import { formatMhz, formatMoney, formatSavedAt } from '../format.js';
+import { formatMoney, formatSavedAt } from '../format.js';
 import { activeSlot, CAMPAIGN_SLOTS, deleteSlot, exportSlot, importSlot, loadSlot, newGame, slotName, switchSlot } from '../save.js';
-import { ratedMhz, tierOf } from '../sim/progress.js';
+import { cpuLine } from '../sim/progress.js';
 import { ListMenu } from '../ui/list.js';
 import { Screen } from '../ui/screen.js';
 /**
@@ -45,9 +45,8 @@ export class SavesScene extends Screen {
             const name = `${slotName(slot)}${slot === activeSlot() ? ' (CURRENT)' : ''}`;
             if (!saved)
                 return { label: `${name}: EMPTY`, dim: true };
-            const tier = tierOf(saved.progress);
             return {
-                label: `${name}: TIER ${tier.number} ${tier.name}, ${formatMhz(ratedMhz(saved.progress))}, ${formatMoney(saved.progress.money)}`,
+                label: `${name}: ${cpuLine(saved.progress)}, ${formatMoney(saved.progress.money)}`,
                 value: saved.savedAt > 0 ? formatSavedAt(saved.savedAt) : '',
             };
         });

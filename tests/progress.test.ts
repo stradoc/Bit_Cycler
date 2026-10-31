@@ -1,13 +1,18 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CLOCK, SECTIONS } from '../game/src/data/economy.ts';
+import { CHIPS, CLOCK, SECTIONS } from '../game/src/data/economy.ts';
 import { programByName } from '../game/src/data/programs.ts';
 import { formatCount, formatDuration, formatMhz, formatMoney } from '../game/src/format.ts';
 import {
+  bitsName,
   buy,
+  chipByBits,
+  chipNeeded,
   completeContract,
   contractSeconds,
   cpiFor,
+  cpuLine,
+  cpuName,
   fillBoard,
   isLocked,
   isTight,
@@ -19,6 +24,7 @@ import {
   shopItems,
   tierOf,
   withTier,
+  withWordBits,
   type Contract,
   type Progress,
 } from '../game/src/sim/progress.ts';
@@ -50,25 +56,75 @@ test('a new game: single-cycle CPU at 1 MHz, no money', () => {
   assert.equal(NEW_GAME.money, 0);
 });
 
-test('CPU parts are bought in order, and each is the next tier; the pipeline runs 4x faster', () => {
+test('CPU parts are bought in order, and each is the next tier on a chip that runs it; the pipeline runs 4x faster', () => {
   const rich: Progress = { ...NEW_GAME, money: 10_000 };
-  assert.equal(buy(rich, 'forwarding'), null); // needs the pipeline first
-  assert.equal(buy(NEW_GAME, 'pipeline'), null); // can't afford it
-  const piped = buy(rich, 'pipeline');
+  assert.equal(buy(rich, 'pipeline'), null); // needs the 16-bit chip first
+  const wide = buy(rich, 'chip16');
+  assert.ok(wide);
+  assert.equal(wide.wordBits, 16);
+  assert.equal(buy(wide, 'forwarding'), null); // needs the pipeline first
+  assert.equal(buy({ ...wide, money: 0 }, 'pipeline'), null); // can't afford it
+  const piped = buy(wide, 'pipeline');
   assert.ok(piped);
-  assert.equal(piped.money, 10_000 - 300);
+  assert.equal(piped.money, 10_000 - 250 - 300);
   assert.equal(tierOf(piped).number, 2);
   assert.equal(ratedMhz(piped), 4);
   assert.equal(buy(piped, 'pipeline'), null); // already owned
-  const forwarded = buy(piped, 'forwarding');
+  assert.equal(buy(piped, 'forwarding'), null); // needs the 32-bit chip
+  const wider = buy(piped, 'chip32');
+  const forwarded = wider && buy(wider, 'forwarding');
   assert.equal(forwarded && tierOf(forwarded).number, 3);
 });
 
-test('clock upgrades step the rated clock up to 4 GHz on a pipeline', () => {
-  let p: Progress = { ...NEW_GAME, money: 1e6, parts: ['pipeline'] };
-  for (let i = 0; i < CLOCK.prices.length; i++) p = buy(p, 'clock') ?? p;
-  assert.equal(ratedMhz(p), 4000);
-  assert.equal(buy(p, 'clock'), null); // fully upgraded
+test('chips follow history: each goes on sale after its tier, in order, and the shop lists them where they fall', () => {
+  const rich: Progress = { ...NEW_GAME, money: 1e6 };
+  const state = (p: Progress, key: string) => shopItems(p).find((item) => item.key === key)?.state;
+  assert.equal(state(rich, 'chip16'), 'buy'); // after tier 1, which every CPU has
+  assert.equal(state(rich, 'chip32'), 'later'); // the 16-bit chip comes first
+  const piped = { ...withTier(rich, 2), wordBits: 16 } as const;
+  assert.equal(state(piped, 'chip32'), 'buy');
+  assert.equal(state({ ...withTier(rich, 5), wordBits: 32 }, 'chip64'), 'later'); // after tier 6
+  assert.equal(state({ ...withTier(rich, 6), wordBits: 32 }, 'chip64'), 'buy');
+  const cpu = shopItems(rich).filter((item) => item.group === 'CPU').map((item) => item.key);
+  assert.deepEqual(cpu, ['chip16', 'pipeline', 'chip32', 'forwarding', 'guessing', 'predictor1', 'predictor2', 'chip64']);
+});
+
+test('each chip has a top clock: 4 MHz at 8-bit, 16 MHz at 16-bit with the pipeline, 2 GHz at 32-bit, 4 GHz at 64-bit', () => {
+  const topClock = (p: Progress) => {
+    for (let i = 0; i < CLOCK.prices.length; i++) p = buy(p, 'clock') ?? p;
+    return p;
+  };
+  const rich: Progress = { ...NEW_GAME, money: 1e7 };
+  const eight = topClock(rich);
+  assert.equal(ratedMhz(eight), 4);
+  assert.equal(shopItems(eight).find((item) => item.key === 'clock')?.name, 'CLOCK: TOP SPEED FOR THIS CHIP');
+  assert.equal(ratedMhz(topClock({ ...withTier(rich, 2), wordBits: 16 })), 16);
+  assert.equal(ratedMhz(topClock({ ...withTier(rich, 3), wordBits: 32 })), 2000);
+  const top = topClock({ ...withTier(rich, 6), wordBits: 64 });
+  assert.equal(ratedMhz(top), 4000);
+  assert.equal(buy(top, 'clock'), null); // the power wall
+  assert.match(shopItems(top).find((item) => item.key === 'clock')?.about ?? '', /power wall/);
+});
+
+test('the CPU is described one way everywhere: word size, tier, then the rated clock', () => {
+  const piped: Progress = { ...withTier(NEW_GAME, 2), wordBits: 16, clockLevel: 2 };
+  assert.equal(bitsName(32), '32-BIT');
+  assert.equal(cpuName(NEW_GAME), '8-BIT, TIER 1 SINGLE-CYCLE');
+  assert.equal(cpuLine(piped), '16-BIT, TIER 2 PIPELINE AT 16 MHz');
+  assert.equal(chipByBits(64)?.name, '64-BIT CPU');
+  assert.equal(chipByBits(12), undefined);
+});
+
+test("a save's chip fits its parts and clock: old saves move up, and a narrower chip takes parts off", () => {
+  assert.equal(chipNeeded(NEW_GAME), 8);
+  assert.equal(chipNeeded({ ...NEW_GAME, parts: ['pipeline'] }), 16);
+  assert.equal(chipNeeded({ ...NEW_GAME, parts: ['pipeline', 'forwarding'] }), 32);
+  assert.equal(chipNeeded({ ...NEW_GAME, clockLevel: 3 }), 32); // past 16-bit's top step
+  assert.equal(chipNeeded({ ...NEW_GAME, clockLevel: CLOCK.factors.length - 1 }), 64);
+  assert.equal(withTier(NEW_GAME, 4).wordBits, 32);
+  const narrowed = withWordBits({ ...withTier(NEW_GAME, 6), wordBits: 64, clockLevel: 10 }, 16);
+  assert.deepEqual(narrowed.parts, ['pipeline']);
+  assert.equal(narrowed.clockLevel, CHIPS[1].maxClock);
 });
 
 test('repairs cost money per 10% of wear and restore the maximum clock', () => {
@@ -120,7 +176,7 @@ test("a contract is locked when your CPU can't meet its deadline, and tight when
 });
 
 test('the memory wall: clock upgrades past it help less, and the L1 cache goes on sale', () => {
-  const piped: Progress = { ...NEW_GAME, parts: ['pipeline', 'forwarding'], money: 10_000, clockLevel: 2 }; // 16 MHz
+  const piped: Progress = { ...NEW_GAME, wordBits: 32, parts: ['pipeline', 'forwarding'], money: 10_000, clockLevel: 2 }; // 16 MHz
   assert.ok(!pastMemoryWall(piped));
   const l1 = (p: Progress) => shopItems(p).find((item) => item.key === 'l1');
   assert.equal(l1(piped)?.state, 'later');

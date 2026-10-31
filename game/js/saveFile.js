@@ -3,7 +3,7 @@
 // into browser storage and into exported files, so an exported save can be
 // imported on another computer.
 import { CLOCK, COOLING, CPU_PARTS, MEMORY_PARTS } from './data/economy.js';
-import { NEW_GAME } from './sim/progress.js';
+import { chipByBits, fitChip, NEW_GAME } from './sim/progress.js';
 import { THERMAL } from './sim/thermal.js';
 const GAME = 'bit-cycler';
 export const SAVE_VERSION = 1;
@@ -43,9 +43,11 @@ function cleanProgress(raw) {
     let parts = 0;
     while (parts < CPU_PARTS.length && progress.parts[parts] === CPU_PARTS[parts].id)
         parts++;
-    return {
+    // Saves from before the chips start at 8-bit, then get the narrowest chip their parts and clock need (fitChip).
+    return fitChip({
         ...progress,
         money: Math.round(clamp(progress.money, 0, 1e12, 0)),
+        wordBits: chipByBits(progress.wordBits)?.bits ?? NEW_GAME.wordBits,
         parts: CPU_PARTS.slice(0, parts).map((part) => part.id),
         clockLevel: Math.round(clamp(progress.clockLevel, 0, CLOCK.factors.length - 1, 0)),
         cacheLevels: Math.round(clamp(progress.cacheLevels, 0, MEMORY_PARTS.length, 0)),
@@ -56,7 +58,7 @@ function cleanProgress(raw) {
         board: Array.isArray(progress.board) ? progress.board.filter(isContract) : [],
         nextId: Math.round(clamp(progress.nextId, 1, Number.MAX_SAFE_INTEGER, 1)),
         seenLessons: Array.isArray(progress.seenLessons) ? progress.seenLessons.filter((id) => typeof id === 'string') : [],
-    };
+    });
 }
 function isContract(value) {
     return (isObject(value) &&
