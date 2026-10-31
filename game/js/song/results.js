@@ -3,6 +3,7 @@ import { perfectCycles } from '../sim/pipeline.js';
 import { payFor } from '../sim/progress.js';
 import { bar, deadlineBar } from '../visual/asciiChart.js';
 import { MISS_WORDS } from './layout.js';
+import { pipelineOptions } from './setup.js';
 /** The whole contract's time at this run's pace: its CPI and the clocks it actually ran at. */
 export function jobSeconds(run, contract) {
     const p = run.pipeline;
@@ -23,17 +24,12 @@ export function practiceLines(run, returnTo) {
         returnTo ? '[ENTER] CONTRACT BOARD' : '[ENTER] PLAY    [Q] TITLE',
     ];
 }
-/** This CPU's hardware, for best-case comparisons at the rated clock. */
-function simOptions(f) {
-    const { forwarding, predictor, singleCycle, l1 } = f.setup;
-    return { forwarding, predictor, singleCycle, cache: l1, mhz: f.ratedMhz };
-}
 /**
  * What this tier added, and the best a CPU without it could do (tier 3:
  * forwarding, tier 4: guessing, tiers 5-6: overriding the predictor).
  */
 function baseline(f) {
-    const options = simOptions(f);
+    const options = pipelineOptions(f.setup, f.setup.ratedMhz);
     if (f.setup.predictor)
         return { label: 'PREDICTOR ALONE', cycles: perfectCycles(f.freshCpu, options, 'hardware') };
     if (f.setup.guessing)
@@ -44,7 +40,9 @@ function baseline(f) {
 }
 /** The results of a real run (or its replay), as charts. */
 export function resultLines(f) {
-    const { run, setup, contract } = f;
+    const { run, setup } = f;
+    const { contract, ratedMhz } = setup;
+    const paid = setup.replay?.paid ?? false;
     const p = run.pipeline;
     const { chip } = run;
     const n = Math.max(1, p.instructions);
@@ -93,13 +91,14 @@ export function resultLines(f) {
     // Time per instruction: CPI x clock period, next to the CPU this tier improved on (all at the rated clock, RAM waits included).
     const compare = [['YOU', p.cpi, avgPeriod]];
     const base = baseline(f);
+    const rated = pipelineOptions(setup, ratedMhz);
     if (base)
-        compare.push([`${base.label} (BEST)`, base.cycles / n, 1 / f.ratedMhz]);
+        compare.push([`${base.label} (BEST)`, base.cycles / n, 1 / ratedMhz]);
     if (setup.l1)
-        compare.push(['NO CACHE (BEST)', perfectCycles(f.freshCpu, { ...simOptions(f), cache: false }) / n, 1 / f.ratedMhz]);
+        compare.push(['NO CACHE (BEST)', perfectCycles(f.freshCpu, { ...rated, cache: false }) / n, 1 / ratedMhz]);
     if (!setup.singleCycle) {
-        const singleMhz = f.ratedMhz / 4;
-        const singleCycles = perfectCycles(f.freshCpu, { ...simOptions(f), singleCycle: true, mhz: singleMhz });
+        const singleMhz = ratedMhz / 4;
+        const singleCycles = perfectCycles(f.freshCpu, { ...rated, singleCycle: true, mhz: singleMhz });
         compare.push(['SINGLE-CYCLE', singleCycles / n, 1 / singleMhz]);
     }
     const slowest = Math.max(...compare.map(([, cpi, period]) => cpi * period));
@@ -111,12 +110,12 @@ export function resultLines(f) {
     // The whole contract at this pace: the song is the first part of the job.
     if (contract) {
         const seconds = (contract.instructions * perInstruction) / 1e6;
-        const verdict = f.late ? `LATE: HALF PAY ${formatMoney(payFor(contract, true))}` : `ON TIME: PAID ${formatMoney(contract.pay)}`;
-        lines.push('', `WHOLE CONTRACT = ${formatCount(contract.instructions)} INSTRUCTIONS x YOUR ${time(perInstruction)} = ${formatDuration(seconds)}`, `  NEEDED IN ${formatDuration(contract.deadline).padEnd(12)} ${deadlineBar(seconds, contract.deadline, 24)}  ${f.paid ? verdict : ''}`);
-        if (f.paid)
+        const verdict = setup.replay?.late ? `LATE: HALF PAY ${formatMoney(payFor(contract, true))}` : `ON TIME: PAID ${formatMoney(contract.pay)}`;
+        lines.push('', `WHOLE CONTRACT = ${formatCount(contract.instructions)} INSTRUCTIONS x YOUR ${time(perInstruction)} = ${formatDuration(seconds)}`, `  NEEDED IN ${formatDuration(contract.deadline).padEnd(12)} ${deadlineBar(seconds, contract.deadline, 24)}  ${paid ? verdict : ''}`);
+        if (paid)
             lines.push(`  MONEY NOW ${formatMoney(f.money)}`);
     }
-    lines.push('', contract && f.paid ? '[ENTER] CONTRACT BOARD    [W] WATCH AGAIN    [Q] TITLE' : '[ENTER] PLAY AGAIN    [W] WATCH AGAIN    [Q] TITLE');
+    lines.push('', contract && paid ? '[ENTER] CONTRACT BOARD    [W] WATCH AGAIN    [Q] TITLE' : '[ENTER] PLAY AGAIN    [W] WATCH AGAIN    [Q] TITLE');
     return lines;
 }
 //# sourceMappingURL=results.js.map

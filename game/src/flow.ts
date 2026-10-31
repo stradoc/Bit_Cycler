@@ -1,5 +1,6 @@
 import { getProgress } from './save.ts';
 import { pastMemoryWall, tierOf, type Contract } from './sim/progress.ts';
+import type { SongStart } from './song/setup.ts';
 
 /**
  * Plays a contract on the CPU the player owns. A concept they haven't learned
@@ -7,7 +8,7 @@ import { pastMemoryWall, tierOf, type Contract } from './sim/progress.ts';
  */
 export function playContract(scene: Phaser.Scene, contract: Contract): void {
   const tier = tierOf(getProgress());
-  const data = { ...tier.options, program: contract.program, contract };
+  const data = { ...tier.options, program: contract.program, contract } satisfies SongStart;
   const { seenLessons } = getProgress();
   if (!seenLessons.includes(tier.lessonId)) {
     scene.scene.start('briefing', { lessonId: tier.lessonId, mandatory: true, then: { scene: tier.scene, data: { ...data, practice: true } } });
@@ -28,7 +29,7 @@ export function briefAfterPurchase(scene: Phaser.Scene, lessonId: string): void 
   const tier = tierOf(getProgress());
   const practices = lessonId === tier.lessonId || lessonId === 'cache';
   const then = practices
-    ? { scene: tier.scene, data: { ...tier.options, practice: true, returnTo: 'board' } }
+    ? { scene: tier.scene, data: { ...tier.options, practice: true, returnTo: 'board' } satisfies SongStart }
     : { scene: 'shop', data: {} };
   if (lessonId === 'cache' && !getProgress().seenLessons.includes('memwall')) {
     scene.scene.start('briefing', { lessonId: 'memwall', mandatory: true, then: { scene: 'briefing', data: { lessonId, mandatory: true, then } } });

@@ -43,7 +43,16 @@ From the rubric check (2026-10-29). Everything else the spec requires is met: br
 - [ ] Decide: let the game play an edited sound file in place of a synthesized sound when one exists (the recorded keys already work this way); the music stays synthesized
 - [ ] Decide whether sprites are needed (the art is the four era looks and the 3D chip)
 
+**Code** (from the modularity review, 2026-10-31: where the code doesn't yet match `CLAUDE.md`'s "one place per thing"; move each, or make the doc say what's true)
+- [ ] Song text outside `song/words.ts`: about 25 labels in `song/panel.ts`, `gauge.ts`, `replay.ts`, `highway.ts`, `layout.ts` and `PipelineScene`
+- [ ] Key bindings in one place: `LANE_KEYS` (`song/layout.ts`), `KEY_UNITS` and the K / G / H checks (`PipelineScene`), the J / K labels (`song/highway.ts`), the tier 1 picture (`visual/diagrams.ts`), the overclocking item's text (`sim/progress.ts`, which also repeats the 150% limit)
+- [ ] The pay weights in `newContract` (0.6 size, 0.4 urgency; `sim/progress.ts`) belong in `data/economy.ts`
+- [ ] The song's memory wait (`frozenBeats`, `updateFreeze`, `endFreeze` in `PipelineScene`) as its own `song/` part, before L2 / L3 and page faults add to it
+- [ ] Small: `visual/asciiChart.ts` is text formatting in the drawing folder; `cheatFlags.ts` is missing from `CLAUDE.md`'s code map; `audio/render.ts` picks eras by position (`ERAS[0]`, `ERAS[3]`)
+
 **Known issues**
+- [ ] Notes off the music's beat in practice: when a note has waited for the player, the notes resume part-way through a beat (`chartOffset` in `PipelineScene.holdForPlayer` grows by fractions of a beat), so they land between the music's beats from then on. Decide: resume on the next beat, or right away as now
+- [ ] Notes and music on separate clocks in replays: the notes move by frame time (`replayBeat`), the music by the audio clock, so they start apart and drift, and changing the speed restarts the music from its first bar. Could follow the conductor instead, with `setTempo` for the speed
 - [ ] Replays: clicking empty space doesn't close the explanation box (clicking the box or Space does); predates the song screen's split
 
 ## Needs a real browser
@@ -71,4 +80,4 @@ Details are in `CHANGELOG.md`.
 - **Menus:** the intro (the computer powers on and boots from the save); the main menu as the computer's disk; settings; the developer screen
 - **Education:** briefing → practice → play for tiers 1–6, overclocking, the memory wall and the cache
 - **Look and sound:** four eras (green CRT, DOS app, 90s desktop with a dark mode, modern terminal on an LCD) with period fonts; the 3D chip; the CRT overlay; synthesized music in layers, menu sounds, the hum and the boot's sounds; recorded keys; every sound exportable as WAV
-- **Code:** one place per thing (eras, the screen kit, the sound system), the song screen in parts, a guide to extending it in `CLAUDE.md`
+- **Code:** one place per thing (eras, the screen kit, the sound system, the song's setup), the song screen in parts, a guide to extending it in `CLAUDE.md`

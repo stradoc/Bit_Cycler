@@ -2,29 +2,25 @@ import { formatCount, formatDuration, formatMhz, formatMoney } from '../format.t
 import type { PipelineRun } from '../rhythm/pipelineRun.ts';
 import type { Cpu } from '../sim/cpu.ts';
 import type { MissKind } from '../sim/memory.ts';
-import { perfectCycles, type PipelineOptions } from '../sim/pipeline.ts';
+import { perfectCycles } from '../sim/pipeline.ts';
 import { payFor, type Contract } from '../sim/progress.ts';
 import { bar, deadlineBar } from '../visual/asciiChart.ts';
 import { MISS_WORDS } from './layout.ts';
-import type { SongSetup } from './view.ts';
+import { pipelineOptions, type SongSetup } from './setup.ts';
 
 // The results after a song: where the cycles went (which gives the CPI), the
 // time per instruction (CPI x clock period) next to the CPUs it improves on,
 // and the whole contract at that pace against its deadline.
 
-/** A finished run, and what it's compared with. */
+/** A finished run, and what it's compared with. Its contract, and whether it paid, are in its setup. */
 export type Finished = {
   readonly run: PipelineRun;
   readonly setup: SongSetup;
   readonly tierTitle: string;
   /** The CPU as the program started, for the best cases. */
   readonly freshCpu: Cpu;
-  readonly ratedMhz: number;
-  /** The clock dial on each cycle: as played, and as watched in a replay. */
+  /** The clock dial on each cycle. */
   readonly dials: readonly number[];
-  readonly contract: Contract | undefined;
-  readonly late: boolean;
-  readonly paid: boolean;
   /** The player's money now. */
   readonly money: number;
 };
@@ -51,18 +47,12 @@ export function practiceLines(run: PipelineRun, returnTo: string | undefined): s
   ];
 }
 
-/** This CPU's hardware, for best-case comparisons at the rated clock. */
-function simOptions(f: Finished): PipelineOptions {
-  const { forwarding, predictor, singleCycle, l1 } = f.setup;
-  return { forwarding, predictor, singleCycle, cache: l1, mhz: f.ratedMhz };
-}
-
 /**
  * What this tier added, and the best a CPU without it could do (tier 3:
  * forwarding, tier 4: guessing, tiers 5-6: overriding the predictor).
  */
 function baseline(f: Finished): { label: string; cycles: number } | undefined {
-  const options = simOptions(f);
+  const options = pipelineOptions(f.setup, f.setup.ratedMhz);
   if (f.setup.predictor) return { label: 'PREDICTOR ALONE', cycles: perfectCycles(f.freshCpu, options, 'hardware') };
   if (f.setup.guessing) return { label: 'NEVER GUESSING', cycles: perfectCycles(f.freshCpu, { ...options, predictor: undefined }, 'hardware') };
   if (f.setup.forwarding) return { label: 'NO FORWARDING', cycles: perfectCycles(f.freshCpu, { ...options, forwarding: false }) };
@@ -71,7 +61,9 @@ function baseline(f: Finished): { label: string; cycles: number } | undefined {
 
 /** The results of a real run (or its replay), as charts. */
 export function resultLines(f: Finished): string[] {
-  const { run, setup, contract } = f;
+  const { run, setup } = f;
+  const { contract, ratedMhz } = setup;
+  const paid = setup.replay?.paid ?? false;
   const p = run.pipeline;
   const { chip } = run;
   const n = Math.max(1, p.instructions);
@@ -126,11 +118,12 @@ export function resultLines(f: Finished): string[] {
   // Time per instruction: CPI x clock period, next to the CPU this tier improved on (all at the rated clock, RAM waits included).
   const compare: [string, number, number][] = [['YOU', p.cpi, avgPeriod]];
   const base = baseline(f);
-  if (base) compare.push([`${base.label} (BEST)`, base.cycles / n, 1 / f.ratedMhz]);
-  if (setup.l1) compare.push(['NO CACHE (BEST)', perfectCycles(f.freshCpu, { ...simOptions(f), cache: false }) / n, 1 / f.ratedMhz]);
+  const rated = pipelineOptions(setup, ratedMhz);
+  if (base) compare.push([`${base.label} (BEST)`, base.cycles / n, 1 / ratedMhz]);
+  if (setup.l1) compare.push(['NO CACHE (BEST)', perfectCycles(f.freshCpu, { ...rated, cache: false }) / n, 1 / ratedMhz]);
   if (!setup.singleCycle) {
-    const singleMhz = f.ratedMhz / 4;
-    const singleCycles = perfectCycles(f.freshCpu, { ...simOptions(f), singleCycle: true, mhz: singleMhz });
+    const singleMhz = ratedMhz / 4;
+    const singleCycles = perfectCycles(f.freshCpu, { ...rated, singleCycle: true, mhz: singleMhz });
     compare.push(['SINGLE-CYCLE', singleCycles / n, 1 / singleMhz]);
   }
   const slowest = Math.max(...compare.map(([, cpi, period]) => cpi * period));
@@ -143,15 +136,15 @@ export function resultLines(f: Finished): string[] {
   // The whole contract at this pace: the song is the first part of the job.
   if (contract) {
     const seconds = (contract.instructions * perInstruction) / 1e6;
-    const verdict = f.late ? `LATE: HALF PAY ${formatMoney(payFor(contract, true))}` : `ON TIME: PAID ${formatMoney(contract.pay)}`;
+    const verdict = setup.replay?.late ? `LATE: HALF PAY ${formatMoney(payFor(contract, true))}` : `ON TIME: PAID ${formatMoney(contract.pay)}`;
     lines.push(
       '',
       `WHOLE CONTRACT = ${formatCount(contract.instructions)} INSTRUCTIONS x YOUR ${time(perInstruction)} = ${formatDuration(seconds)}`,
-      `  NEEDED IN ${formatDuration(contract.deadline).padEnd(12)} ${deadlineBar(seconds, contract.deadline, 24)}  ${f.paid ? verdict : ''}`,
+      `  NEEDED IN ${formatDuration(contract.deadline).padEnd(12)} ${deadlineBar(seconds, contract.deadline, 24)}  ${paid ? verdict : ''}`,
     );
-    if (f.paid) lines.push(`  MONEY NOW ${formatMoney(f.money)}`);
+    if (paid) lines.push(`  MONEY NOW ${formatMoney(f.money)}`);
   }
 
-  lines.push('', contract && f.paid ? '[ENTER] CONTRACT BOARD    [W] WATCH AGAIN    [Q] TITLE' : '[ENTER] PLAY AGAIN    [W] WATCH AGAIN    [Q] TITLE');
+  lines.push('', contract && paid ? '[ENTER] CONTRACT BOARD    [W] WATCH AGAIN    [Q] TITLE' : '[ENTER] PLAY AGAIN    [W] WATCH AGAIN    [Q] TITLE');
   return lines;
 }

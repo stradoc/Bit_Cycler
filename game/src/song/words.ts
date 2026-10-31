@@ -7,7 +7,8 @@ import type { Hazard, Slot, Stage } from '../sim/pipeline.ts';
 import type { Chip } from '../sim/thermal.ts';
 import { THERMAL } from '../sim/thermal.ts';
 import { addressBits, bin, LANE_KEYS, MISS_WORDS, STAGE_NAMES, type FreezeView } from './layout.ts';
-import type { Shown, SongSetup } from './view.ts';
+import type { SongSetup } from './setup.ts';
+import type { Shown } from './view.ts';
 
 // Everything the song screen says: the feedback under the stats, practice's
 // tips, and what each thing is when clicked in a replay. Words only: the

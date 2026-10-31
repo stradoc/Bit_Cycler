@@ -74,9 +74,20 @@ Technology and design decisions, with the reason for each (`RULES.md` rule 3). A
 | 2026-10-29 | The retro eras draw a 960×540 canvas stretched with chunky pixels; the 32- and 64-bit eras draw at the screen's resolution, the 64-bit one with smooth motion; **the CRT's scanlines and vignette are an overlay at the screen's own resolution** | Each era should feel like its time; the overlay stays fine over chunky pixels |
 | 2026-10-30 | **The glow adds to the picture** (Phaser's bloom runs at half strength, the result doubled) and **the CRT overlay blends as soft light** | Phaser's bloom averages the picture with its blur, which halved the letters' brightness; this keeps the halo and makes the letters bright |
 
+## 2026-10-31
+
+### The song's setup in one place (uncommitted)
+- **Why** (a review of how modular the code is): the song's settings (tier options, the L1, the chip, practice, the contract, the replay) were written out six times in `PipelineScene` and again in `song/results.ts`, so every new piece of hardware meant editing all of them. Word size, L2 / L3 and page frames are next and each adds one. The review's other findings are in `ROADMAP.md` (Code).
+- **`song/setup.ts`** (new, pure): `SongStart` (what a song is started with), `SongSetup` (everything worked out: program, hardware, rated clock, chip, practice, contract, replay), `songSetup` (from what it was started with, then the save, then the URL's dev shortcuts), `pipelineOptions` (what the simulator runs), and `playAgain` / `watch`, which pass the whole setup on to a retry or a replay. A replay's starting chip and pay travel in its `Recording`.
+- `PipelineScene` reads one `setup` instead of 17 fields, and `hardware()` and the hand-built restart data are gone; `song/results.ts` takes the contract, pay and rated clock from the setup; `flow.ts` checks what it starts songs with against `SongStart`. `CLAUDE.md` says where a new song setting goes.
+- **Fixed** (a dev shortcut only): with `?practice` in the URL, the replay after playing for real ran as practice and ended on practice results.
+- Tests: 117 (6 new in `tests/songSetup.test.ts`; `tests/song.test.ts` builds its setup with `songSetup`). Verified in headless Chrome against 0173ec0 side by side, comparing the text on screen: a contract on tier 3 (results, pay, money, watch again, Enter to the board), practice then playing for real, and `?clock=150` then playing again. Identical except the fix above. Not reached in the browser: an overheat's wear carried into a retry but not into the replay (the unit tests cover it).
+- **Outside this directory:** headless Chrome rewrote `~/.config/google-chrome/Crash Reports/settings.dat` (40 bytes, there since September) as it started, despite `--disable-breakpad`; noted in `CLAUDE.md`.
+- **Found, not fixed** (by reading the code, after a report of the music out of sync that then seemed fine): two ways the notes can drift from the music, now in `ROADMAP.md` (Known issues).
+
 ## 2026-10-30
 
-### Documents rewritten (uncommitted)
+### Documents rewritten (0173ec0)
 - **Why** (team): get rid of redundancy, and explain in `CLAUDE.md` how to add features (a campaign mode, audio, screens, gameplay) for future AI.
 - `CLAUDE.md`: the code map, how to add a screen, a sound, an era, a song feature, a tier or shop part, a contract kind, the campaign mode, a briefing and a setting; conventions; how to verify changes in headless Chrome; the gotchas found so far (moved here from old changelog entries).
 - `README.md`: team setup, commands, dev shortcuts and cheats only; the controls moved to `game/README.md`, which now has How to play and Credits (the educational purpose and how it was developed are still to write).
@@ -89,7 +100,7 @@ Technology and design decisions, with the reason for each (`RULES.md` rule 3). A
 - **A screen kit** (`ui/`): `theme.ts`, `widgets.ts` (`Box`, `PressButton`, panels), `list.ts` (`ListMenu`, now also the shop's), `screen.ts` (`Screen`, which every scene extends: the look, hum, keys with M everywhere, standard title, about, message and hint lines). Every screen's title, hints and messages now sit where the main menu has them.
 - **Sound as one system** (`audio/`): buses and `LEVELS` (`mix.ts`), building blocks (`synth.ts`), every short sound as a named, typed cue (`cues.ts`), the hum built from the era's computer (`hum.ts`; the modern era's LCD and SSD make no whine or drive noise), power and chime (`machine.ts`). Replaces `audio/menu.ts` and `audio/sfx.ts`.
 - **The song screen in parts** (`scenes/PipelineScene.ts` 2,187 → 746 lines): `song/highway.ts`, `panel.ts`, `bus.ts`, `gauge.ts`, `replay.ts`, `results.ts`, with all its text in `words.ts`.
-- **`npm run export-sounds`** (`tools/export-sounds.mjs`, `audio/render.ts`, `audio/wav.ts`): 34 WAV files in `sound-export/` (not committed).
+- **`npm run export-sounds`** (`tools/export-sounds.mjs`, `audio/render.ts`, `audio/wav.ts`): 34 WAV files in `sound-export/` (committed in 0173ec0).
 - Tests: 111. Verified in headless Chrome against the previous build side by side: full autoplayed songs on tiers 3 and 4, practice, replays and click-to-learn (identical), every screen in every era. Still to hear in a real browser: every sound. Found, older than this: clicking empty space in a replay doesn't close the explanation.
 
 ### Intro, the main menu as a disk, settings, saves, developer mode; menu sounds (93efb2a)

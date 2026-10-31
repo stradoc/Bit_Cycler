@@ -1,25 +1,24 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PROGRAMS } from '../game/src/data/programs.ts';
 import { NORMAL_WINDOWS } from '../game/src/rhythm/judge.ts';
 import { PipelineRun, type Action } from '../game/src/rhythm/pipelineRun.ts';
 import { assemble } from '../game/src/sim/assembler.ts';
 import { Cpu } from '../game/src/sim/cpu.ts';
 import { unitOf } from '../game/src/sim/isa.ts';
-import { ROWS } from '../game/src/song/layout.ts';
 import { practiceLines, resultLines } from '../game/src/song/results.ts';
-import type { Shown, SongSetup } from '../game/src/song/view.ts';
+import { NEW_GAME } from '../game/src/sim/progress.ts';
+import { songSetup, type SongStart } from '../game/src/song/setup.ts';
+import type { Shown } from '../game/src/song/view.ts';
 import { SongWords } from '../game/src/song/words.ts';
 
 // The song screen's words and results are plain functions of the run, so
 // they're checked here without a browser.
 
-const spec = PROGRAMS[0]; // SUM ARRAY
-
-function song(options: Partial<SongSetup> = {}) {
-  const cpu = new Cpu(assemble(spec.source), 8, spec.memory);
+/** A practice song (SUM ARRAY, or SUM GRID with a predictor) on a new game's CPU, with `options`. */
+function song(options: SongStart = {}) {
+  const setup = songSetup({ practice: true, ...options }, NEW_GAME, new URLSearchParams());
+  const cpu = new Cpu(assemble(setup.spec.source), 8, setup.spec.memory);
   const fresh = cpu.clone();
-  const setup: SongSetup = { spec, singleCycle: false, forwarding: false, guessing: false, predictor: undefined, l1: false, practice: true, watching: false, rows: ROWS, ...options };
   const run = new PipelineRun(cpu, { forwarding: setup.forwarding }, 3, 0.6, NORMAL_WINDOWS);
   const shown: Shown = { regs: [...run.pipeline.regs], memory: cpu.memory.slice(), lines: [] };
   return { run, setup, fresh, words: new SongWords(run, setup, shown) };
@@ -63,7 +62,7 @@ test('practice explains a hazard on the line before anything else, and says why 
 test('the results add up: where the cycles went sums to the cycles, and the CPI line matches', () => {
   const { run, setup, fresh, words } = song({ practice: false });
   playPerfectly(run);
-  const lines = resultLines({ run, setup, tierTitle: words.tierTitle(), freshCpu: fresh, ratedMhz: 4, dials: [], contract: undefined, late: false, paid: false, money: 0 });
+  const lines = resultLines({ run, setup, tierTitle: words.tierTitle(), freshCpu: fresh, dials: [], money: 0 });
   const p = run.pipeline;
   assert.ok(lines.includes(`WHERE THE ${p.cycles} CYCLES WENT`));
   const start = lines.indexOf(`WHERE THE ${p.cycles} CYCLES WENT`) + 1;

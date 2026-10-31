@@ -1,0 +1,60 @@
+import { programByName } from '../data/programs.js';
+import { hasCache, ratedMhzFor } from '../sim/progress.js';
+import { THERMAL } from '../sim/thermal.js';
+import { ROWS, SINGLE_CYCLE_ROWS } from './layout.js';
+/**
+ * Works out a song's setup: `start` first, then the save (the parts owned
+ * and the chip's wear), then the URL's dev shortcuts for anything still missing.
+ */
+export function songSetup(start, progress, params) {
+    // ?single, ?forwarding, ?guessing and ?predictor=1-bit (or 2-bit) play tiers 1 and 3-6; ?practice starts in practice.
+    const singleCycle = start.singleCycle ?? params.has('single');
+    const predictorParam = params.get('predictor');
+    const predictor = start.predictor ?? (predictorParam === '1-bit' || predictorParam === '2-bit' ? predictorParam : undefined);
+    const practice = start.practice ?? params.has('practice');
+    // ?contract=standard plays the board's first contract in that section.
+    const contract = start.contract ?? progress.board.find((c) => c.section === params.get('contract'));
+    const program = start.program ?? contract?.program ?? (predictor ? 'SUM GRID' : 'SUM ARRAY');
+    const { replay } = start;
+    // ?clock=150 starts the song overclocked, and allows it without the upgrade. Practice always runs at the rated clock.
+    const clock = Number(params.get('clock')) / 100;
+    return {
+        program,
+        spec: programByName(program),
+        singleCycle,
+        forwarding: start.forwarding ?? params.has('forwarding'),
+        guessing: start.guessing ?? params.has('guessing'),
+        predictor,
+        // ?cache fits the L1 cache.
+        l1: start.l1 ?? (hasCache(progress) || params.has('cache')),
+        ratedMhz: ratedMhzFor(progress, !singleCycle),
+        // Wear is the chip's own, and a replay plays on the chip its run started on.
+        // Practice always runs on a new chip, so it never overheats.
+        maxDial: replay?.maxDial ?? (practice ? THERMAL.maxDial : progress.chipMaxDial),
+        canOverclock: replay?.canOverclock ?? (progress.overclocking || params.has('clock')),
+        startDial: clock && !practice && !replay ? clock : undefined,
+        practice,
+        contract,
+        returnTo: start.returnTo,
+        replay,
+        watching: replay !== undefined,
+        rows: singleCycle ? SINGLE_CYCLE_ROWS : ROWS,
+    };
+}
+/** The hardware the simulator runs for this song, at a clock (MHz). */
+export function pipelineOptions(setup, mhz) {
+    const { forwarding, predictor, singleCycle, l1 } = setup;
+    return { forwarding, predictor, singleCycle, cache: l1, mhz };
+}
+// Starting the song again passes its whole setup on. songSetup reads only what
+// SongStart names and works out the rest again, so the chip's wear is the save's
+// latest (after an overheat in this run), unless a replay says otherwise.
+/** Playing again, after practice or a replay: the same CPU, program and contract, for real. */
+export function playAgain(setup) {
+    return { ...setup, practice: false, replay: undefined };
+}
+/** Watching a run: the same song, playing back what was played. */
+export function watch(setup, replay) {
+    return { ...setup, practice: false, replay };
+}
+//# sourceMappingURL=setup.js.map

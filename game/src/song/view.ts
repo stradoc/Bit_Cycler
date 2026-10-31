@@ -1,35 +1,14 @@
-import type { ProgramSpec } from '../data/programs.ts';
 import type { PipelineRun } from '../rhythm/pipelineRun.ts';
 import type { CacheLine } from '../sim/memory.ts';
-import type { Predictor } from '../sim/pipeline.ts';
 import type { Era } from '../ui/eras.ts';
 import { eraText } from '../ui/widgets.ts';
-import type { Clickable, Rows } from './layout.ts';
+import type { Clickable } from './layout.ts';
+import type { SongSetup } from './setup.ts';
 import type { SongWords } from './words.ts';
 
 // What every part of the song screen shares (song/highway.ts, panel.ts,
-// bus.ts, gauge.ts): the scene and its era, the run, how this song is set up,
-// what the panel shows, the replay's click-to-learn, and fades.
-
-/** How this song is set up: the program, the CPU's hardware, and how it's played. */
-export type SongSetup = {
-  readonly spec: ProgramSpec;
-  /** Tier 1: every instruction does all five steps in one long beat. */
-  readonly singleCycle: boolean;
-  /** Tier 3: results go straight to the next instruction. */
-  readonly forwarding: boolean;
-  /** Tier 4: the player guesses each branch (J not taken, K taken). */
-  readonly guessing: boolean;
-  /** Tiers 5-6: a hardware predictor guesses first. */
-  readonly predictor: Predictor | undefined;
-  /** The L1 data cache (from the shop). */
-  readonly l1: boolean;
-  /** Notes wait for the player, and mistakes are explained. */
-  readonly practice: boolean;
-  /** A replay of a recorded run. */
-  readonly watching: boolean;
-  readonly rows: Rows;
-};
+// bus.ts, gauge.ts): the scene and its era, the run, how this song is set up
+// (song/setup.ts), what the panel shows, the replay's click-to-learn, and fades.
 
 /** What the panel shows: values change when they arrive over the bus, a cache line when its block arrives. */
 export type Shown = { readonly regs: number[]; readonly memory: Uint8Array; readonly lines: CacheLine[] };
