@@ -5,6 +5,7 @@ import { formatMhz, formatMoney } from './format.js';
 import { activeSlot, getProgress, newGame, slotName, updateProgress } from './save.js';
 import { bitsName, chipByBits, fillBoard, fitChip, ratedMhz, tierOf, withEverything, withTier, withWordBits } from './sim/progress.js';
 import { THERMAL } from './sim/thermal.js';
+import { endDay } from './sim/workday.js';
 // Testing cheats, typed into the browser's developer console (F12 -> Console):
 // cheat.help() lists them. Each one changes the save and refreshes the screen.
 const MENU_SCENES = ['title', 'board', 'shop', 'saves', 'dev'];
@@ -21,6 +22,8 @@ const HELP = `Bit Cycler cheats (type in this console):
   cheat.wear(1.2)       chip's max clock after overheating (1.0-1.5)
   cheat.unlockAll()     every part, max clock, fan, overclocking, the L1 cache, $100,000
   cheat.board()         new random contracts
+  cheat.time(6)         hours of today's workday already used (0-8; past 8 the day is over)
+  cheat.endDay()        log off: the next morning, with new offers
   cheat.lessons(true)   mark every lesson and tour seen (false: unseen again)
   cheat.autoplay()      the game plays songs for you (false to stop)
   cheat.temp(94)        set the chip's temperature mid-song
@@ -59,6 +62,8 @@ export function installCheats(game) {
         wear: (maxDial) => change((p) => ({ ...p, chipMaxDial: Math.min(THERMAL.maxDial, Math.max(1, maxDial)) })),
         unlockAll: () => change(withEverything),
         board: () => change((p) => fillBoard({ ...p, board: [] }, Math.random)),
+        time: (hours) => change((p) => ({ ...p, worked: Math.max(0, Math.min(24, hours)) * 3600 })),
+        endDay: () => change((p) => endDay(p, Math.random).progress),
         lessons: (read = true) => {
             updateProgress((p) => ({ ...p, seenLessons: read ? [...TAUGHT_IDS] : [] }));
             return `lessons and tours marked ${read ? 'seen' : 'unseen'} (${getProgress().seenLessons.length} seen)`;

@@ -1,21 +1,24 @@
-import { SECTIONS } from '../data/economy.js';
+import { GRADES } from '../data/economy.js';
+import { banner } from '../data/menuFiles.js';
 import { programByName } from '../data/programs.js';
 import { playContract } from '../flow.js';
 import { BOARD_TOUR, BOARD_TOUR_ID } from '../data/tours.js';
-import { formatCount, formatDuration, formatMoney } from '../format.js';
-import { getProgress, updateProgress } from '../save.js';
+import { formatClock, formatCount, formatDuration, formatHours, formatMoney } from '../format.js';
+import { getProgress, setProgress, updateProgress } from '../save.js';
 import { teaching } from '../settings.js';
 import { UNITS } from '../sim/isa.js';
 import { jobSheet } from '../sim/jobSheet.js';
 import { contractSeconds, cpiFor, cpuLine, isLocked, isTight, isTutorial, jobItems, ratedMhz } from '../sim/progress.js';
 import { THERMAL } from '../sim/thermal.js';
+import { clockSeconds, DAY_END, DAY_SECONDS, DAY_START, dayOver, endDay, fitsToday, gradeName, shortDate, timeLeft, weekday } from '../sim/workday.js';
 import { cssColor } from '../ui/eras.js';
 import { Guide } from '../ui/guide.js';
 import { ListMenu } from '../ui/list.js';
 import { Screen } from '../ui/screen.js';
 import { ALPHA, LAYOUT, TEXT } from '../ui/theme.js';
-import { panel } from '../ui/widgets.js';
-import { bar, deadlineBar } from '../visual/asciiChart.js';
+import { Box, panel } from '../ui/widgets.js';
+import { bar, calendarPage, deadlineBar, stackedBar, timecard } from '../visual/asciiChart.js';
+import { WIDTH } from '../visual/display.js';
 const LIST_X = 48;
 const LIST_W = 316;
 const LIST_TOP = 118;
@@ -26,16 +29,32 @@ const SHEET_Y = 92;
 const SHEET_W = LAYOUT.right - SHEET_X;
 const SHEET_H = 362;
 const PAD = 16;
+/** Over the board: the timecard as the day ends. */
+const OVERLAY_DEPTH = 1500;
 function standingOf(contract) {
     const progress = getProgress();
-    return isLocked(contract, progress) ? 'locked' : isTight(contract, progress) ? 'tight' : 'ready';
+    if (isLocked(contract, progress))
+        return 'locked';
+    if (!fitsToday(contract, progress))
+        return 'tomorrow';
+    return isTight(contract, progress) ? 'tight' : 'ready';
 }
+/** What the row says for each standing, and whether it can be taken now. */
+const STANDING = {
+    ready: { value: 'OK', open: true },
+    tight: { value: 'TIGHT', open: true },
+    locked: { value: 'SLOW', open: false },
+    tomorrow: { value: 'LATER', open: false },
+};
 /**
- * The contract board: endless random jobs in three sections, listed by
- * client and pay, with the chosen one's job sheet beside them: the job, the
- * loop that does it, the notes it plays, the memory it uses, and how long
- * your CPU would take for all of it (instructions x CPI x clock period).
- * Jobs your CPU couldn't finish by their deadline are locked until it's faster.
+ * The contract board: today's offers, sized to your CPU, easy, fair and
+ * stretch, listed by client and pay, with the chosen one's job sheet beside
+ * them: the job, the loop that does it, the notes it plays, the memory it
+ * uses, and how long your CPU would take for all of it (instructions x CPI x
+ * clock period). Under the list, the calendar: the day, the clock, and the
+ * workday's hours (sim/workday.ts). Jobs your CPU couldn't finish by their
+ * deadline are locked until it's faster, and those it couldn't finish
+ * before 5:00 until tomorrow. LOG OFF ends the day with its timecard.
  */
 export class BoardScene extends Screen {
     menu;
@@ -43,6 +62,12 @@ export class BoardScene extends Screen {
     sheet;
     message;
     guide;
+    /** The workday bar along the bottom (showDay). */
+    dayBar;
+    /** Where the calendar starts, under the list (for TICK to point at). */
+    calendarTop = 0;
+    /** The timecard over the board, while it's up (the day ending). */
+    card;
     constructor() {
         super('board');
     }
@@ -54,47 +79,130 @@ export class BoardScene extends Screen {
         const worn = progress.chipMaxDial < THERMAL.maxDial ? `   CHIP WORN: MAX ${Math.round(progress.chipMaxDial * 100)}%` : '';
         this.header('CONTRACT BOARD', `YOUR CPU: ${cpuLine(progress)}${worn}`);
         this.corner(formatMoney(progress.money));
-        // Section by section, as the economy lists them.
-        this.contracts = SECTIONS.flatMap((section) => progress.board.filter((c) => c.section === section.id));
+        // Grade by grade, easy first.
+        this.contracts = GRADES.flatMap((grade) => progress.board.filter((c) => c.grade === grade.id));
         const rows = this.contracts.map((contract, i) => {
-            const standing = standingOf(contract);
-            const first = i === 0 || this.contracts[i - 1].section !== contract.section;
+            const standing = STANDING[standingOf(contract)];
+            const first = i === 0 || this.contracts[i - 1].grade !== contract.grade;
             return {
                 label: programByName(contract.program).client ?? contract.program,
                 middle: formatMoney(contract.pay),
-                value: standing === 'locked' ? 'SLOW' : standing === 'tight' ? 'TIGHT' : 'OK',
-                dim: standing === 'locked',
-                group: first ? (isTutorial(contract) ? 'YOUR FIRST JOB' : SECTIONS.find((s) => s.id === contract.section)?.name) : undefined,
+                value: standing.value,
+                dim: !standing.open,
+                group: first ? (isTutorial(contract) ? 'YOUR FIRST JOB' : gradeName(contract)) : undefined,
             };
         });
         this.menu = new ListMenu(this, this.era, { x: LIST_X, top: LIST_TOP, width: LIST_W, rowHeight: ROW_H, size: 15, middle: 58 });
-        this.menu.setRows(rows, Math.max(0, this.contracts.findIndex((c) => standingOf(c) !== 'locked')));
+        this.menu.setRows(rows, Math.max(0, this.contracts.findIndex((c) => STANDING[standingOf(c)].open)));
         // Clicking a row chooses it; clicking the chosen one takes it.
         rows.forEach((_, i) => {
             this.add
                 .zone(LIST_X - 8, this.menu.rowY(i), LIST_W + 16, ROW_H)
                 .setOrigin(0, 0.5)
                 .setInteractive({ useHandCursor: true })
-                .on('pointerdown', () => (i === this.menu.selected ? this.take() : this.choose(i - this.menu.selected)));
+                .on('pointerdown', () => (i === this.menu.selected ? this.take() : this.choose(i - this.menu.selected)))
+                // Hovering a job shows on the workday bar how long it would take.
+                .on('pointerover', () => this.showDay(this.contracts[i]))
+                .on('pointerout', () => this.showDay(this.contracts[this.menu.selected]));
         });
         panel(this, this.era, SHEET_X, SHEET_Y, SHEET_W, SHEET_H, 'JOB SHEET');
         this.sheet = this.add.container(0, 0);
         this.textAt(LIST_X, this.menu.rowY(rows.length - 1) + ROW_H + 8, 'FINISH LATE (A SLOPPY RUN): HALF PAY', TEXT.small - 1).setAlpha(ALPHA.subtitle);
+        this.drawCalendar();
         this.message = this.messageLine();
-        this.hints('[UP/DOWN] CHOOSE', '[ENTER] TAKE CONTRACT', '[S] SHOP', '[M] HUM', '[ESC] MENU');
+        this.hints('[UP/DOWN] CHOOSE', '[ENTER] TAKE CONTRACT', '[L] LOG OFF', '[C] CALENDAR', '[S] SHOP', '[ESC] MENU');
         this.drawSheet();
+        this.showDay(this.contracts[this.menu.selected]);
+        // The mouse leaving the game: back to the chosen job's estimate.
+        this.input.on('gameout', () => this.showDay(this.contracts[this.menu.selected]));
         // The first visit: the guide shows the board around.
         this.guide = new Guide(this, this.era);
         if (replayTour || (teaching().tours && !progress.seenLessons.includes(BOARD_TOUR_ID))) {
             this.guide.tour(BOARD_TOUR, (target) => this.where(target), () => updateProgress((p) => ({ ...p, seenLessons: [...new Set(p.seenLessons).add(BOARD_TOUR_ID)] })));
         }
+        else if (dayOver(progress)) {
+            // The last job used up the day's hours: its timecard.
+            this.showTimecard();
+        }
+    }
+    /**
+     * The calendar under the list: a tear-off page with the day, the time in
+     * block digits, and the workday's hours as a bar along the bottom.
+     */
+    drawCalendar() {
+        const progress = getProgress();
+        const top = this.menu.rowY(Math.max(0, this.contracts.length - 1)) + ROW_H + 34;
+        this.calendarTop = top;
+        this.textAt(LIST_X, top, calendarPage(weekday(progress.day), shortDate(progress.day)).join('\n'), TEXT.small).setLineSpacing(0);
+        const [time, half] = formatClock(clockSeconds(progress)).split(' ');
+        // Block digits close up (no line spacing), so their half blocks join; some fonts draw them wider, so they shrink to fit beside the sheet.
+        const clock = this.textAt(LIST_X + 150, top + 4, banner(time).join('\n'), TEXT.small).setLineSpacing(0).setColor(cssColor(this.era.accent));
+        const room = SHEET_X - 28 - clock.x;
+        if (clock.width > room)
+            clock.setScale(room / clock.width);
+        this.textAt(LIST_X + 150, top + 8 + clock.displayHeight, half, TEXT.small).setAlpha(ALPHA.subtitle);
+        this.dayBar = this.text(WIDTH / 2, LAYOUT.about, '', TEXT.small).setAlpha(ALPHA.about);
+    }
+    /**
+     * The workday's hours along the bottom: those used (#), and how long the
+     * chosen or hovered job would take, played perfectly (=), with when it would be done.
+     */
+    showDay(contract) {
+        const progress = getProgress();
+        const used = Math.min(DAY_SECONDS, progress.worked);
+        const job = contract && !isTutorial(contract) ? contractSeconds(contract, progress) : 0;
+        const hours = stackedBar([{ value: used, char: '#' }, { value: job, char: '=' }], DAY_SECONDS, 30);
+        const day = `${formatClock(DAY_START)} [${hours}] ${formatClock(DAY_END)}`;
+        const words = job > 0 ? `THIS JOB: ${formatHours(job)}, DONE BY ${formatClock(clockSeconds(progress) + job)}` : `${formatHours(timeLeft(progress))} LEFT TODAY`;
+        this.dayBar.setText(`${day}   ${words}`);
+    }
+    /**
+     * The day's timecard, over the board: when it started and ended, the jobs
+     * and the money. Enter clocks out (the next morning); before the day's
+     * hours are used up, Esc goes back to work.
+     */
+    showTimecard() {
+        if (this.card)
+            return;
+        const progress = getProgress();
+        const over = dayOver(progress);
+        const out = formatClock(clockSeconds(progress));
+        const lines = timecard({
+            date: shortDate(progress.day),
+            in: formatClock(DAY_START),
+            out,
+            jobs: progress.today.jobs,
+            late: progress.today.late,
+            earned: formatMoney(progress.today.earned),
+        });
+        const shade = this.add.rectangle(0, 0, WIDTH, 540, this.era.bg, 0.75).setOrigin(0).setDepth(OVERLAY_DEPTH).setInteractive();
+        const box = new Box(this, this.era, WIDTH / 2, 270, 360, 260, { strokeWidth: 2 }).setDepth(OVERLAY_DEPTH + 1);
+        const title = this.text(WIDTH / 2, 166, over ? "THAT'S THE DAY" : 'LOG OFF?', TEXT.title - 4).setFontStyle('bold').setColor(cssColor(this.era.accent)).setDepth(OVERLAY_DEPTH + 2);
+        const card = this.text(WIDTH / 2, 272, lines.join('\n'), TEXT.small).setLineSpacing(2).setDepth(OVERLAY_DEPTH + 2);
+        const keys = this.text(WIDTH / 2, 378, over ? '[ENTER] CLOCK OUT' : '[ENTER] CLOCK OUT    [ESC] KEEP WORKING', TEXT.hint).setAlpha(ALPHA.hint).setDepth(OVERLAY_DEPTH + 2);
+        this.card = [shade, ...box.parts, title, card, keys];
+        this.cue('confirm');
+    }
+    /** Clocks out: the timecard's day ends, and the board opens on the next morning. */
+    clockOut() {
+        const { progress } = endDay(getProgress(), Math.random);
+        setProgress(progress);
+        this.cue('confirm');
+        this.scene.restart();
+    }
+    closeTimecard() {
+        for (const part of this.card ?? [])
+            part.destroy();
+        this.card = undefined;
+        this.cue('back');
     }
     update() {
         super.update();
         this.guide.update(performance.now());
     }
+    /** No pause menu over the timecard: Esc there goes back to work. */
     pauseItems() {
-        return this.places();
+        return this.card ? undefined : this.places();
     }
     /** Where the parts of the board are, for the guide to point at. */
     where(target) {
@@ -107,6 +215,7 @@ export class BoardScene extends Screen {
             notes: { x: SHEET_X + 292, y: SHEET_Y + 92, w: SHEET_W - 298, h: 76 },
             memory: { ...inner, y: SHEET_Y + 242, h: 76 },
             time: { ...inner, y: SHEET_Y + 318, h: 38 },
+            calendar: { x: LIST_X - 12, y: this.calendarTop - 8, w: LAYOUT.right - LIST_X + 24, h: LAYOUT.about + 12 - (this.calendarTop - 8) },
         };
         return areas[target];
     }
@@ -116,6 +225,7 @@ export class BoardScene extends Screen {
         this.menu.move(delta);
         this.message.setText('');
         this.drawSheet();
+        this.showDay(this.contracts[this.menu.selected]);
     }
     /** The chosen contract's job sheet. */
     drawSheet() {
@@ -139,10 +249,12 @@ export class BoardScene extends Screen {
         line(left, SHEET_Y + 16, spec.client ?? spec.name, TEXT.body + 2, 1).setFontStyle('bold');
         line(right, SHEET_Y + 16, formatMoney(contract.pay), TEXT.body + 2, 1).setOrigin(1, 0);
         line(left, SHEET_Y + 42, `${spec.verb} ${formatCount(jobItems(contract))} ${spec.unit}`, TEXT.body);
+        const lastDay = contract.expires <= progress.day;
         const verdict = {
             ready: 'YOUR CPU HAS TIME TO SPARE.',
             tight: 'TIGHT: PLAY CLEANLY OR BE LATE.',
             locked: 'TOO SLOW: A FASTER CPU FROM THE SHOP [S] CAN DO IT.',
+            tomorrow: lastDay ? "NOT ENOUGH TIME LEFT TODAY, AND IT'S GONE TOMORROW." : "NOT ENOUGH TIME LEFT TODAY: LOG OFF [L], IT'S STILL HERE TOMORROW.",
         }[standing];
         // The warning color for both: the danger red is hard to read on DOS blue.
         const color = standing === 'ready' ? this.era.fg : this.colors.warn;
@@ -167,15 +279,20 @@ export class BoardScene extends Screen {
         const time = SHEET_Y + 330;
         const period = formatDuration(1 / (ratedMhz(progress) * 1e6));
         line(left, time - 8, `${formatCount(contract.instructions)} INSTRUCTIONS x CPI ${cpiFor(contract.program, progress).toFixed(2)} x ${period} = ${formatDuration(seconds)}`, TEXT.small, 0.8);
-        line(left, time + 10, `NEEDED IN ${formatDuration(contract.deadline)}`.padEnd(22) + deadlineBar(seconds, contract.deadline, 22), TEXT.small).setColor(cssColor(color));
+        const offer = isTutorial(contract) ? '' : lastDay ? 'LAST DAY ON OFFER' : 'ON OFFER TILL TOMORROW';
+        line(left, time + 10, `DUE IN ${formatHours(contract.deadline)}`.padEnd(18) + deadlineBar(seconds, contract.deadline, 18), TEXT.small).setColor(cssColor(color));
+        line(right, time + 10, offer, TEXT.small, 0.7).setOrigin(1, 0);
     }
     take() {
         const contract = this.contracts[this.menu.selected];
         if (!contract)
             return;
-        if (standingOf(contract) === 'locked') {
+        const standing = standingOf(contract);
+        if (!STANDING[standing].open) {
             this.cue('error');
-            this.message.setText('TOO SLOW FOR THIS JOB: A FASTER CLOCK OR NEW PARTS IN THE SHOP [S] WILL GET YOU THERE');
+            this.message.setText(standing === 'tomorrow'
+                ? `IT WOULD RUN PAST ${formatClock(DAY_END)}: TAKE A SMALLER JOB, OR LOG OFF [L] AND START FRESH`
+                : 'TOO SLOW FOR THIS JOB: A FASTER CLOCK OR NEW PARTS IN THE SHOP [S] WILL GET YOU THERE');
             return;
         }
         this.cue('confirm');
@@ -188,9 +305,23 @@ export class BoardScene extends Screen {
                 this.guide.next();
             return key !== 'M';
         }
+        // The timecard: Enter clocks out; Esc (or Q) goes back to work if the day isn't over.
+        if (this.card) {
+            if (key === 'Enter' && !event.repeat)
+                this.clockOut();
+            else if ((key === 'Escape' || key === 'Q') && !dayOver(getProgress()))
+                this.closeTimecard();
+            return true;
+        }
         if (this.menu.busy)
             return true;
-        if (key === 'ArrowUp')
+        if (key === 'L')
+            this.showTimecard();
+        else if (key === 'C') {
+            this.cue('confirm');
+            this.scene.start('calendar');
+        }
+        else if (key === 'ArrowUp')
             this.choose(-1);
         else if (key === 'ArrowDown')
             this.choose(1);

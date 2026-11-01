@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CHIPS, CLOCK, SECTIONS } from '../game/src/data/economy.ts';
+import { CHIPS, CLOCK, GRADES, WORKDAY } from '../game/src/data/economy.ts';
 import { programByName } from '../game/src/data/programs.ts';
 import { formatCount, formatDuration, formatMhz, formatMoney } from '../game/src/format.ts';
 import {
@@ -20,6 +20,7 @@ import {
   NEW_GAME,
   newContract,
   pastMemoryWall,
+  payPerHour,
   ratedMhz,
   shopItems,
   tierOf,
@@ -136,24 +137,47 @@ test('repairs cost money per 10% of wear and restore the maximum clock', () => {
   assert.equal(buy(fixed, 'repair'), null); // nothing to repair
 });
 
-test('contracts: size, deadline and pay stay in their section, and time = instructions x CPI x period', () => {
+test('contracts are sized to your CPU: each grade takes its share of a 2-8 hour deadline, and time = instructions x CPI x period', () => {
   const random = seeded(7);
-  for (const section of SECTIONS) {
-    for (let i = 0; i < 50; i++) {
-      const c = newContract(section.id, i, random);
-      assert.ok(c.instructions >= section.instructions[0] * 0.95 && c.instructions <= section.instructions[1] * 1.05);
-      assert.ok(c.deadline >= section.deadline[0] * 0.95 && c.deadline <= section.deadline[1] * 1.05);
-      assert.ok(c.pay >= section.pay[0] && c.pay <= section.pay[1]);
+  const cpus: Progress[] = [
+    NEW_GAME,
+    { ...NEW_GAME, wordBits: 32, parts: ['pipeline', 'forwarding'], clockLevel: 5 },
+    { ...NEW_GAME, wordBits: 64, parts: ['pipeline', 'forwarding', 'guessing', 'predictor1', 'predictor2'], clockLevel: 10, cacheLevels: 1 },
+  ];
+  for (const cpu of cpus) {
+    for (const grade of GRADES) {
+      for (let i = 0; i < 20; i++) {
+        const c = newContract(grade.id, i, random, { ...cpu, day: 4 });
+        const share = contractSeconds(c, cpu) / c.deadline;
+        assert.ok(share >= grade.share[0] * 0.99 && share <= grade.share[1] * 1.01, `${grade.id}: ${share}`);
+        assert.ok(c.deadline >= WORKDAY.deadlineHours[0] * 3600 && c.deadline <= WORKDAY.deadlineHours[1] * 3600 && c.deadline % 1800 === 0);
+        assert.ok(c.pay >= 5);
+        assert.ok(c.expires >= 4 && c.expires <= 5, 'on offer today, or till tomorrow');
+      }
     }
   }
-  const job: Contract = { id: 1, section: 'standard', program: 'SUM ARRAY', instructions: 1e9, deadline: 86400, pay: 100 };
+  const job: Contract = { id: 1, grade: 'fair', program: 'SUM ARRAY', instructions: 1e9, deadline: 86400, pay: 100, expires: 1 };
   assert.equal(contractSeconds(job, NEW_GAME), 1000); // CPI 1 at 1 MHz
   assert.equal(jobItems(job), 2e8); // SUM ARRAY: 5 instructions per byte
 });
 
+test('a new job can always be taken (played perfectly), stretch jobs are tight, and pay grows with the CPU, slower than its speed', () => {
+  const random = seeded(11);
+  const jobs = GRADES.flatMap((grade) => Array.from({ length: 30 }, (_, i) => newContract(grade.id, i, random, NEW_GAME)));
+  assert.equal(jobs.filter((c) => isLocked(c, NEW_GAME)).length, 0);
+  assert.ok(jobs.filter((c) => c.grade === 'stretch').every((c) => isTight(c, NEW_GAME)));
+  assert.ok(jobs.filter((c) => c.grade === 'easy').every((c) => !isTight(c, NEW_GAME)));
+  // An upgrade makes the jobs already on the board quicker.
+  const faster: Progress = { ...NEW_GAME, clockLevel: 1 };
+  assert.ok(jobs.every((c) => contractSeconds(c, faster) < contractSeconds(c, NEW_GAME)));
+  const best: Progress = { ...NEW_GAME, wordBits: 64, parts: ['pipeline', 'forwarding', 'guessing', 'predictor1', 'predictor2'], clockLevel: 10, cacheLevels: 1 };
+  assert.ok(payPerHour(best) > 5 * payPerHour(NEW_GAME));
+  assert.ok(payPerHour(best) / payPerHour(NEW_GAME) < ratedMhz(best) / ratedMhz(NEW_GAME));
+});
+
 test("a contract is locked when your CPU can't meet its deadline, and tight when it only just can", () => {
   const day = 86400;
-  const job: Contract = { id: 1, section: 'advanced', program: 'SUM ARRAY', instructions: 1e14, deadline: 30 * day, pay: 500 };
+  const job: Contract = { id: 1, grade: 'stretch', program: 'SUM ARRAY', instructions: 1e14, deadline: 30 * day, pay: 500, expires: 1 };
   assert.ok(isLocked(job, NEW_GAME)); // over 3 years at 1 MHz
   // 128 MHz with forwarding: every load waits 8 cycles for RAM, so about 32 days.
   const fast: Progress = { ...NEW_GAME, parts: ['pipeline', 'forwarding'], clockLevel: 5 };
@@ -164,10 +188,10 @@ test("a contract is locked when your CPU can't meet its deadline, and tight when
   assert.ok(!isTight(job, cached));
   assert.ok(isTight({ ...job, deadline: 22 * day }, cached)); // 19 of 22 days: a sloppy run could be late
   assert.ok(isLocked({ ...job, deadline: 15 * day }, cached));
-  // Even the biggest, most urgent advanced job is possible at 4 GHz with every part and the cache, on
-  // the program that misses the cache most when its data doesn't collide; without the cache it's out of reach.
+  // A huge job at 4 GHz with every part and the cache, on the program that misses the cache most when its
+  // data doesn't collide, is possible; without the cache it's out of reach.
   const best: Progress = { ...NEW_GAME, parts: ['pipeline', 'forwarding', 'guessing', 'predictor1', 'predictor2'], clockLevel: 10, cacheLevels: 1 };
-  const hardest = { ...job, instructions: SECTIONS[2].instructions[1], deadline: SECTIONS[2].deadline[0], program: 'ADD ARRAYS #16' };
+  const hardest = { ...job, instructions: 7e13, deadline: 7 * day, program: 'ADD ARRAYS #16' };
   assert.ok(!isLocked(hardest, best));
   assert.ok(isLocked(hardest, { ...best, cacheLevels: 0 }));
   // Arrays a cache-full apart (ADD ARRAYS #1) miss on every load: over twice as slow, so that job is locked.
@@ -200,19 +224,10 @@ test('the memory wall: clock upgrades past it help less, and the L1 cache goes o
   assert.ok(savedCached > saved, `${savedCached}% vs ${saved}%`);
 });
 
-test('standard jobs are mostly out of reach on the starting CPU', () => {
-  const random = seeded(11);
-  const jobs = Array.from({ length: 200 }, (_, i) => newContract('standard', i, random));
-  const open = jobs.filter((c) => !isLocked(c, NEW_GAME)).length;
-  assert.ok(open > 0 && open < jobs.length * 0.25, `${open} of ${jobs.length} open at 1 MHz`);
-  const piped: Progress = { ...NEW_GAME, parts: ['pipeline', 'forwarding'], clockLevel: 3 }; // 32 MHz
-  assert.ok(jobs.filter((c) => !isLocked(c, piped)).length > open * 2);
-});
-
 test('the board is endless: finishing a contract pays and puts a new one in its place', () => {
   const random = seeded(3);
   const board = fillBoard(NEW_GAME, random);
-  assert.equal(board.board.length, SECTIONS.length * 2);
+  assert.equal(board.board.length, GRADES.length * 2);
   const done = board.board[0];
   const after = completeContract(board, done.id, random);
   assert.equal(after.money, done.pay);
@@ -220,7 +235,7 @@ test('the board is endless: finishing a contract pays and puts a new one in its 
   assert.equal(late.money, Math.round(done.pay / 2)); // past its deadline: half pay
   assert.equal(after.board.length, board.board.length);
   assert.ok(!after.board.some((c) => c.id === done.id));
-  assert.equal(after.board.filter((c) => c.section === done.section).length, 2);
+  assert.equal(after.board.filter((c) => c.grade === done.grade).length, 2);
 });
 
 test('the board never shows the same client twice', () => {

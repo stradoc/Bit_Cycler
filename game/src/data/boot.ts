@@ -12,6 +12,7 @@ import { formatDuration, formatMhz, formatMoney } from '../format.ts';
 import { MEMORY_TIMING, ramCycles, SHOWN_BYTES } from '../sim/memory.ts';
 import { cpuName, ratedMhz, type Progress } from '../sim/progress.ts';
 import { THERMAL } from '../sim/thermal.ts';
+import { dateLine } from '../sim/workday.ts';
 import type { Era } from '../ui/eras.ts';
 
 /**
@@ -39,7 +40,7 @@ export type BootStep =
 export function bootScript(progress: Progress | null, slot: { readonly id: string; readonly name: string }, era: Era): BootStep[] {
   const { computer } = era;
   const facts = progress && hardware(progress);
-  const job = progress ? `${slot.name}: ${formatMoney(progress.money)}, ${progress.board.length} CONTRACTS WAITING` : 'NO SAVE YET: START A NEW CAMPAIGN';
+  const job = progress ? `${slot.name}: ${formatMoney(progress.money)}, ${dateLine(progress)}` : 'NO SAVE YET: START A NEW CAMPAIGN';
   const print = (text: string, pause?: number, sound?: BootSound): BootStep => ({ kind: 'print', text, pause, sound });
   // The self test passing: one short beep from the PC speaker.
   const memory: BootStep = { kind: 'count', text: 'MEMORY TEST: ', to: SHOWN_BYTES, done: ' BYTES OK', sound: era.sound.beep ? 'beep' : undefined };

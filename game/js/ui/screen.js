@@ -109,6 +109,7 @@ export class Screen extends Phaser.Scene {
         const settingsBack = here === 'shop' ? 'shop' : 'board';
         return [
             ...(here === 'board' ? [] : [this.go('CONTRACT BOARD', 'board', `PICK A JOB FOR YOUR CPU.${note}`)]),
+            ...(here === 'calendar' ? [] : [this.go('CALENDAR', 'calendar', `THE MONTH: YOUR DAYS SO FAR, AND WHAT'S COMING.${note}`)]),
             ...(here === 'shop' ? [] : [this.go('SHOP', 'shop', `BUY PARTS THAT MAKE YOUR CPU FASTER.${note}`)]),
             this.go('SETTINGS', 'settings', `SOUND, TIMING AND LOOKS.${note}`, { returnTo: settingsBack }),
             this.go('MAIN MENU', 'title', `YOUR PROGRESS IS SAVED AS YOU GO.${note}`),

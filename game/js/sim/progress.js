@@ -1,7 +1,7 @@
 // The player's progress: money, the CPU chip (its word size) and parts, clock,
 // memory and cooling upgrades, chip wear, and the contract board. Pure functions over a plain object, so the
 // rules are testable; game/src/save.ts stores it.
-import { BASE_MHZ, CHIPS, CLOCK, CONTRACTS_PER_SECTION, COOLING, CPU_PARTS, DEEP_PIPELINE, LATE_PAY_FACTOR, MEMORY_PARTS, OVERCLOCKING_PRICE, REPAIR_PRICE_PER_STEP, SECTIONS, TIGHT_SHARE, TUTORIAL_JOB, } from '../data/economy.js';
+import { BASE_MHZ, CHIPS, CLOCK, CONTRACTS_PER_GRADE, COOLING, CPU_PARTS, DEEP_PIPELINE, LATE_PAY_FACTOR, MEMORY_PARTS, OVERCLOCKING_PRICE, REPAIR_PRICE_PER_STEP, GRADES, PAY, TIGHT_SHARE, TUTORIAL_JOB, WORKDAY, } from '../data/economy.js';
 import { programByName, TUTORIAL_PROGRAM } from '../data/programs.js';
 import { generateProgram } from './generator.js';
 import { formatDuration, formatMhz } from '../format.js';
@@ -25,6 +25,10 @@ export const NEW_GAME = {
     board: [],
     nextId: 1,
     seenLessons: [],
+    day: 1,
+    worked: 0,
+    today: { jobs: 0, late: 0, earned: 0 },
+    history: [],
 };
 // ---- the CPU you own ----
 export function tierOf(progress) {
@@ -147,7 +151,7 @@ export function cpiFor(programName, progress) {
     return cpi;
 }
 /** Seconds per instruction on a typical job (SUM ARRAY) with this hardware: CPI x clock period. */
-function typicalSecondsPerInstruction(progress) {
+export function typicalSecondsPerInstruction(progress) {
     return cpiFor('SUM ARRAY', progress) / (ratedMhz(progress) * 1e6);
 }
 /** Seconds your CPU takes for a whole contract: instructions x CPI x clock period. */
@@ -193,39 +197,49 @@ export function withEverything(progress) {
     };
 }
 // ---- the board ----
-/** `low` to `high` on a log scale: t = 0 gives low, t = 1 gives high. */
-const logLerp = (low, high, t) => low * (high / low) ** t;
+/** `low` to `high`: t = 0 gives low, t = 1 gives high. */
+const lerp = (low, high, t) => low + (high - low) * t;
+/** What an hour of job time pays with your CPU (PAY): more as the CPU gets faster, more slowly than its speed. */
+export function payPerHour(progress) {
+    const mips = 1 / typicalSecondsPerInstruction(progress) / 1e6;
+    return PAY.perHourAtOneMips * mips ** PAY.exponent;
+}
 /**
- * A random job for a section: size and deadline log-uniform in their ranges.
- * Pay rises with the size and with the urgency (a shorter deadline).
+ * A random job of a grade, sized to your CPU: due 2-8 hours after it's
+ * taken, and taking the grade's share of that on your hardware played
+ * perfectly (on its own program, so a program heavy on memory is a smaller
+ * job). Its pay is per hour of that time, with the grade's bonus. It stays
+ * on offer a day or two from `progress.day`.
  */
-export function newContract(section, id, random, busyClients = new Set()) {
-    const spec = SECTIONS.find((s) => s.id === section) ?? SECTIONS[0];
-    const size = random();
-    const urgency = random();
-    const instructions = Number(logLerp(spec.instructions[0], spec.instructions[1], size).toPrecision(2));
-    const deadline = Number(logLerp(spec.deadline[1], spec.deadline[0], urgency).toPrecision(2));
-    const worth = 0.6 * size + 0.4 * urgency;
-    const pay = Math.round((spec.pay[0] + (spec.pay[1] - spec.pay[0]) * worth) / 5) * 5;
+export function newContract(grade, id, random, progress, busyClients = new Set()) {
+    const spec = GRADES.find((g) => g.id === grade) ?? GRADES[0];
     // Each contract gets its own randomly generated program (sim/generator.ts), named after its seed,
     // for a client who isn't already on the board (if one turns up within a few tries).
     let generated = generateProgram(Math.floor(random() * 1_000_000));
     for (let tries = 0; tries < 10 && busyClients.has(generated.client ?? ''); tries++) {
         generated = generateProgram(Math.floor(random() * 1_000_000));
     }
-    return { id, section, program: generated.name, instructions, deadline, pay };
+    // Due on the half hour.
+    const deadline = Math.round(lerp(WORKDAY.deadlineHours[0], WORKDAY.deadlineHours[1], random()) * 2) * 1800;
+    const seconds = deadline * lerp(spec.share[0], spec.share[1], random());
+    const secondsPerInstruction = cpiFor(generated.name, progress) / (ratedMhz(progress) * 1e6);
+    // Three figures, so rounding never moves a job out of its grade.
+    const instructions = Number((seconds / secondsPerInstruction).toPrecision(3));
+    const pay = Math.max(5, Math.round((payPerHour(progress) * (seconds / 3600) * spec.payBonus) / 5) * 5);
+    const days = WORKDAY.offerDays[0] + Math.floor(random() * (WORKDAY.offerDays[1] - WORKDAY.offerDays[0] + 1));
+    return { id, grade, program: generated.name, instructions, deadline, pay, expires: progress.day + days - 1 };
 }
-/** Tops the board up to CONTRACTS_PER_SECTION in every section (not while the tutorial job is on it). */
+/** Tops the board up to CONTRACTS_PER_GRADE in every grade, sized to your CPU now (not while the tutorial job is on it). */
 export function fillBoard(progress, random) {
     // The tutorial job stands alone until it's done.
     if (progress.board.some(isTutorial))
         return progress;
     const board = [...progress.board];
     let { nextId } = progress;
-    for (const section of SECTIONS) {
-        while (board.filter((c) => c.section === section.id).length < CONTRACTS_PER_SECTION) {
+    for (const grade of GRADES) {
+        while (board.filter((c) => c.grade === grade.id).length < CONTRACTS_PER_GRADE) {
             const clients = new Set(board.map((c) => programByName(c.program).client ?? ''));
-            board.push(newContract(section.id, nextId++, random, clients));
+            board.push(newContract(grade.id, nextId++, random, progress, clients));
         }
     }
     return { ...progress, board, nextId };
@@ -234,7 +248,8 @@ export function fillBoard(progress, random) {
 export function tutorialContract(id) {
     const spec = programByName(TUTORIAL_PROGRAM);
     const instructions = trace(new Cpu(assemble(spec.source, 8), 8, spec.memory)).length;
-    return { id, section: 'starter', program: TUTORIAL_PROGRAM, instructions, ...TUTORIAL_JOB };
+    // It never expires: it waits for the new player.
+    return { id, grade: 'easy', program: TUTORIAL_PROGRAM, instructions, ...TUTORIAL_JOB, expires: Number.MAX_SAFE_INTEGER };
 }
 /** The first job, which the board offers on its own until it's done. */
 export function isTutorial(contract) {

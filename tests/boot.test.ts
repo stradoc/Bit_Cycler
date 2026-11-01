@@ -25,7 +25,7 @@ test('the boot reports the save: CPU, clock, the trip to RAM in cycles, cache, c
     assert.match(text, /64 MHz, A CYCLE EVERY 16 ns/, `era ${era.name}`);
     assert.match(text, /A TRIP TAKES 60 ns = 4 CYCLES/, `era ${era.name}`); // 60 ns at 64 MHz: 3.84, so 4
     assert.match(text, /NONE/, `era ${era.name}`); // no cache yet
-    assert.match(text, /SLOT 1: \$0, 6 CONTRACTS WAITING/, `era ${era.name}`);
+    assert.match(text, /SLOT 1: \$0, MONDAY NOV 1, 9:00 AM/, `era ${era.name}`);
   }
 });
 

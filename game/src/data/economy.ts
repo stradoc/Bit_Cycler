@@ -146,28 +146,54 @@ export const COOLING = [
 /** Repairing a chip worn by overheating: per 10% of maximum clock restored. */
 export const REPAIR_PRICE_PER_STEP = 60;
 
+const HOUR = 3600;
+
 /**
- * Contract board sections. A job's size is its instruction count and its
- * deadline how soon it's needed (both log-uniform in their ranges). Pay grows
- * with size and with urgency. A job is locked if your CPU couldn't meet its
- * deadline even playing perfectly; a run sloppy enough to miss it pays
- * LATE_PAY_FACTOR of the pay.
+ * The workday: the game's clock runs only while your CPU works (each job
+ * takes its job time: instructions x the CPI you played x the clock period)
+ * or when you log off. A day is 8 hours of your CPU's time, 9:00 to 5:00.
+ * Offers are due a few hours after they're taken, and disappear a day or
+ * two after they're posted if nobody takes them.
  */
-const MINUTE = 60;
-const DAY = 86400;
-export const SECTIONS = [
-  { id: 'starter', name: 'STARTER', instructions: [1e4, 1e6], deadline: [1 * MINUTE, 10 * MINUTE], pay: [40, 80] },
-  { id: 'standard', name: 'STANDARD', instructions: [1e11, 3e13], deadline: [1 * DAY, 7 * DAY], pay: [150, 400] },
-  // Sized so a fully upgraded CPU (with the L1 cache) can take every advanced job, even the biggest,
-  // most urgent one on the program that misses most (ADD ARRAYS: CPI about 32 at 4 GHz).
-  { id: 'advanced', name: 'ADVANCED', instructions: [1e13, 7e13], deadline: [7 * DAY, 60 * DAY], pay: [500, 1200] },
+export const WORKDAY = {
+  /** When the day starts (24-hour clock), and how long it is (hours). */
+  startHour: 9,
+  hours: 8,
+  /** How many days an offer stays on the board, at least and at most (it disappears at the end of its last day). */
+  offerDays: [1, 2],
+  /** How soon a job is due once it's taken (hours), at least and at most. */
+  deadlineHours: [2, 8],
+  /** Day 1's date: Monday, November 1 (2027, a year whose November starts on a Monday, so the weeks line up). */
+  firstDay: { year: 2027, month: 10, date: 1 },
+  /** How many finished days the calendar remembers (their timecards). */
+  historyDays: 62,
+} as const;
+
+/**
+ * Jobs are sized to your CPU: each grade takes this share of its deadline
+ * on your hardware, played perfectly. Easy jobs leave room for mistakes;
+ * stretch jobs are tight (a sloppy run is late), and pay more for it.
+ */
+export const GRADES = [
+  { id: 'easy', name: 'EASY JOBS', share: [0.35, 0.5], payBonus: 0.8 },
+  { id: 'fair', name: 'FAIR JOBS', share: [0.6, 0.75], payBonus: 1 },
+  { id: 'stretch', name: 'STRETCH JOBS', share: [0.85, 0.95], payBonus: 1.4 },
 ] as const;
 
-export type SectionId = (typeof SECTIONS)[number]['id'];
+export type GradeId = (typeof GRADES)[number]['id'];
 
-export const CONTRACTS_PER_SECTION = 2;
+export const CONTRACTS_PER_GRADE = 2;
+
+/**
+ * Pay per hour of job time grows with how fast your CPU is (its typical
+ * instructions per second), more slowly than the speed itself: a CPU 1000x
+ * faster earns about 11x as much an hour, so upgrades pay off without the
+ * money running away. About $15 an hour at a million instructions a second.
+ */
+export const PAY = { perHourAtOneMips: 15, exponent: 0.35 } as const;
+
 /** A new game's first job, the only one on the board until it's done (data/programs.ts TUTORIAL_PROGRAM): what it pays, and how soon it's needed. */
-export const TUTORIAL_JOB = { pay: 50, deadline: 1 * MINUTE } as const;
+export const TUTORIAL_JOB = { pay: 50, deadline: 2 * HOUR } as const;
 /** Finishing after the deadline pays this much of the pay. */
 export const LATE_PAY_FACTOR = 0.5;
 /** A job your CPU would finish within this share of its deadline (playing perfectly) is tight: a sloppy run could be late. */

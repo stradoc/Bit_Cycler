@@ -101,8 +101,8 @@ export function songSetup(start: SongStart, progress: Progress, params: URLSearc
   const predictorParam = params.get('predictor');
   const predictor = start.predictor ?? (predictorParam === '1-bit' || predictorParam === '2-bit' ? predictorParam : undefined);
   const practice = start.practice ?? params.has('practice');
-  // ?contract=standard plays the board's first contract in that section.
-  const contract = start.contract ?? progress.board.find((c) => c.section === params.get('contract'));
+  // ?contract=fair plays the board's first contract of that grade (easy, fair or stretch).
+  const contract = start.contract ?? progress.board.find((c) => c.grade === params.get('contract'));
   const program = start.program ?? contract?.program ?? (predictor ? 'SUM GRID' : 'SUM ARRAY');
   const { replay } = start;
   const guessing = start.guessing ?? params.has('guessing');

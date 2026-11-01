@@ -2,7 +2,7 @@
 // the player's progress and when it was saved, as JSON. The same text goes
 // into browser storage and into exported files, so an exported save can be
 // imported on another computer.
-import { CLOCK, COOLING, CPU_PARTS, MEMORY_PARTS } from './data/economy.js';
+import { CLOCK, COOLING, CPU_PARTS, GRADES, MEMORY_PARTS, WORKDAY } from './data/economy.js';
 import { chipByBits, fitChip, NEW_GAME } from './sim/progress.js';
 import { THERMAL } from './sim/thermal.js';
 const GAME = 'bit-cycler';
@@ -59,13 +59,30 @@ function cleanProgress(raw) {
         board: Array.isArray(progress.board) ? progress.board.filter(isContract) : [],
         nextId: Math.round(clamp(progress.nextId, 1, Number.MAX_SAFE_INTEGER, 1)),
         seenLessons: Array.isArray(progress.seenLessons) ? progress.seenLessons.filter((id) => typeof id === 'string') : [],
+        // Saves from before the calendar start on day 1 at 9:00.
+        day: Math.round(clamp(progress.day, 1, Number.MAX_SAFE_INTEGER, 1)),
+        worked: clamp(progress.worked, 0, 24 * 3600, 0),
+        today: isObject(progress.today)
+            ? {
+                jobs: Math.round(clamp(progress.today.jobs, 0, 1e6, 0)),
+                late: Math.round(clamp(progress.today.late, 0, 1e6, 0)),
+                earned: Math.round(clamp(progress.today.earned, 0, 1e12, 0)),
+            }
+            : NEW_GAME.today,
+        history: Array.isArray(progress.history) ? progress.history.filter(isDayRecord).slice(-WORKDAY.historyDays) : [],
     });
+}
+function isDayRecord(value) {
+    return isObject(value) && ['day', 'out', 'jobs', 'late', 'earned'].every((key) => typeof value[key] === 'number');
 }
 function isContract(value) {
     return (isObject(value) &&
         typeof value.deadline === 'number' &&
         typeof value.program === 'string' &&
         typeof value.instructions === 'number' &&
-        typeof value.pay === 'number');
+        typeof value.pay === 'number' &&
+        // Contracts from before the calendar (sections, no expiry day) are dropped; the board deals new ones.
+        GRADES.some((grade) => grade.id === value.grade) &&
+        typeof value.expires === 'number');
 }
 //# sourceMappingURL=saveFile.js.map

@@ -13,7 +13,8 @@ import { assemble } from '../sim/assembler.js';
 import { addressOf, Cpu } from '../sim/cpu.js';
 import { keepsTotal, unitOf } from '../sim/isa.js';
 import { CACHE_LINES, freezeBeats } from '../sim/memory.js';
-import { completeContract, thermalConfig } from '../sim/progress.js';
+import { thermalConfig } from '../sim/progress.js';
+import { finishJob } from '../sim/workday.js';
 import { Chip, THERMAL } from '../sim/thermal.js';
 import { Bus } from '../song/bus.js';
 import { Gauge } from '../song/gauge.js';
@@ -763,8 +764,9 @@ export class PipelineScene extends Screen {
             const { contract } = setup;
             // On time or late is judged by this run's pace: its CPI and the clocks it actually ran at.
             const late = contract ? jobSeconds(this.run, contract) > contract.deadline : false;
+            // It pays, and the workday's clock moves on by the whole job's time at the pace played.
             if (contract)
-                updateProgress((p) => completeContract(p, contract.id, Math.random, late));
+                updateProgress((p) => finishJob(p, contract, jobSeconds(this.run, contract), late, Math.random));
             // Every real run is followed by its replay; the results come at the end of it.
             if (teaching().tips)
                 this.guide.say({ say: 'Run complete! Now watch your replay. Click anything in it to learn what it is.', dim: 0.3, keys: '[ENTER] OK', hold: true });

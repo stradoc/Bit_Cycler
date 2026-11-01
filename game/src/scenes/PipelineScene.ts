@@ -14,7 +14,8 @@ import { addressOf, Cpu } from '../sim/cpu.ts';
 import { keepsTotal, unitOf, type Unit } from '../sim/isa.ts';
 import { CACHE_LINES, freezeBeats, type Access } from '../sim/memory.ts';
 import type { Slot } from '../sim/pipeline.ts';
-import { completeContract, thermalConfig } from '../sim/progress.ts';
+import { thermalConfig } from '../sim/progress.ts';
+import { finishJob } from '../sim/workday.ts';
 import { Chip, THERMAL } from '../sim/thermal.ts';
 import { Bus } from '../song/bus.ts';
 import { Gauge } from '../song/gauge.ts';
@@ -740,7 +741,8 @@ export class PipelineScene extends Screen {
       const { contract } = setup;
       // On time or late is judged by this run's pace: its CPI and the clocks it actually ran at.
       const late = contract ? jobSeconds(this.run, contract) > contract.deadline : false;
-      if (contract) updateProgress((p) => completeContract(p, contract.id, Math.random, late));
+      // It pays, and the workday's clock moves on by the whole job's time at the pace played.
+      if (contract) updateProgress((p) => finishJob(p, contract, jobSeconds(this.run, contract), late, Math.random));
       // Every real run is followed by its replay; the results come at the end of it.
       if (teaching().tips) this.guide.say({ say: 'Run complete! Now watch your replay. Click anything in it to learn what it is.', dim: 0.3, keys: '[ENTER] OK', hold: true });
       const recording: Recording = {

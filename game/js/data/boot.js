@@ -11,6 +11,7 @@ import { formatDuration, formatMhz, formatMoney } from '../format.js';
 import { MEMORY_TIMING, ramCycles, SHOWN_BYTES } from '../sim/memory.js';
 import { cpuName, ratedMhz } from '../sim/progress.js';
 import { THERMAL } from '../sim/thermal.js';
+import { dateLine } from '../sim/workday.js';
 /**
  * The boot on the era's computer, reporting `progress` (null: no save yet)
  * from the save slot `slot`.
@@ -18,7 +19,7 @@ import { THERMAL } from '../sim/thermal.js';
 export function bootScript(progress, slot, era) {
     const { computer } = era;
     const facts = progress && hardware(progress);
-    const job = progress ? `${slot.name}: ${formatMoney(progress.money)}, ${progress.board.length} CONTRACTS WAITING` : 'NO SAVE YET: START A NEW CAMPAIGN';
+    const job = progress ? `${slot.name}: ${formatMoney(progress.money)}, ${dateLine(progress)}` : 'NO SAVE YET: START A NEW CAMPAIGN';
     const print = (text, pause, sound) => ({ kind: 'print', text, pause, sound });
     // The self test passing: one short beep from the PC speaker.
     const memory = { kind: 'count', text: 'MEMORY TEST: ', to: SHOWN_BYTES, done: ' BYTES OK', sound: era.sound.beep ? 'beep' : undefined };

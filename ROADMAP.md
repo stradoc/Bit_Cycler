@@ -23,19 +23,7 @@ From the rubric check (2026-10-29). Everything else the spec requires is met: br
 Upgrades follow microprocessor history and stay with the CPU and its control logic (decided 2026-10-31; the reasoning and sources are in the design doc's "Eras and upgrade order").
 
 1. **Contracts redesign: a workday, a reputation, special jobs** (decided with the team 2026-11-01; Decisions table). Three phases, each playable on its own:
-   - **Phase 1: the workday and jobs sized to your CPU.** A game date (DAY 1, 2...) and an 8-hour workday (9:00 to 5:00) of your CPU's time. Playing a job uses its job time (instructions x the CPI you played x clock period). Offers are due 2-8 hours after they're taken, and disappear 1-2 days after they're posted (no penalty). A job a perfect run couldn't finish before 5:00 is locked, like a SLOW one; a sloppy run that runs past 5:00 is overtime, and the day ends when it's done. LOG OFF ends the day early; the day ends by itself when its hours are used. Jobs are sized from your CPU's speed, with a spread on every board: easy (about 40% of the deadline), fair (75%), stretch (100-120%: clean play, overclocking or the next part), and pay grows with size. STARTER / STANDARD / ADVANCED go. Late (past the deadline, by the run played) is a fail: half pay. Logging off shows the day as a timecard. The look, all in characters in the era's font (`visual/asciiChart.ts`):
-     ```
-      DAY 3  TUESDAY     9:00 [##########.........] 5:00    3 H 20 LEFT
-      CORNER BAKERY     $120   DUE 4 H    EXPIRES [##.] 1 DAY
-
-        .-----------.      +-----------------------------+
-        |  TUESDAY  |      |  TIMECARD          DAY 3    |
-        |-----------|      |  IN  9:00        OUT 5:00   |
-        |     3     |      |  JOBS ON TIME 2   LATE 1    |
-        |   DAY 3   |      |  EARNED $410   STREAK 0     |
-        '-----------'      +-----------------------------+
-     ```
-     The time in block digits like the README viewer's titles. The date also in the boot report and the save slots.
+   - **Phase 1: done** (the workday, the calendar and its month page, and jobs sized to your CPU; CHANGELOG 2026-11-01). New kinds of events (special contracts, a campaign's deadline) go in `eventsOn` (`sim/workday.ts`). Still to tune by playing: pay per hour, the grades' shares, a day's pace.
    - **Phase 2: streak and reputation.** A streak of on-time jobs raises a pay multiplier (about +10% each, up to 2x); a late job resets it; a streak of 5 (say) brings a special contract. Reputation rises slowly with on-time jobs and falls with several lates in a row; it decides which clients offer work, so the big, well-paid ones need reputation (in place of the ADVANCED section). Ads in the shop buy reputation back, with diminishing returns. Both shown on the board (reputation as stars) and the timecard.
    - **Phase 3: special contracts and trophies.** Special jobs that feel different, not just pay more, and teach (almost all branches; cache-hostile; no stalls allowed). Each earns a trophy: 3D, drawn by our own renderer (`visual/chip3d.ts`, split into a general model renderer with the chip as one model), standing on an ASCII shelf with labels and "?" slots for those not yet earned; the chosen one spins, in each era's 3D style. Maybe a 3D punch clock on the timecard. Later rewards: OS colors, dark modes, past eras' screens (the computer still moves forward), keyboard sounds.
    - Numbers to settle by playing, in `data/economy.ts`: the size spread, pay per hour of job time, the streak's step and cap, the special contract's streak, reputation's steps and thresholds, ad prices.
@@ -101,6 +89,7 @@ Headless testing can't judge these:
 Details are in `CHANGELOG.md`.
 
 - **The player chooses how much TICK teaches:** full, short (no instruction-by-instruction close looks) or skip, asked at his first hello and in the settings; START OVER in the settings erases every save and brings his first tutorial back
+- **The workday:** a calendar page (a month from November 1, each day's earnings and events) and a workday (8 hours of CPU time a day, LOG OFF and a timecard, offers lasting a day or two, jobs that don't fit today locked till tomorrow) and jobs sized to your CPU (easy, fair, stretch), all drawn in characters
 - **A deep pipeline the player chooses:** a shop part with an ON / OFF switch, a faster clock for dearer wrong guesses, with TICK's lesson
 - **Getting around:** a pause menu (Esc / Q) on the board, in the shop and in songs (the beat holds while it's open); the developer screen in groups, explaining each row, its save staying loaded until you go back to your campaign
 - **Foundations:** the technology decisions (Decisions table); the beat clock on the audio clock, timing windows and calibration; the note highway; the single-cycle CPU, assembler and register panel; relaxed mode (wider windows, slower beat)

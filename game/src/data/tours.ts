@@ -27,7 +27,7 @@ export type TourStep<Target extends string> = {
 export type MenuTarget = 'menu' | 'new' | 'briefs' | 'readme' | 'settings';
 
 /** The contract board's parts the guide can point at (scenes/BoardScene.ts). */
-export type BoardTarget = 'list' | 'job' | 'loop' | 'notes' | 'memory' | 'time';
+export type BoardTarget = 'list' | 'job' | 'loop' | 'notes' | 'memory' | 'time' | 'calendar';
 
 /** The song screen's parts the guide can point at (scenes/PipelineScene.ts); `x3` is one register's row. */
 export type SongTarget = 'lanes' | 'line' | 'rows' | 'gauge' | 'listing' | 'registers' | 'memory' | 'cache' | 'stats' | `x${number}`;
@@ -87,12 +87,13 @@ export const WELCOME_AFTER: Readonly<Record<TutorialLevel, readonly TourStep<Men
 
 export const BOARD_TOUR: readonly TourStep<BoardTarget>[] = [
   { say: "This is the contract board. Companies send in jobs for your CPU, and you get paid when it finishes them.", point: 'list' },
-  { say: "OK means your CPU is fast enough for that job. SLOW means it isn't yet: a faster CPU from the shop will fix that.", point: 'list' },
+  { say: "OK means your CPU can do it in time. SLOW: it isn't fast enough yet (the shop can fix that). LATER: not enough of today is left.", point: 'list' },
   { say: "This is the job you've picked: who wants it, what it pays, and what they need done.", point: 'job' },
   { say: "This is the job's PROGRAM: a list of tiny steps called INSTRUCTIONS. These lines repeat once for each item.", point: 'loop' },
   { say: "Don't worry about reading it yet! In the song, each instruction becomes a note. This counts the notes for each lane.", point: 'notes' },
   { say: 'MEMORY is where the computer keeps its numbers, in numbered spots. The marks show which spots this job reads and writes.', point: 'memory' },
   { say: 'This is how long your CPU will take, against the deadline. A messy run is slower, and a late job pays half.', point: 'time' },
+  { say: "This is your workday: 8 hours from 9:00. Each job uses up its time. Press L to log off, and a new day starts with new jobs.", point: 'calendar' },
   { say: "Pick a job and press ENTER. Your first is a small one, picked so I can show you everything. See you on the next screen!", point: 'list' },
 ];
 

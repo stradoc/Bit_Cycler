@@ -40,6 +40,22 @@ export function formatDuration(seconds: number): string {
   return `${trim(seconds * 1e9)} ns`;
 }
 
+/** A time of day, from seconds since midnight: 13 * 3600 + 40 * 60 -> "1:40 PM" (past midnight it carries on: "1:15 AM"). */
+export function formatClock(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const hour24 = Math.floor(minutes / 60) % 24;
+  const hour = hour24 % 12 === 0 ? 12 : hour24 % 12;
+  return `${hour}:${String(minutes % 60).padStart(2, '0')} ${hour24 < 12 ? 'AM' : 'PM'}`;
+}
+
+/** A span of the workday in hours and minutes: "3 H 20 MIN", "4 H", "45 MIN" (under a minute: "0 MIN"). */
+export function formatHours(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const [h, m] = [Math.floor(minutes / 60), minutes % 60];
+  if (h === 0) return `${m} MIN`;
+  return m === 0 ? `${h} H` : `${h} H ${m} MIN`;
+}
+
 /** 4 -> "4 MHz", 2000 -> "2 GHz". */
 export function formatMhz(mhz: number): string {
   return mhz >= 1000 ? `${trim(mhz / 1000)} GHz` : `${trim(mhz)} MHz`;

@@ -2,6 +2,7 @@ import { installCheats } from './cheats.ts';
 import { keepKeyboardFocus } from './input/keyFocus.ts';
 import { BoardScene } from './scenes/BoardScene.ts';
 import { BootScene } from './scenes/BootScene.ts';
+import { CalendarScene } from './scenes/CalendarScene.ts';
 import { DevScene } from './scenes/DevScene.ts';
 import { PipelineScene } from './scenes/PipelineScene.ts';
 import { SavesScene } from './scenes/SavesScene.ts';
@@ -36,7 +37,7 @@ const game = new Phaser.Game({
   // Keyboard is handled in input/keys.ts; Phaser's plugin double-fires keys within a frame.
   input: { keyboard: false },
   // The first scene starts the game: the intro, then the main menu ('title').
-  scene: [BootScene, TitleScene, SettingsScene, SavesScene, DevScene, BoardScene, ShopScene, PipelineScene],
+  scene: [BootScene, TitleScene, SettingsScene, SavesScene, DevScene, BoardScene, CalendarScene, ShopScene, PipelineScene],
 });
 
 installCheats(game);

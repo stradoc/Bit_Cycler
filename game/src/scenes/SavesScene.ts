@@ -56,7 +56,7 @@ export class SavesScene extends Screen {
       const name = `${slotName(slot)}${slot === activeSlot() ? ' (CURRENT)' : ''}`;
       if (!saved) return { label: `${name}: EMPTY`, dim: true };
       return {
-        label: `${name}: ${cpuLine(saved.progress)}, ${formatMoney(saved.progress.money)}`,
+        label: `${name}: ${cpuLine(saved.progress)}, DAY ${saved.progress.day}, ${formatMoney(saved.progress.money)}`,
         value: saved.savedAt > 0 ? formatSavedAt(saved.savedAt) : '',
       };
     });

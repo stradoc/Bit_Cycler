@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CONTRACTS_PER_SECTION, SECTIONS, TUTORIAL_JOB } from '../game/src/data/economy.ts';
+import { CONTRACTS_PER_GRADE, GRADES, TUTORIAL_JOB } from '../game/src/data/economy.ts';
 import { programByName, TUTORIAL_PROGRAM } from '../game/src/data/programs.ts';
 import { assemble } from '../game/src/sim/assembler.ts';
 import { Cpu, trace } from '../game/src/sim/cpu.ts';
@@ -39,6 +39,6 @@ test('a new game offers only the tutorial job, takeable at once; finishing it pa
   assert.equal(jobItems(start.board[0]), 2);
   const done = completeContract(start, start.board[0].id, () => 0.5);
   assert.equal(done.money, TUTORIAL_JOB.pay);
-  assert.equal(done.board.length, SECTIONS.length * CONTRACTS_PER_SECTION);
+  assert.equal(done.board.length, GRADES.length * CONTRACTS_PER_GRADE);
   assert.ok(!done.board.some(isTutorial));
 });

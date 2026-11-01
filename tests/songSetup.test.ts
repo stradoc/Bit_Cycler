@@ -10,7 +10,7 @@ import { pipelineOptions, playAgain, songSetup, watch, type Recording } from '..
 // URL; retries and replays carry it on. Checked here without a browser.
 
 const url = (query = '') => new URLSearchParams(query);
-const contract = newContract('starter', 7, () => 0.5);
+const contract = newContract('easy', 7, () => 0.5, NEW_GAME);
 /** A save with the L1, the overclocking upgrade and a worn chip. */
 const worn: Progress = { ...NEW_GAME, cacheLevels: 1, overclocking: true, chipMaxDial: 1.3 };
 const recording: Recording = { cycles: [], dials: [1, 1.1], maxDial: 1.5, canOverclock: true, paid: true, late: true };
@@ -47,8 +47,8 @@ test('a contract plays its own program, and the save fits the cache and sets the
   assert.equal(setup.canOverclock, true);
   // Practice always runs on a new chip.
   assert.equal(songSetup({ contract, practice: true }, worn, url()).maxDial, THERMAL.maxDial);
-  // ?contract=starter picks the board's first starter contract.
-  assert.equal(songSetup({}, { ...NEW_GAME, board: [contract] }, url('contract=starter')).contract, contract);
+  // ?contract=easy picks the board's first easy contract.
+  assert.equal(songSetup({}, { ...NEW_GAME, board: [contract] }, url('contract=easy')).contract, contract);
 });
 
 test('?clock starts a real run overclocked and allows it, but never practice or a replay', () => {
