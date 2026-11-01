@@ -20,6 +20,8 @@ From the rubric check (2026-10-29). Everything else the spec requires is met: br
 
 ## Next up
 
+The latest handoff (what's done, what's unchecked, what's next) is the top entry of `CHANGELOG.md`.
+
 Upgrades follow microprocessor history and stay with the CPU and its control logic (decided 2026-10-31; the reasoning and sources are in the design doc's "Eras and upgrade order").
 
 1. **Contracts redesign: a workday, a reputation, special jobs** (decided with the team 2026-11-01; Decisions table). Three phases, each playable on its own:
