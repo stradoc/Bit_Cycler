@@ -7,6 +7,7 @@ import { banner, commandLine, CREDITS, listCommand, listingFooter, listingLine, 
 import { formatMoney } from '../format.js';
 import { activeSlot, CAMPAIGN_SLOTS, getProgress, hasSave, newGame, slotName } from '../save.js';
 import { getSettings, updateSettings } from '../settings.js';
+import { skillReport } from '../rhythm/skills.js';
 import { cpuLine, hasSeen, tierOf } from '../sim/progress.js';
 import { baseEra, cssColor } from '../ui/eras.js';
 import { Guide } from '../ui/guide.js';
@@ -166,6 +167,7 @@ export class TitleScene extends Screen {
             { action: 'briefings', name: 'BRIEFS', ext: '', note: `${read} OF ${Object.keys(LESSONS).length} SEEN`, about: "EVERY LESSON TICK GIVES, TO PLAY AGAIN WHENEVER YOU LIKE." },
             { action: 'settings', name: 'SETTINGS', ext: 'CFG', note: 'DIFFICULTY, SOUND, SCREEN', about: 'THE DIFFICULTY (HOW FAST SONGS GO), AUDIO CALIBRATION, VOLUME, SCREEN EFFECTS AND DARK MODE.' },
             { action: 'readme', name: 'README', ext: 'TXT', note: 'HOW TO PLAY', about: 'HOW TO PLAY, A PAGE AT A TIME.' },
+            { action: 'report', name: 'REPORT', ext: 'TXT', note: 'YOUR CALLS, JOB BY JOB', about: "HOW OFTEN YOU MAKE THE CONTROL UNIT'S CALLS RIGHT: ROUTING, HAZARDS, BRANCHES." },
             { action: 'credits', name: 'CREDITS', ext: 'TXT', note: 'MADE BY, FONTS, LICENSES', about: 'WHO MADE WHAT.' },
             { action: 'shutdown', name: 'SHUTDOWN', ext: 'EXE', note: 'POWER OFF', about: 'TURN THE COMPUTER OFF.' },
         ];
@@ -372,6 +374,8 @@ export class TitleScene extends Screen {
                 return;
             case 'readme':
                 return this.openText(README);
+            case 'report':
+                return this.openText(skillReport(hasSave() ? getProgress().skills : []));
             case 'credits':
                 return this.openText(CREDITS);
             case 'shutdown':

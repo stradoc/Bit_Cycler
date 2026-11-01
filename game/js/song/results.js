@@ -3,6 +3,7 @@ import { formatHours, formatMoney } from '../format.js';
 import { perfectCycles } from '../sim/pipeline.js';
 import { payFor } from '../sim/progress.js';
 import { deadlineBar, frame, spread, stackedBar } from '../visual/asciiChart.js';
+import { callsLine } from '../rhythm/skills.js';
 import { pipelineOptions } from './setup.js';
 /** The whole contract's time at this run's pace: its CPI and the clocks it actually ran at. */
 export function jobSeconds(run, contract) {
@@ -67,6 +68,7 @@ export function runReport(f) {
         cooling: chip.haltedMicros / n / 1e6,
         compare,
         branches: setup.guessing ? { right: p.branches - p.mispredicted, total: p.branches, predictorRight: setup.predictor ? p.branches - p.predictorMisses : undefined } : undefined,
+        calls: f.calls,
         cache: setup.l1 && p.memory.loads > 0 ? { hits: p.memory.hits, loads: p.memory.loads } : undefined,
         clock: chip.cycles > 0 && (f.dials.some((d) => d !== 1) || chip.overheats > 0)
             ? { averageMhz: Number((1 / period / 1e6).toPrecision(3)), peak: Math.round(chip.peak), overheats: chip.overheats, maxDial: chip.maxDial }
@@ -110,6 +112,9 @@ export function resultCard(report) {
             key = key ? `${key}   ${entry}` : entry;
     }
     lines.push(key);
+    const calls = callsLine(report.calls);
+    if (calls)
+        lines.push('', calls);
     // A paid contract goes back to the board; any other run plays again.
     const next = report.job ? '[ENTER] CONTRACT BOARD' : '[ENTER] PLAY AGAIN';
     return { stamp: frame(banner(word)), late: report.verdict === 'late', lines, keys: `${next}   [W] WATCH AGAIN   [T] ASK TICK   [Q] MENU` };

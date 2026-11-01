@@ -25,6 +25,7 @@ import {
 } from '../data/economy.ts';
 import { programByName, TUTORIAL_PROGRAM } from '../data/programs.ts';
 import { generateProgram } from './generator.ts';
+import type { SkillJob } from '../rhythm/skills.ts';
 import { formatDuration, formatMhz } from '../format.ts';
 import { tierByNumber, type Tier } from '../data/tiers.ts';
 import { assemble } from './assembler.ts';
@@ -83,6 +84,8 @@ export type Progress = {
   readonly today: DayTally;
   /** The days finished so far, oldest first (the last WORKDAY.historyDays of them). */
   readonly history: readonly DayRecord[];
+  /** Each job's right calls (rhythm/skills.ts: the learning objective, measured), oldest first. */
+  readonly skills: readonly SkillJob[];
 };
 
 export const NEW_GAME: Progress = {
@@ -102,6 +105,7 @@ export const NEW_GAME: Progress = {
   worked: 0,
   today: { jobs: 0, late: 0, earned: 0 },
   history: [],
+  skills: [],
 };
 
 /** The player has seen a lesson or tour (data/tours.ts TAUGHT_IDS). */

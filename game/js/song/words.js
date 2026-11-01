@@ -6,6 +6,7 @@ import { describe, format, UNIT_ROLES, unitOf } from '../sim/isa.js';
 import { BLOCK_BYTES, blockOf, CACHE_LINES, lineOf, MEMORY_TIMING, tagOf } from '../sim/memory.js';
 import { THERMAL } from '../sim/thermal.js';
 import { addressBits, bin, hex, LANE_KEYS, MISS_WORDS, STAGE_NAMES } from './layout.js';
+import { SKILLS } from '../rhythm/skills.js';
 /** What each kind of instruction is for, in everyday words: tier 1's tips are for players who have never seen one. */
 const PLAIN = {
     add: 'It adds two registers together.',
@@ -31,6 +32,8 @@ const MEANING = {
 const BITWISE = new Set(['and', 'or', 'xor']);
 /** Why an instruction goes down each lane, to start a sentence. */
 const LANE_WORK = { ALU: 'This is math or logic', MEM: 'This is memory work', BRANCH: 'This decides what runs next' };
+/** The player's calls of each kind, as TICK says them ("4 of 5 hazard calls"). */
+const CALL_WORDS = { routing: 'routes', hazards: 'hazard calls', branches: 'branch guesses' };
 export class SongWords {
     run;
     setup;
@@ -391,11 +394,14 @@ export class SongWords {
         };
         for (const { cpu, time: t } of report.compare)
             steps.push({ say: compare[cpu](time(t)) });
+        // The player's own calls, which the learning objective is about.
+        const called = SKILLS.filter((skill) => report.calls[skill].total > 0).map((skill) => `${report.calls[skill].right} of ${report.calls[skill].total} ${CALL_WORDS[skill]}`);
+        if (called.length > 0)
+            steps.push({ say: `Your calls: ${called.join(', ')}. REPORT on the main menu charts them, job by job.`, point: 'cycles' });
         const { branches, cache, clock } = report;
-        if (branches) {
-            const alone = branches.predictorRight === undefined ? '' : ` The predictor alone would have got ${branches.predictorRight}.`;
-            steps.push({ say: `You guessed ${branches.right} of ${branches.total} branches right.${alone}` });
-        }
+        // Your branch guesses are in the calls above; with a predictor, how it would have done without you.
+        if (branches?.predictorRight !== undefined)
+            steps.push({ say: `The predictor alone would have got ${branches.predictorRight} of ${branches.total} branches right.` });
         if (cache)
             steps.push({ say: `The L1 cache already had ${cache.hits} of ${cache.loads} loads (${Math.round((cache.hits / cache.loads) * 100)}%), so those didn't wait on RAM.` });
         if (clock) {

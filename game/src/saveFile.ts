@@ -2,6 +2,7 @@
 // the player's progress and when it was saved, as JSON. The same text goes
 // into browser storage and into exported files, so an exported save can be
 // imported on another computer.
+import { cleanSkillLog } from './rhythm/skills.ts';
 
 import { CLOCK, COOLING, CPU_PARTS, GRADES, MEMORY_PARTS, WORKDAY } from './data/economy.ts';
 import { chipByBits, fitChip, NEW_GAME, type Contract, type DayRecord, type Progress } from './sim/progress.ts';
@@ -76,6 +77,8 @@ function cleanProgress(raw: Record<string, unknown>): Progress {
         }
       : NEW_GAME.today,
     history: Array.isArray(progress.history) ? progress.history.filter(isDayRecord).slice(-WORKDAY.historyDays) : [],
+    // Saves from before the calls were counted start with none.
+    skills: cleanSkillLog(progress.skills),
   });
 }
 

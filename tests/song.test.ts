@@ -6,6 +6,7 @@ import { assemble } from '../game/src/sim/assembler.ts';
 import { Cpu } from '../game/src/sim/cpu.ts';
 import { unitOf } from '../game/src/sim/isa.ts';
 import { CARD_WIDTH, practiceLines, resultCard, runReport } from '../game/src/song/results.ts';
+import { NO_CALLS } from '../game/src/rhythm/skills.ts';
 import { fillBoard, NEW_GAME } from '../game/src/sim/progress.ts';
 import { songSetup, type SongStart } from '../game/src/song/setup.ts';
 import type { Shown } from '../game/src/song/view.ts';
@@ -69,7 +70,7 @@ function paidRun(late: boolean, options: SongStart = {}) {
 test('the results card adds up: every cycle is counted once, and the CPI is the one the run had', () => {
   const { run, setup, fresh } = song({ practice: false });
   playPerfectly(run);
-  const report = runReport({ run, setup, freshCpu: fresh, dials: [] });
+  const report = runReport({ run, setup, freshCpu: fresh, dials: [], calls: NO_CALLS });
   const p = run.pipeline;
   assert.equal(report.uses.reduce((sum, u) => sum + u.cycles, 0), p.cycles);
   assert.equal(report.uses[0].use, 'finished');
@@ -86,7 +87,7 @@ test('a paid job\'s card stamps it on time with the full pay, or late with half'
   for (const late of [false, true]) {
     const { run, setup, fresh } = paidRun(late);
     playPerfectly(run);
-    const report = runReport({ run, setup, freshCpu: fresh, dials: [] });
+    const report = runReport({ run, setup, freshCpu: fresh, dials: [], calls: NO_CALLS });
     const card = resultCard(report);
     const pay = setup.contract?.pay ?? 0;
     assert.equal(report.verdict, late ? 'late' : 'on-time');
@@ -103,7 +104,7 @@ test("TICK's explanation of the results: short lines, one for each way cycles we
   for (const options of [{ singleCycle: true }, {}, { forwarding: true }, { predictor: '2-bit', l1: true }] as SongStart[]) {
     const { run, setup, fresh, words } = paidRun(false, options);
     playPerfectly(run);
-    const report = runReport({ run, setup, freshCpu: fresh, dials: [] });
+    const report = runReport({ run, setup, freshCpu: fresh, dials: [], calls: NO_CALLS });
     const steps = words.resultsTour(report);
     for (const step of steps) assert.ok(step.say.length <= 150, `too long: ${step.say}`);
     assert.match(steps[0].say, /^On time!/);

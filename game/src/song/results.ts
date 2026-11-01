@@ -5,6 +5,7 @@ import type { Cpu } from '../sim/cpu.ts';
 import { perfectCycles } from '../sim/pipeline.ts';
 import { payFor, type Contract } from '../sim/progress.ts';
 import { deadlineBar, frame, spread, stackedBar } from '../visual/asciiChart.ts';
+import { callsLine, type Tally } from '../rhythm/skills.ts';
 import { pipelineOptions, type SongSetup } from './setup.ts';
 
 // The results after a song, kept short: a card with the verdict (on time or
@@ -21,6 +22,8 @@ export type Finished = {
   readonly freshCpu: Cpu;
   /** The clock dial on each cycle. */
   readonly dials: readonly number[];
+  /** The player's right calls in the run (rhythm/skills.ts). */
+  readonly calls: Tally;
 };
 
 /** The whole contract's time at this run's pace: its CPI and the clocks it actually ran at. */
@@ -71,6 +74,8 @@ export type RunReport = {
   readonly compare: readonly { readonly cpu: 'no-forwarding' | 'never-guessing' | 'predictor-alone' | 'no-cache' | 'single-cycle'; readonly time: number }[];
   readonly branches?: { readonly right: number; readonly total: number; readonly predictorRight?: number };
   readonly cache?: { readonly hits: number; readonly loads: number };
+  /** The player's right calls of each kind: the learning objective, measured (rhythm/skills.ts). */
+  readonly calls: Tally;
   /** Only when the clock wasn't the rated one, or the chip overheated. */
   readonly clock?: { readonly averageMhz: number; readonly peak: number; readonly overheats: number; readonly maxDial: number };
 };
@@ -114,6 +119,7 @@ export function runReport(f: Finished): RunReport {
     cooling: chip.haltedMicros / n / 1e6,
     compare,
     branches: setup.guessing ? { right: p.branches - p.mispredicted, total: p.branches, predictorRight: setup.predictor ? p.branches - p.predictorMisses : undefined } : undefined,
+    calls: f.calls,
     cache: setup.l1 && p.memory.loads > 0 ? { hits: p.memory.hits, loads: p.memory.loads } : undefined,
     clock:
       chip.cycles > 0 && (f.dials.some((d) => d !== 1) || chip.overheats > 0)
@@ -166,6 +172,8 @@ export function resultCard(report: RunReport): ResultCard {
     } else key = key ? `${key}   ${entry}` : entry;
   }
   lines.push(key);
+  const calls = callsLine(report.calls);
+  if (calls) lines.push('', calls);
   // A paid contract goes back to the board; any other run plays again.
   const next = report.job ? '[ENTER] CONTRACT BOARD' : '[ENTER] PLAY AGAIN';
   return { stamp: frame(banner(word)), late: report.verdict === 'late', lines, keys: `${next}   [W] WATCH AGAIN   [T] ASK TICK   [Q] MENU` };

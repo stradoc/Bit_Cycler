@@ -2,6 +2,7 @@
 // the player's progress and when it was saved, as JSON. The same text goes
 // into browser storage and into exported files, so an exported save can be
 // imported on another computer.
+import { cleanSkillLog } from './rhythm/skills.js';
 import { CLOCK, COOLING, CPU_PARTS, GRADES, MEMORY_PARTS, WORKDAY } from './data/economy.js';
 import { chipByBits, fitChip, NEW_GAME } from './sim/progress.js';
 import { THERMAL } from './sim/thermal.js';
@@ -70,6 +71,8 @@ function cleanProgress(raw) {
             }
             : NEW_GAME.today,
         history: Array.isArray(progress.history) ? progress.history.filter(isDayRecord).slice(-WORKDAY.historyDays) : [],
+        // Saves from before the calls were counted start with none.
+        skills: cleanSkillLog(progress.skills),
     });
 }
 function isDayRecord(value) {

@@ -29,6 +29,7 @@ export const NEW_GAME = {
     worked: 0,
     today: { jobs: 0, late: 0, earned: 0 },
     history: [],
+    skills: [],
 };
 /** The player has seen a lesson or tour (data/tours.ts TAUGHT_IDS). */
 export function hasSeen(progress, id) {

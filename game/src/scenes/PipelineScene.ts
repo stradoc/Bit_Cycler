@@ -13,7 +13,8 @@ import { addressOf, Cpu } from '../sim/cpu.ts';
 import { keepsTotal, unitOf, type Unit } from '../sim/isa.ts';
 import { CACHE_LINES, freezeBeats, type Access } from '../sim/memory.ts';
 import type { Slot } from '../sim/pipeline.ts';
-import { thermalConfig, withSeen } from '../sim/progress.ts';
+import { thermalConfig, tierOf, withSeen } from '../sim/progress.ts';
+import { logJob, NO_CALLS, tallyCycle, type Tally } from '../rhythm/skills.ts';
 import { finishJob } from '../sim/workday.ts';
 import { Chip, THERMAL } from '../sim/thermal.ts';
 import { Bus } from '../song/bus.ts';
@@ -99,6 +100,8 @@ export class PipelineScene extends Screen {
   private musicBeat = 0;
   private musicStarted = false;
   private musicCycles: CycleReport[] = [];
+  /** The player's right calls in this run (rhythm/skills.ts): shown on the results, and saved with a real job. */
+  private calls: Tally = NO_CALLS;
   /** The clock was stopped (overheated) at the last check, to say when it starts again. */
   private wasHalted = false;
   /** The clock dial on each cycle of this run (G / H change it), for the replay. */
@@ -152,6 +155,7 @@ export class PipelineScene extends Screen {
     this.musicBeat = 0;
     this.musicStarted = false;
     this.musicCycles = [];
+    this.calls = NO_CALLS;
     this.conductor = undefined;
     this.freezeView = undefined;
     this.refillView = undefined;
@@ -496,6 +500,8 @@ export class PipelineScene extends Screen {
 
   private onCycle(report: CycleReport): void {
     this.musicCycles.push(report);
+    // Practice explains instead of counting; real runs and their replays count the calls.
+    if (!this.setup.practice) this.calls = tallyCycle(this.calls, report, this.setup.guessing);
     if (!this.setup.watching) {
       const d = report.decision;
       this.recording.push(d ? { action: d.action, outcome: d.outcome, judgment: d.judgment } : null);
@@ -777,7 +783,13 @@ export class PipelineScene extends Screen {
       // On time or late is judged by this run's pace: its CPI and the clocks it actually ran at.
       const late = contract ? jobSeconds(this.run, contract) > contract.deadline : false;
       // It pays, and the workday's clock moves on by the whole job's time at the pace played.
-      if (contract) updateProgress((p) => finishJob(p, contract, jobSeconds(this.run, contract), late, Math.random));
+      // ...and the job's calls go in the log REPORT.TXT charts (the learning objective, measured).
+      if (contract) {
+        updateProgress((p) => {
+          const job = { day: p.day, tier: tierOf(p).number, calls: this.calls };
+          return { ...finishJob(p, contract, jobSeconds(this.run, contract), late, Math.random), skills: logJob(p.skills, job) };
+        });
+      }
       // Every real run is followed by its replay; the results come at the end of it.
       if (teaching().tips) this.guide.say({ say: 'Run complete! Now watch your replay. Click anything in it to learn what it is.', dim: 0.3, keys: '[ENTER] OK', hold: true });
       const recording: Recording = {
@@ -801,7 +813,7 @@ export class PipelineScene extends Screen {
       glideIn(this, [box.body, text]);
       return;
     }
-    this.showCard(runReport({ run: this.run, setup, freshCpu: this.freshCpu, dials: setup.replay?.dials ?? this.dialRecording }));
+    this.showCard(runReport({ run: this.run, setup, freshCpu: this.freshCpu, dials: setup.replay?.dials ?? this.dialRecording, calls: this.calls }));
   }
 
   /**

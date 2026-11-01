@@ -35,7 +35,11 @@ Each song opens with a short count-in naming its music and the loop's key regist
 
 ## Educational purpose and learning objectives
 
-*To be written before submission: the concepts covered (CPU time = instructions x CPI x clock period, pipelining and data hazards, forwarding, branch prediction, the power wall, the memory wall and caches), the measurable learning objective and how the game measures it, and which figures are simplified (the 8- and 16-bit CPUs are simplified teaching CPUs; the tempo, wear, overheat limits and the deep pipeline's numbers are stylized).*
+**Learning objective.** After playing, the player should understand a pipelined CPU's control decisions: determine which unit of the microprocessor each instruction must be routed to, when it has to wait for a value that isn't ready yet, and which way a branch is likely to go, and explain how each decision changes the CPI.
+
+**How the game measures it.** The player *is* the control unit, so each of those decisions is a call they make on the beat, and the game counts every one: routing (the right unit or not, from tier 1), hazards (stalling when a value isn't ready, and only then, from tier 2) and branches (each guess, from tier 4). Missed and off-beat presses are timing, not understanding, so they don't count. Each job's results card shows its right calls ("RIGHT CALLS: ROUTE 60/60  HAZARD 4/5  BRANCH 12/14"), and REPORT.TXT on the main menu shows the share of right calls of each kind over all jobs and the last five, and charts each kind job by job, so a player's improvement shows. Press `T` on the results card and TICK explains how the job's calls and lost cycles add up to its CPI.
+
+*Still to write before submission: the concepts covered (CPU time = instructions x CPI x clock period, pipelining and data hazards, forwarding, branch prediction, the power wall, the memory wall and caches), and which figures are simplified (the 8- and 16-bit CPUs are simplified teaching CPUs; the tempo, wear, overheat limits and the deep pipeline's numbers are stylized).*
 
 ## How it was developed
 
