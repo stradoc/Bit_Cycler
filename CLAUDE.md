@@ -39,6 +39,16 @@ Dev URL parameters and console cheats are listed in `README.md`.
 
 **One place per thing.** An era is described only in `ui/eras.ts`; code asks `era.kind`, `era.screen.*`, `era.computer.*`, `era.sound.*`, never "is this era 2". Sizes and positions come from `ui/theme.ts`. Sounds are played only by name (`this.cue('move')`). Prices and balance numbers live only in `data/economy.ts`. The CPU is put into words only by `cpuName` / `cpuLine` (word size: `bitsName`), and a chip is found by its width only with `chipByBits` (`sim/progress.ts`). A screen that must be redrawn when the era changes (a new chip, another save) asks `eraChanged()` (`ui/screen.ts`). Text the song screen shows lives only in `song/words.ts`. What the guide says lives in `data/tours.ts` (tours) and `song/words.ts` (practice's tips); only `ui/guide.ts` draws it.
 
+**One way to do each thing (binding, from the team).** Keep the code modular, reusable and standardized: every kind of job has one implementation, and new features are built from it.
+- **Reuse before writing.** Before adding anything, look for the piece that already does it and use it. The shared pieces: screens (`Screen`: header, hints, the pause menu), lists (`ListMenu`), boxes and panels (`Box`, `panel`), TICK (`Guide`: tours, held lines, questions), sounds (cues by name), character drawings (`visual/asciiChart.ts`), 3D models (the renderer in `visual/chip3d.ts`), a song's setup (`songSetup`), waits that freeze the song (`Pipeline.waitLeft`, drawn over `waitBeats`), numbers (`data/economy.ts`), words (`song/words.ts`, `data/tours.ts`), formatting (`format.ts`), saving (`save.ts`, cleaned by `saveFile.ts`).
+- **Extend, don't copy.** If the piece is almost right, give it an option or a parameter rather than writing a second version. What's been done this way: the deep pipeline's refill reuses the memory wait; the settings take `returnTo` instead of a second settings screen; `ListMenu` took `depth` and `heading`; TICK's questions reuse his bubble.
+- **One concept, one home.** A new idea (the workday's clock, reputation, a trophy) gets one module that owns its state, rules and wording, with a small documented interface. Other code calls that interface; it never works the idea out again or reaches into another part's private fields.
+- **Data over branches.** Variants are entries in a table (eras in `ERAS`, lessons in `LESSONS`, tutorial levels in `TUTORIAL`, shop items in `shopItems`), not `if` chains spread across files. Adding a variant should mean adding an entry.
+- **Rules apart from drawing.** What a feature does (state, numbers, decisions) goes in the pure layers and is tested; how it looks goes in `scenes/`, `ui/`, `visual/`. A screen should only ask and draw.
+- **Replace, don't pile up.** When something new replaces something old, delete the old (code, compiled files, docs, tests), as the briefing screen was. No second path kept "just in case".
+- **Three times means stop.** If the same logic is about to appear in a third place, make it one function first. Before committing, search for near-copies of what was added and merge them.
+- **Record the shared pieces.** A new reusable piece goes in the code map above and, if it's a new kind of thing to add, in "Adding things" below.
+
 ## Adding things
 
 **A screen.**

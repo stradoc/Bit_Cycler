@@ -22,14 +22,31 @@ From the rubric check (2026-10-29). Everything else the spec requires is met: br
 
 Upgrades follow microprocessor history and stay with the CPU and its control logic (decided 2026-10-31; the reasoning and sources are in the design doc's "Eras and upgrade order").
 
-1. **Word size, phase 2: the CPU model.** 16-, 32- and 64-bit registers (64-bit needs JavaScript's built-in BigInt; `Cpu.wrap` breaks at 32 bits today), wider loads and stores (`lh` / `lw` / `ld`, `sh` / `sw` / `sd`) and `sltu`; the generator writes programs that work on wide data in pieces, each piece's carry found with `sltu` (a chain of hazards); contracts state their data width ("32-BIT DEPOSITS") and the board's instruction counts come from tracing those programs; byte jobs gain nothing. Songs on wide data play fewer items so they keep their length. Tests against hand-worked counts. Open: the L1's 4-byte blocks are smaller than a 64-bit word.
-2. **Word size, phase 3: the song screen.** Registers shown at the chip's width (64-bit needs a new panel layout), the carry chain's practice tips and click-to-learn, results showing instructions per item, a lesson (the guide's tour, and practice) for each chip.
-3. **Hardware multiplier** (end of the 8-bit era, like the Motorola 6809): without it a multiply is a loop of shifts and adds; with it, one `mul` that holds its unit for several beats (a structural hazard). Textbook section 3.3.
-4. **Block-copy trap** (16-bit era, like the 8086's `REP MOVS`): one instruction copies a block, but each copy takes many cycles, so the job is barely faster; the textbook's Chapter 2 fallacy ("more powerful instructions mean higher performance"). Shares the multi-cycle unit with the multiplier.
-5. **Superscalar** (first 64-bit upgrade, like the DEC Alpha 21064): chords; the textbook's static two-issue CPU (one ALU or branch and one load or store per cycle) maps onto D+F and J+F. Needs the run logic to take several presses per beat.
-6. **Campaign goal: the debt deadline.** A calendar (each contract costs its whole job's time at the pace played) and one far deadline to pay a debt by, possibly in installments; free play on the endless board after. Open, to decide with the team: what missing the deadline does; installments or one payment; how the board shows the date. Where it fits in the code: "Campaign mode" in `CLAUDE.md`.
-7. **The job sheet names the access pattern.** The board's job sheet now marks which addresses a job reads and writes; it could also say it in words (sequential, two arrays, two arrays colliding in the cache, grid by column), since a colliding ADD ARRAYS can be locked even at 4 GHz with the L1 and the sheet only says why in marks.
-8. **Balance pass** once word size is in: chip prices and top clocks, contract sizes and deadlines (ADVANCED is provisionally 10–70 trillion instructions, sized for 4 GHz, which now needs the 64-bit chip).
+1. **Contracts redesign: a workday, a reputation, special jobs** (decided with the team 2026-11-01; Decisions table). Three phases, each playable on its own:
+   - **Phase 1: the workday and jobs sized to your CPU.** A game date (DAY 1, 2...) and an 8-hour workday (9:00 to 5:00) of your CPU's time. Playing a job uses its job time (instructions x the CPI you played x clock period). Offers are due 2-8 hours after they're taken, and disappear 1-2 days after they're posted (no penalty). A job a perfect run couldn't finish before 5:00 is locked, like a SLOW one; a sloppy run that runs past 5:00 is overtime, and the day ends when it's done. LOG OFF ends the day early; the day ends by itself when its hours are used. Jobs are sized from your CPU's speed, with a spread on every board: easy (about 40% of the deadline), fair (75%), stretch (100-120%: clean play, overclocking or the next part), and pay grows with size. STARTER / STANDARD / ADVANCED go. Late (past the deadline, by the run played) is a fail: half pay. Logging off shows the day as a timecard. The look, all in characters in the era's font (`visual/asciiChart.ts`):
+     ```
+      DAY 3  TUESDAY     9:00 [##########.........] 5:00    3 H 20 LEFT
+      CORNER BAKERY     $120   DUE 4 H    EXPIRES [##.] 1 DAY
+
+        .-----------.      +-----------------------------+
+        |  TUESDAY  |      |  TIMECARD          DAY 3    |
+        |-----------|      |  IN  9:00        OUT 5:00   |
+        |     3     |      |  JOBS ON TIME 2   LATE 1    |
+        |   DAY 3   |      |  EARNED $410   STREAK 0     |
+        '-----------'      +-----------------------------+
+     ```
+     The time in block digits like the README viewer's titles. The date also in the boot report and the save slots.
+   - **Phase 2: streak and reputation.** A streak of on-time jobs raises a pay multiplier (about +10% each, up to 2x); a late job resets it; a streak of 5 (say) brings a special contract. Reputation rises slowly with on-time jobs and falls with several lates in a row; it decides which clients offer work, so the big, well-paid ones need reputation (in place of the ADVANCED section). Ads in the shop buy reputation back, with diminishing returns. Both shown on the board (reputation as stars) and the timecard.
+   - **Phase 3: special contracts and trophies.** Special jobs that feel different, not just pay more, and teach (almost all branches; cache-hostile; no stalls allowed). Each earns a trophy: 3D, drawn by our own renderer (`visual/chip3d.ts`, split into a general model renderer with the chip as one model), standing on an ASCII shelf with labels and "?" slots for those not yet earned; the chosen one spins, in each era's 3D style. Maybe a 3D punch clock on the timecard. Later rewards: OS colors, dark modes, past eras' screens (the computer still moves forward), keyboard sounds.
+   - Numbers to settle by playing, in `data/economy.ts`: the size spread, pay per hour of job time, the streak's step and cap, the special contract's streak, reputation's steps and thresholds, ad prices.
+2. **Word size, phase 2: the CPU model.** 16-, 32- and 64-bit registers (64-bit needs JavaScript's built-in BigInt; `Cpu.wrap` breaks at 32 bits today), wider loads and stores (`lh` / `lw` / `ld`, `sh` / `sw` / `sd`) and `sltu`; the generator writes programs that work on wide data in pieces, each piece's carry found with `sltu` (a chain of hazards); contracts state their data width ("32-BIT DEPOSITS") and the board's instruction counts come from tracing those programs; byte jobs gain nothing. Songs on wide data play fewer items so they keep their length. Tests against hand-worked counts. Open: the L1's 4-byte blocks are smaller than a 64-bit word.
+3. **Word size, phase 3: the song screen.** Registers shown at the chip's width (64-bit needs a new panel layout), the carry chain's practice tips and click-to-learn, results showing instructions per item, a lesson (the guide's tour, and practice) for each chip.
+4. **Hardware multiplier** (end of the 8-bit era, like the Motorola 6809): without it a multiply is a loop of shifts and adds; with it, one `mul` that holds its unit for several beats (a structural hazard). Textbook section 3.3.
+5. **Block-copy trap** (16-bit era, like the 8086's `REP MOVS`): one instruction copies a block, but each copy takes many cycles, so the job is barely faster; the textbook's Chapter 2 fallacy ("more powerful instructions mean higher performance"). Shares the multi-cycle unit with the multiplier.
+6. **Superscalar** (first 64-bit upgrade, like the DEC Alpha 21064): chords; the textbook's static two-issue CPU (one ALU or branch and one load or store per cycle) maps onto D+F and J+F. Needs the run logic to take several presses per beat.
+7. **Campaign goal: the debt deadline.** On the workday's calendar (item 1): one far deadline to pay a debt by, possibly in installments; free play on the endless board after. Open, to decide with the team: what missing the deadline does; installments or one payment; how the board shows the date. Where it fits in the code: "Campaign mode" in `CLAUDE.md`.
+8. **The job sheet names the access pattern.** The board's job sheet now marks which addresses a job reads and writes; it could also say it in words (sequential, two arrays, two arrays colliding in the cache, grid by column), since a colliding ADD ARRAYS can be locked even at 4 GHz with the L1 and the sheet only says why in marks.
+9. **Balance pass** once word size is in: chip prices and top clocks, contract sizes and deadlines, once jobs are sized to your CPU (item 1).
 
 ## Open work by area
 
@@ -38,7 +55,7 @@ Upgrades follow microprocessor history and stay with the CPU and its control log
 - [ ] Full-length songs (~60 s): tier 1 contract songs run 30–64 cycles (median 46, about 37 s at 75 BPM), tier 2 about 65 s; longer needs more memory
 - [ ] Event notes for the wide-arithmetic chain (with word size)
 - [ ] Run logic that accepts several presses per beat (for superscalar chords later)
-- [ ] Pay formula: base × speed bonus × accuracy bonus, and better pay when overclocked (pay is flat for now)
+- [ ] Pay: better pay when overclocked? (the streak multiplier of item 1 rewards accuracy; pay is flat for now)
 - [ ] Generator: data bigger than the cache that's read more than once (capacity misses never happen yet)
 - [ ] Later: choosing the cache's shape (block size, associativity)
 
