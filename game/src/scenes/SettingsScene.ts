@@ -2,6 +2,7 @@ import { Conductor } from '../audio/conductor.ts';
 import { audioOf, setVolume, startHum, stopHum, toggleHum } from '../audio/sound.ts';
 import { filePath } from '../data/menuFiles.ts';
 import type { TutorialLevel } from '../data/tours.ts';
+import { DIFFICULTIES, DIFFICULTY_ORDER } from '../rhythm/tempo.ts';
 import { eraseEverything } from '../save.ts';
 import { getSettings, updateSettings } from '../settings.ts';
 import { baseEra, cssColor } from '../ui/eras.ts';
@@ -13,14 +14,16 @@ import { WIDTH } from '../visual/display.ts';
 const CALIBRATION_BPM = 120;
 const OFFSET_STEP_MS = 5;
 
-type Row = 'relaxed' | 'tutorial' | 'calibrate' | 'volume' | 'hum' | 'crt' | 'dark' | 'restart' | 'back';
-const ROWS: readonly Row[] = ['relaxed', 'tutorial', 'calibrate', 'volume', 'hum', 'crt', 'dark', 'restart', 'back'];
+type Row = 'difficulty' | 'tutorial' | 'calibrate' | 'volume' | 'hum' | 'crt' | 'dark' | 'restart' | 'back';
+const ROWS: readonly Row[] = ['difficulty', 'tutorial', 'calibrate', 'volume', 'hum', 'crt', 'dark', 'restart', 'back'];
 /** The tutorial choices, in the order left / right steps through them, and how each is shown. */
 const TUTORIALS: readonly TutorialLevel[] = ['full', 'short', 'skip'];
 const TUTORIAL_NAMES: Readonly<Record<TutorialLevel, string>> = { full: 'FULL', short: 'SHORT', skip: 'OFF' };
 
+const percent = (value: number) => `${Math.round(value * 100)}%`;
+
 const ABOUT: Readonly<Record<Row, string>> = {
-  relaxed: 'WIDER TIMING WINDOWS AND THE BEAT AT 80%: FOR LEARNING, OR WHEN THE BEAT IS TOO FAST.',
+  difficulty: `HOW FAST SONGS GO: ${DIFFICULTY_ORDER.map((d) => `${DIFFICULTIES[d].name} ${percent(DIFFICULTIES[d].speed)}`).join(', ')}. RELAXED ALSO WIDENS THE TIMING. THE PAY IS THE SAME.`,
   tutorial: "HOW MUCH TICK TEACHES: FULL (EVERY INSTRUCTION UP CLOSE), SHORT (EACH NEW PART) OR OFF. BRIEFS HAS EVERY LESSON EITHER WAY.",
   calibrate: 'LINE THE LIGHT UP WITH THE CLICK, SO NOTES ARE JUDGED BY WHAT YOU HEAR.',
   volume: 'EVERY SOUND IN THE GAME.',
@@ -32,9 +35,8 @@ const ABOUT: Readonly<Record<Row, string>> = {
 };
 
 const onOff = (on: boolean) => (on ? 'ON' : 'OFF');
-const percent = (value: number) => `${Math.round(value * 100)}%`;
 
-/** Settings: relaxed mode, audio calibration, volume, the menu hum, CRT effects and dark mode. The era follows your CPU chip. */
+/** Settings: the difficulty, the tutorial, audio calibration, volume, the menu hum, CRT effects and dark mode. The era follows your CPU chip. */
 export class SettingsScene extends Screen {
   private menu!: ListMenu;
   private about!: Phaser.GameObjects.Text;
@@ -93,7 +95,7 @@ export class SettingsScene extends Screen {
     const offsetMs = Math.round(s.offset * 1000);
     const hasDark = Boolean(baseEra().dark);
     const values: Record<Row, [string, string | undefined]> = {
-      relaxed: ['RELAXED MODE', onOff(s.relaxed)],
+      difficulty: ['DIFFICULTY', DIFFICULTIES[s.difficulty].name],
       tutorial: ['TUTORIAL (TICK)', TUTORIAL_NAMES[s.tutorial] ?? 'FULL'],
       calibrate: ['CALIBRATE AUDIO', `${offsetMs > 0 ? '+' : ''}${offsetMs} MS`],
       volume: ['VOLUME', percent(s.volume)],
@@ -153,8 +155,8 @@ export class SettingsScene extends Screen {
   private change(row: Row, step: number): void {
     const s = getSettings();
     switch (row) {
-      case 'relaxed':
-        updateSettings({ relaxed: !s.relaxed });
+      case 'difficulty':
+        updateSettings({ difficulty: DIFFICULTY_ORDER[(DIFFICULTY_ORDER.indexOf(s.difficulty) + step + DIFFICULTY_ORDER.length) % DIFFICULTY_ORDER.length] });
         break;
       case 'tutorial':
         updateSettings({ tutorial: TUTORIALS[(TUTORIALS.indexOf(s.tutorial) + step + TUTORIALS.length) % TUTORIALS.length] });

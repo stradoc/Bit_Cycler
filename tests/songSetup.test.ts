@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEEP_PIPELINE } from '../game/src/data/economy.ts';
+import { RELAXED_WINDOWS, NORMAL_WINDOWS } from '../game/src/rhythm/judge.ts';
+import { DEFAULT_DIFFICULTY, DIFFICULTIES } from '../game/src/rhythm/tempo.ts';
 import { NEW_GAME, newContract, ratedMhzFor, type Progress } from '../game/src/sim/progress.ts';
 import { THERMAL } from '../game/src/sim/thermal.ts';
 import { ROWS, SINGLE_CYCLE_ROWS } from '../game/src/song/layout.ts';
@@ -114,4 +116,19 @@ test("the guide's tour plays once: retries and replays drop it", () => {
   assert.deepEqual(songSetup({}, NEW_GAME, url('practice&tour=tier1')).tour, ['tier1']);
   assert.deepEqual(songSetup({}, NEW_GAME, url('tour=memwall,cache')).tour, ['memwall', 'cache']);
   assert.equal(songSetup({ replay: recording }, NEW_GAME, url('tour=tier1')).tour, undefined);
+});
+
+test('the difficulty sets the pace: from the start, then ?difficulty, then MEDIUM; practice always relaxed; retries and replays keep it', () => {
+  assert.equal(songSetup({}, NEW_GAME, url()).difficulty, DEFAULT_DIFFICULTY);
+  assert.equal(songSetup({}, NEW_GAME, url('difficulty=hard')).pace.speed, 1.5);
+  assert.equal(songSetup({}, NEW_GAME, url('difficulty=nonsense')).difficulty, 'medium');
+  const hard = songSetup({ difficulty: 'hard', contract }, NEW_GAME, url('difficulty=easy'));
+  assert.equal(hard.pace, DIFFICULTIES.hard);
+  assert.equal(hard.pace.windows, NORMAL_WINDOWS);
+  // Practice plays relaxed (wider windows, a slower beat), but keeps the difficulty chosen for the real run after it.
+  const practice = songSetup({ difficulty: 'hard', practice: true }, NEW_GAME, url());
+  assert.equal(practice.pace.windows, RELAXED_WINDOWS);
+  assert.equal(songSetup(playAgain(practice), NEW_GAME, url()).pace, DIFFICULTIES.hard);
+  assert.equal(songSetup(watch(hard, recording), NEW_GAME, url()).difficulty, 'hard');
+  assert.equal(songSetup(playAgain(hard), NEW_GAME, url()).difficulty, 'hard');
 });

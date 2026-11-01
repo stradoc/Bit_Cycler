@@ -3,6 +3,7 @@ import { programByName, type ProgramSpec } from '../data/programs.ts';
 import type { TierOptions } from '../data/tiers.ts';
 import type { Judgment } from '../rhythm/judge.ts';
 import type { Action, Outcome } from '../rhythm/pipelineRun.ts';
+import { DEFAULT_DIFFICULTY, DIFFICULTIES, isDifficulty, type Difficulty, type Pace } from '../rhythm/tempo.ts';
 import type { PipelineOptions, Predictor } from '../sim/pipeline.ts';
 import { deepActive, hasCache, ratedMhzFor, type Contract, type Progress } from '../sim/progress.ts';
 import { THERMAL } from '../sim/thermal.ts';
@@ -36,6 +37,8 @@ export type Recording = {
  * the URL's dev shortcuts (README.md lists them).
  */
 export type SongStart = TierOptions & {
+  /** How fast the song goes (the settings' DIFFICULTY; ?difficulty=hard in the URL). */
+  readonly difficulty?: Difficulty;
   /** The L1 data cache. */
   readonly l1?: boolean;
   /** The deep pipeline: a faster clock, dearer wrong guesses. */
@@ -77,6 +80,9 @@ export type SongSetup = {
   readonly canOverclock: boolean;
   /** Where the dial starts (?clock=150), or undefined for the rated clock. */
   readonly startDial: number | undefined;
+  /** The difficulty chosen, which retries and replays keep; and the pace this song plays at (practice: always relaxed). */
+  readonly difficulty: Difficulty;
+  readonly pace: Pace;
   readonly practice: boolean;
   readonly contract: Contract | undefined;
   readonly returnTo: string | undefined;
@@ -110,6 +116,8 @@ export function songSetup(start: SongStart, progress: Progress, params: URLSearc
   const deep = !singleCycle && (start.deep ?? ((guessing && deepActive(progress)) || params.has('deep')));
   // ?clock=150 starts the song overclocked, and allows it without the upgrade. Practice always runs at the rated clock.
   const clock = Number(params.get('clock')) / 100;
+  const asked = params.get('difficulty');
+  const difficulty = start.difficulty ?? (isDifficulty(asked) ? asked : DEFAULT_DIFFICULTY);
   return {
     program,
     spec: programByName(program),
@@ -126,6 +134,8 @@ export function songSetup(start: SongStart, progress: Progress, params: URLSearc
     maxDial: replay?.maxDial ?? (practice ? THERMAL.maxDial : progress.chipMaxDial),
     canOverclock: replay?.canOverclock ?? (progress.overclocking || params.has('clock')),
     startDial: clock && !practice && !replay ? clock : undefined,
+    difficulty,
+    pace: DIFFICULTIES[practice ? 'relaxed' : difficulty],
     practice,
     contract,
     returnTo: start.returnTo,

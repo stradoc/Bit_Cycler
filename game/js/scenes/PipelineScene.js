@@ -4,7 +4,6 @@ import { stopHum } from '../audio/sound.js';
 import { cheatFlags } from '../cheatFlags.js';
 import { SONG_TOURS } from '../data/tours.js';
 import { keyOf } from '../input/keys.js';
-import { NORMAL_WINDOWS, RELAXED_WINDOWS } from '../rhythm/judge.js';
 import { evaluate, PipelineRun } from '../rhythm/pipelineRun.js';
 import { tempoForClock } from '../rhythm/tempo.js';
 import { getProgress, updateProgress } from '../save.js';
@@ -129,7 +128,8 @@ export class PipelineScene extends Screen {
         super('pipeline');
     }
     init(data) {
-        this.setup = songSetup(data ?? {}, getProgress(), new URLSearchParams(location.search));
+        // The difficulty comes from the settings unless the start carries one (a retry or a replay keeps the run's).
+        this.setup = songSetup({ difficulty: getSettings().difficulty, ...data }, getProgress(), new URLSearchParams(location.search));
         this.wasHalted = false;
         this.dialRecording = [];
         this.overheatsShown = 0;
@@ -152,7 +152,6 @@ export class PipelineScene extends Screen {
         this.explained = new Set();
     }
     create() {
-        const settings = getSettings();
         // The song has its own music.
         this.setUp({ hum: false });
         stopHum();
@@ -163,9 +162,8 @@ export class PipelineScene extends Screen {
         this.ctx = this.sound.context;
         const { setup } = this;
         const { spec } = setup;
-        const easy = settings.relaxed || setup.practice;
-        // The song's tempo follows the rated clock, so clock upgrades speed it up.
-        const bpm = tempoForClock(setup.ratedMhz, easy);
+        // The song's tempo follows the rated clock, so clock upgrades speed it up; the difficulty speeds it up or slows it down.
+        const bpm = tempoForClock(setup.ratedMhz, setup.pace.speed);
         this.baseBpm = bpm;
         const program = assemble(spec.source, REGISTER_COUNT);
         const cpu = new Cpu(program, 8, spec.memory, REGISTER_COUNT);
@@ -176,7 +174,7 @@ export class PipelineScene extends Screen {
         // Songs (and practice) open with a count-in naming the key registers; replays go straight in.
         const countBeats = spec.keys && !setup.watching ? Math.ceil((COUNT_IN_SECONDS * bpm * chip.clockRatio) / 60) : 0;
         this.firstBeat = FIRST_BEAT + countBeats;
-        this.run = new PipelineRun(cpu, pipelineOptions(setup, chip.mhz), this.firstBeat, 60 / bpm, easy ? RELAXED_WINDOWS : NORMAL_WINDOWS, chip);
+        this.run = new PipelineRun(cpu, pipelineOptions(setup, chip.mhz), this.firstBeat, 60 / bpm, setup.pace.windows, chip);
         this.tempoRatio = chip.clockRatio;
         const shown = {
             regs: [...this.run.pipeline.regs],

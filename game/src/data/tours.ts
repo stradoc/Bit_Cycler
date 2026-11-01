@@ -77,7 +77,7 @@ export const WELCOME_TOUR: readonly TourStep<MenuTarget>[] = [
   { say: 'Companies pay you to run their programs. With the money you buy parts that make your CPU faster, the way real CPUs got faster.' },
   { say: 'Start here. NEWGAME begins a new game; CONTINUE picks up where you left off.', point: 'new' },
   { say: 'Every lesson I give is kept in BRIEFS. Open it any time to see one again.', point: 'briefs' },
-  { say: 'README has the keys and the rules. SETTINGS has the sound, the timing, and RELAXED mode if the beat is too fast.', point: 'readme' },
+  { say: 'README has the keys and the rules. SETTINGS has the sound, the timing, and the DIFFICULTY: RELAXED if the beat is too fast.', point: 'readme' },
   { say: 'While you play, press Q for the pause menu. After a song, click anything in its replay to learn what it is.' },
   { say: "Don't try to remember it all: I'll explain each thing the first time you need it. Let's go!", point: 'new' },
 ];

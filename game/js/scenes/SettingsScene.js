@@ -1,6 +1,7 @@
 import { Conductor } from '../audio/conductor.js';
 import { audioOf, setVolume, startHum, stopHum, toggleHum } from '../audio/sound.js';
 import { filePath } from '../data/menuFiles.js';
+import { DIFFICULTIES, DIFFICULTY_ORDER } from '../rhythm/tempo.js';
 import { eraseEverything } from '../save.js';
 import { getSettings, updateSettings } from '../settings.js';
 import { baseEra, cssColor } from '../ui/eras.js';
@@ -10,12 +11,13 @@ import { ALPHA, LAYOUT, TEXT } from '../ui/theme.js';
 import { WIDTH } from '../visual/display.js';
 const CALIBRATION_BPM = 120;
 const OFFSET_STEP_MS = 5;
-const ROWS = ['relaxed', 'tutorial', 'calibrate', 'volume', 'hum', 'crt', 'dark', 'restart', 'back'];
+const ROWS = ['difficulty', 'tutorial', 'calibrate', 'volume', 'hum', 'crt', 'dark', 'restart', 'back'];
 /** The tutorial choices, in the order left / right steps through them, and how each is shown. */
 const TUTORIALS = ['full', 'short', 'skip'];
 const TUTORIAL_NAMES = { full: 'FULL', short: 'SHORT', skip: 'OFF' };
+const percent = (value) => `${Math.round(value * 100)}%`;
 const ABOUT = {
-    relaxed: 'WIDER TIMING WINDOWS AND THE BEAT AT 80%: FOR LEARNING, OR WHEN THE BEAT IS TOO FAST.',
+    difficulty: `HOW FAST SONGS GO: ${DIFFICULTY_ORDER.map((d) => `${DIFFICULTIES[d].name} ${percent(DIFFICULTIES[d].speed)}`).join(', ')}. RELAXED ALSO WIDENS THE TIMING. THE PAY IS THE SAME.`,
     tutorial: "HOW MUCH TICK TEACHES: FULL (EVERY INSTRUCTION UP CLOSE), SHORT (EACH NEW PART) OR OFF. BRIEFS HAS EVERY LESSON EITHER WAY.",
     calibrate: 'LINE THE LIGHT UP WITH THE CLICK, SO NOTES ARE JUDGED BY WHAT YOU HEAR.',
     volume: 'EVERY SOUND IN THE GAME.',
@@ -26,8 +28,7 @@ const ABOUT = {
     back: 'BACK TO THE MAIN MENU.',
 };
 const onOff = (on) => (on ? 'ON' : 'OFF');
-const percent = (value) => `${Math.round(value * 100)}%`;
-/** Settings: relaxed mode, audio calibration, volume, the menu hum, CRT effects and dark mode. The era follows your CPU chip. */
+/** Settings: the difficulty, the tutorial, audio calibration, volume, the menu hum, CRT effects and dark mode. The era follows your CPU chip. */
 export class SettingsScene extends Screen {
     menu;
     about;
@@ -83,7 +84,7 @@ export class SettingsScene extends Screen {
         const offsetMs = Math.round(s.offset * 1000);
         const hasDark = Boolean(baseEra().dark);
         const values = {
-            relaxed: ['RELAXED MODE', onOff(s.relaxed)],
+            difficulty: ['DIFFICULTY', DIFFICULTIES[s.difficulty].name],
             tutorial: ['TUTORIAL (TICK)', TUTORIAL_NAMES[s.tutorial] ?? 'FULL'],
             calibrate: ['CALIBRATE AUDIO', `${offsetMs > 0 ? '+' : ''}${offsetMs} MS`],
             volume: ['VOLUME', percent(s.volume)],
@@ -146,8 +147,8 @@ export class SettingsScene extends Screen {
     change(row, step) {
         const s = getSettings();
         switch (row) {
-            case 'relaxed':
-                updateSettings({ relaxed: !s.relaxed });
+            case 'difficulty':
+                updateSettings({ difficulty: DIFFICULTY_ORDER[(DIFFICULTY_ORDER.indexOf(s.difficulty) + step + DIFFICULTY_ORDER.length) % DIFFICULTY_ORDER.length] });
                 break;
             case 'tutorial':
                 updateSettings({ tutorial: TUTORIALS[(TUTORIALS.indexOf(s.tutorial) + step + TUTORIALS.length) % TUTORIALS.length] });

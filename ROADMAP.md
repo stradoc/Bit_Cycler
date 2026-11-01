@@ -25,8 +25,8 @@ The latest handoff (what's done, what's unchecked, what's next) is the top entry
 Upgrades follow microprocessor history and stay with the CPU and its control logic (decided 2026-10-31; the reasoning and sources are in the design doc's "Eras and upgrade order").
 
 0. **From the user's notes (2026-11-01; Decisions table), in this order:**
-   - [ ] **Difficulty EASY / MEDIUM / HARD** (0.8x / 1x / 1.25x), replacing RELAXED; the same pay
-   - [ ] **Music and programs**: a table of songs, each job's picked by its program, played on the era's instruments; more kinds of program in `sim/generator.ts`
+   - [ ] **Music and programs**: a table of songs, each job's picked by its program, all in the 8-bit chiptune style for now; more kinds of program in `sim/generator.ts`
+   - [ ] Later: each era's own music style (DOS, 90s desktop, modern), added to the songs' table as data
 1. **Contracts redesign: a workday, a reputation, special jobs** (decided with the team 2026-11-01; Decisions table). Three phases, each playable on its own:
    - **Phase 1: done** (the workday, the calendar and its month page, jobs sized to your CPU, and TICK's first-day tours; CHANGELOG 2026-11-01). New kinds of events (special contracts, a campaign's deadline) go in `eventsOn` (`sim/workday.ts`). Still to tune by playing: pay per hour, the grades' shares, a day's pace.
    - **Phase 2: streak and reputation.** A streak of on-time jobs raises a pay multiplier (about +10% each, up to 2x); a late job resets it; a streak of 5 (say) brings a special contract. Reputation rises slowly with on-time jobs and falls with several lates in a row; it decides which clients offer work, so the big, well-paid ones need reputation (in place of the ADVANCED section). Ads in the shop buy reputation back, with diminishing returns. Both shown on the board (reputation as stars) and the timecard.

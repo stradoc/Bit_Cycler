@@ -132,7 +132,7 @@ export const README = {
             'TIPS',
             '  TICK TEACHES EACH NEW CPU PART, THEN A',
             '  PRACTICE. EVERY LESSON IS IN BRIEFS.',
-            '  TOO FAST? TURN ON RELAXED MODE IN SETTINGS.CFG.',
+            '  TOO FAST? SET THE DIFFICULTY IN SETTINGS.CFG.',
         ],
     ],
 };

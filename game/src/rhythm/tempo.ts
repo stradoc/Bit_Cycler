@@ -3,13 +3,39 @@
 // every 10x faster clock adds BPM_PER_DECADE (75 BPM at 1 MHz, ~147 at 4 GHz).
 // Clock upgrades raise the rated clock, so they speed the song up too.
 // CPU-time math always uses the real clock period; the tempo only represents it.
+// The player's difficulty speeds the whole song up or slows it down (the pay
+// stays the same: rhythm skill never blocks learning).
+
+import { NORMAL_WINDOWS, RELAXED_WINDOWS, type Windows } from './judge.ts';
 
 export const BASE_BPM = 75; // at 1 MHz
 export const BPM_PER_DECADE = 20;
-/** Relaxed mode and practice play at this fraction of the normal tempo. */
-export const RELAXED_FACTOR = 0.8;
 
-export function tempoForClock(mhz: number, relaxed = false): number {
-  const bpm = BASE_BPM + BPM_PER_DECADE * Math.log10(Math.max(1, mhz));
-  return relaxed ? bpm * RELAXED_FACTOR : bpm;
+/**
+ * How fast a song goes, chosen in the settings: the beat's speed against the
+ * clock's tempo, and the timing windows. RELAXED is for learning or a beat
+ * that's too fast, and practice always plays at it.
+ */
+export const DIFFICULTIES = {
+  relaxed: { name: 'RELAXED', speed: 0.8, windows: RELAXED_WINDOWS },
+  easy: { name: 'EASY', speed: 1, windows: NORMAL_WINDOWS },
+  medium: { name: 'MEDIUM', speed: 1.15, windows: NORMAL_WINDOWS },
+  hard: { name: 'HARD', speed: 1.5, windows: NORMAL_WINDOWS },
+} as const satisfies Readonly<Record<string, { name: string; speed: number; windows: Windows }>>;
+
+export type Difficulty = keyof typeof DIFFICULTIES;
+export type Pace = (typeof DIFFICULTIES)[Difficulty];
+
+/** The difficulties, slowest first (the order left / right steps through them). */
+export const DIFFICULTY_ORDER: readonly Difficulty[] = ['relaxed', 'easy', 'medium', 'hard'];
+/** A new player's difficulty. */
+export const DEFAULT_DIFFICULTY: Difficulty = 'medium';
+
+export function isDifficulty(value: unknown): value is Difficulty {
+  return typeof value === 'string' && value in DIFFICULTIES;
+}
+
+/** The song's tempo at the rated clock `mhz`, times the difficulty's `speed`. */
+export function tempoForClock(mhz: number, speed = 1): number {
+  return (BASE_BPM + BPM_PER_DECADE * Math.log10(Math.max(1, mhz))) * speed;
 }

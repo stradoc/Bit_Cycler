@@ -1,5 +1,6 @@
 import { DEEP_PIPELINE } from '../data/economy.js';
 import { programByName } from '../data/programs.js';
+import { DEFAULT_DIFFICULTY, DIFFICULTIES, isDifficulty } from '../rhythm/tempo.js';
 import { deepActive, hasCache, ratedMhzFor } from '../sim/progress.js';
 import { THERMAL } from '../sim/thermal.js';
 import { ROWS, SINGLE_CYCLE_ROWS } from './layout.js';
@@ -22,6 +23,8 @@ export function songSetup(start, progress, params) {
     const deep = !singleCycle && (start.deep ?? ((guessing && deepActive(progress)) || params.has('deep')));
     // ?clock=150 starts the song overclocked, and allows it without the upgrade. Practice always runs at the rated clock.
     const clock = Number(params.get('clock')) / 100;
+    const asked = params.get('difficulty');
+    const difficulty = start.difficulty ?? (isDifficulty(asked) ? asked : DEFAULT_DIFFICULTY);
     return {
         program,
         spec: programByName(program),
@@ -38,6 +41,8 @@ export function songSetup(start, progress, params) {
         maxDial: replay?.maxDial ?? (practice ? THERMAL.maxDial : progress.chipMaxDial),
         canOverclock: replay?.canOverclock ?? (progress.overclocking || params.has('clock')),
         startDial: clock && !practice && !replay ? clock : undefined,
+        difficulty,
+        pace: DIFFICULTIES[practice ? 'relaxed' : difficulty],
         practice,
         contract,
         returnTo: start.returnTo,

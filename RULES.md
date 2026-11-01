@@ -53,4 +53,4 @@ From the [design doc](https://claude.ai/artifact/8VttdcZGpm8e6upLo3wgzy):
 
 - **No quiz questions.** Every concept is a decision the player makes in gameplay.
 - **Accuracy first.** Every technical claim in the game or README is checked against the course textbook before it ships. Approximate figures are labeled as approximate.
-- **Rhythm skill never blocks learning.** Missing a beat means the CPU takes the slow path, never a game over, and relaxed mode is always available.
+- **Rhythm skill never blocks learning.** Missing a beat means the CPU takes the slow path, never a game over, and the RELAXED difficulty is always available.

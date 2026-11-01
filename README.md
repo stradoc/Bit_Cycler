@@ -49,6 +49,7 @@ Add these to the URL, e.g. `http://localhost:8000/?scene=play&autoplay`. Any `?s
 | `?scene=pipeline&forwarding&guessing` | Tier 4 (branch prediction) |
 | `?scene=pipeline&forwarding&guessing&predictor=1-bit` (or `2-bit`) | Tiers 5–6 (hardware predictor, SUM GRID) |
 | `&practice` | Practice mode |
+| `&difficulty=hard` | Play at that difficulty (`relaxed` / `easy` / `medium` / `hard`) instead of the settings' |
 | `&cache` | The L1 cache |
 | `&clock=150` | Start with the clock dial at 50–150% |
 | `&deep` | The deep pipeline (on a pipelined tier): a 1.5x clock, 4 cycles per wrong guess |

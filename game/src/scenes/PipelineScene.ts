@@ -4,7 +4,6 @@ import { stopHum, type Cue } from '../audio/sound.ts';
 import { cheatFlags } from '../cheatFlags.ts';
 import { SONG_TOURS, type SongTarget } from '../data/tours.ts';
 import { keyOf } from '../input/keys.ts';
-import { NORMAL_WINDOWS, RELAXED_WINDOWS } from '../rhythm/judge.ts';
 import { evaluate, PipelineRun, type Action, type CycleReport, type Decision } from '../rhythm/pipelineRun.ts';
 import { tempoForClock } from '../rhythm/tempo.ts';
 import { getProgress, updateProgress } from '../save.ts';
@@ -139,7 +138,8 @@ export class PipelineScene extends Screen {
   }
 
   init(data?: SongStart): void {
-    this.setup = songSetup(data ?? {}, getProgress(), new URLSearchParams(location.search));
+    // The difficulty comes from the settings unless the start carries one (a retry or a replay keeps the run's).
+    this.setup = songSetup({ difficulty: getSettings().difficulty, ...data }, getProgress(), new URLSearchParams(location.search));
     this.wasHalted = false;
     this.dialRecording = [];
     this.overheatsShown = 0;
@@ -163,7 +163,6 @@ export class PipelineScene extends Screen {
   }
 
   create(): void {
-    const settings = getSettings();
     // The song has its own music.
     this.setUp({ hum: false });
     stopHum();
@@ -175,9 +174,8 @@ export class PipelineScene extends Screen {
 
     const { setup } = this;
     const { spec } = setup;
-    const easy = settings.relaxed || setup.practice;
-    // The song's tempo follows the rated clock, so clock upgrades speed it up.
-    const bpm = tempoForClock(setup.ratedMhz, easy);
+    // The song's tempo follows the rated clock, so clock upgrades speed it up; the difficulty speeds it up or slows it down.
+    const bpm = tempoForClock(setup.ratedMhz, setup.pace.speed);
     this.baseBpm = bpm;
     const program = assemble(spec.source, REGISTER_COUNT);
     const cpu = new Cpu(program, 8, spec.memory, REGISTER_COUNT);
@@ -187,7 +185,7 @@ export class PipelineScene extends Screen {
     // Songs (and practice) open with a count-in naming the key registers; replays go straight in.
     const countBeats = spec.keys && !setup.watching ? Math.ceil((COUNT_IN_SECONDS * bpm * chip.clockRatio) / 60) : 0;
     this.firstBeat = FIRST_BEAT + countBeats;
-    this.run = new PipelineRun(cpu, pipelineOptions(setup, chip.mhz), this.firstBeat, 60 / bpm, easy ? RELAXED_WINDOWS : NORMAL_WINDOWS, chip);
+    this.run = new PipelineRun(cpu, pipelineOptions(setup, chip.mhz), this.firstBeat, 60 / bpm, setup.pace.windows, chip);
     this.tempoRatio = chip.clockRatio;
 
     const shown: Shown = {
