@@ -6,6 +6,8 @@ import { cssColor } from './eras.js';
 import { ALPHA, TEXT } from './theme.js';
 import { Box, eraText } from './widgets.js';
 const CHARS_PER_SECOND = 60;
+/** Once all the words are showing, Enter waits this long (ms) before it closes them, so a double press can't skip a line unread. */
+const READ_MS = 300;
 const BUBBLE_W = 330;
 const MAX_BUBBLE_W = 440;
 const PAD = 12;
@@ -14,7 +16,7 @@ const MARGIN = 8;
 /** Above everything on the screen. */
 const DEPTH = 900;
 /** Where a picture is held up, and how big its card is. */
-const CARD = { x: WIDTH / 2, y: 196, w: 820, h: 280 };
+const CARD = { x: WIDTH / 2, y: 196, w: 880, h: 280 };
 /** The robot, its eyes looking left, ahead or right, its mouth open or shut. */
 function robot(look, blink, mouth) {
     const eye = blink ? '-' : 'o';
@@ -97,6 +99,10 @@ export class Guide {
     /** Where the robot waits while it has nothing to say; undefined: it leaves. */
     home;
     playing;
+    /** A held line is up (GuideLine.hold): it waits for Enter. */
+    held = false;
+    /** When Enter showed the rest of the words at once (performance.now()). */
+    skippedAt = 0;
     /** The words being said, each with where it starts and the pitch it's said at; and how many have been voiced. */
     syllables = [];
     voiced = 0;
@@ -126,6 +132,10 @@ export class Guide {
     get talking() {
         return this.words !== undefined;
     }
+    /** A tour or a held line is up: the screen waits, and sends it Enter (next()). */
+    get waiting() {
+        return this.playing !== undefined || this.held;
+    }
     /** Plays a tour: each step on Enter (or a click), then `done`. `where` finds the part a step points at. */
     tour(steps, where, done) {
         const keys = (i) => (i === steps.length - 1 ? '[ENTER] OK!' : `[ENTER] NEXT   ${i + 1}/${steps.length}`);
@@ -139,41 +149,51 @@ export class Guide {
         cue(this.scene, 'guide-hello');
         this.say(lines[0]);
     }
-    /** Enter (or a click) during a tour: show the rest of the words, or go on. Returns whether the guide took the key. */
+    /**
+     * Enter (or a click) while it's waiting: the first shows the rest of the
+     * words, the next closes them (going on to a tour's next line). Nothing
+     * is skipped unread. Returns whether the guide took the key.
+     */
     next() {
+        if (!this.waiting)
+            return false;
         if (this.words && this.typedChars() < this.full.length) {
             this.started = 0;
+            this.skippedAt = performance.now();
             this.voiced = this.syllables.length;
             return true;
         }
+        if (performance.now() - this.shownAt() < READ_MS)
+            return true;
         const playing = this.playing;
-        if (!playing)
-            return false;
+        if (!playing) {
+            cue(this.scene, 'move');
+            this.quiet();
+            return true;
+        }
         playing.index++;
         if (playing.index < playing.lines.length) {
             cue(this.scene, 'move');
             this.say(playing.lines[playing.index]);
+            return true;
         }
-        else {
-            this.skip();
-        }
-        return true;
-    }
-    /** Ends the tour now (its last step, or the pause menu's SKIP THE TOUR): what comes after it starts. */
-    skip() {
-        const playing = this.playing;
-        if (!playing)
-            return;
         this.playing = undefined;
-        this.catcher.disableInteractive();
         this.quiet();
         cue(this.scene, 'guide-bye');
         playing.done();
+        return true;
+    }
+    /** When all the words were showing: typed out, or shown at once by Enter. */
+    shownAt() {
+        return this.started === 0 ? this.skippedAt : this.started + (this.full.length / CHARS_PER_SECOND) * 1000;
     }
     /** Says a line: the robot walks over beside what it points at, and the words type out. */
     say(line) {
         this.clear();
         this.point = line.point;
+        this.held = line.hold ?? false;
+        if (this.held)
+            this.catcher.setInteractive();
         const { era, scene } = this;
         // The rest of the screen dims: all of it behind a picture, around the part pointed at.
         const dim = line.dim ?? 0.7;
@@ -232,6 +252,9 @@ export class Guide {
     /** Stops talking: the bubble, the dimming and any picture go, and the robot goes home (or leaves). */
     quiet() {
         this.clear();
+        this.held = false;
+        if (!this.playing)
+            this.catcher.disableInteractive();
         if (this.home)
             this.goal = { ...this.home };
         else

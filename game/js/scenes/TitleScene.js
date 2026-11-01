@@ -1,12 +1,15 @@
 import { powerOff, stopHum } from '../audio/sound.js';
 import { programListing } from '../data/boot.js';
 import { LESSONS } from '../data/lessons.js';
+import { BOARD_TOUR_ID, WELCOME_TOUR } from '../data/tours.js';
+import { openLesson } from '../flow.js';
 import { banner, commandLine, CREDITS, listCommand, listingFooter, listingLine, readCommand, README } from '../data/menuFiles.js';
 import { formatMoney } from '../format.js';
 import { activeSlot, CAMPAIGN_SLOTS, getProgress, hasSave, newGame, slotName } from '../save.js';
 import { getSettings, updateSettings } from '../settings.js';
 import { cpuLine, tierOf } from '../sim/progress.js';
 import { baseEra, cssColor } from '../ui/eras.js';
+import { Guide } from '../ui/guide.js';
 import { ListMenu } from '../ui/list.js';
 import { Screen } from '../ui/screen.js';
 import { ALPHA, LAYOUT } from '../ui/theme.js';
@@ -15,6 +18,8 @@ const FOLDER_PATH = { root: [], briefings: ['BRIEFS'] };
 const LIST_X = 230;
 const LIST_TOP = 172;
 const ROW_H = 26;
+/** BRIEFS holds more files: its rows are closer together. */
+const BRIEFS_ROW_H = 21;
 /** The code in the margins scrolls up this fast (layout pixels a second). */
 const CODE_SPEED = 14;
 /** The margins' code columns: their left edges, and the band they show in. */
@@ -24,7 +29,7 @@ const CODE_BOTTOM = 430;
 const CODE_WIDTH = 196;
 /**
  * The main menu, as the game's own disk: programs to run (continue, a new
- * campaign, practice, shut down), folders to open (saves, briefings), the
+ * campaign, practice, shut down), folders to open (saves, BRIEFS: TICK's lessons), the
  * settings file and text files to read, listed the way each era listed files
  * (data/menuFiles.ts). The backquote key opens the developer screen, which
  * isn't listed.
@@ -52,6 +57,10 @@ export class TitleScene extends Screen {
     arrival = [];
     /** Skips the arrival to its end; undefined once it's over. */
     finishArrival;
+    /** TICK, who welcomes a new player (once per computer, or from BRIEFS). */
+    guide;
+    /** The welcome plays once the menu has arrived. */
+    welcomeDue = false;
     constructor() {
         super('title');
     }
@@ -63,7 +72,9 @@ export class TitleScene extends Screen {
         this.reading = undefined;
         this.off = false;
     }
+    /** `welcome`: TICK's welcome plays again (BRIEFS). */
     create(data) {
+        this.welcomeDue = (data?.welcome ?? false) || !getSettings().welcomed;
         this.setUp({ glow: 'menu' });
         const { era } = this;
         this.scrollingCode();
@@ -79,11 +90,44 @@ export class TitleScene extends Screen {
         const status = this.text(WIDTH / 2, LAYOUT.message, this.statusLine(), 14).setAlpha(0.65);
         const hints = this.hints('[UP/DOWN] CHOOSE', '[ENTER] OPEN', '[ESC] BACK', '[M] COMPUTER HUM');
         this.lower = [status, hints];
-        this.openFolder(data?.folder ?? 'root', data?.selected);
+        this.openFolder(this.welcomeDue ? 'root' : (data?.folder ?? 'root'), data?.selected);
+        this.guide = new Guide(this, era);
         if (this.fromBoot) {
             this.cameras.main.fadeIn(300, 0, 0, 0);
             this.arrive(title, tagline, [this.footer, this.about, status, hints]);
         }
+        else {
+            this.welcomeIfDue();
+        }
+    }
+    update() {
+        super.update();
+        this.guide.update(performance.now());
+    }
+    /** TICK's welcome, if it's due: what the game is for, and where things are. */
+    welcomeIfDue() {
+        if (!this.welcomeDue)
+            return;
+        this.welcomeDue = false;
+        if (this.folder !== 'root' || this.reading)
+            this.openFolder('root');
+        this.guide.tour(WELCOME_TOUR, (target) => this.where(target), () => updateSettings({ welcomed: true }));
+    }
+    /** Where the main menu's entries are, for TICK to point at (the rows from the first entry named to the last). */
+    where(target) {
+        const actions = {
+            menu: this.entries.map((entry) => entry.action),
+            new: ['continue', 'new'],
+            briefs: ['briefings'],
+            readme: ['settings', 'readme'],
+            settings: ['settings'],
+        };
+        const rows = this.entries.flatMap((entry, i) => (actions[target].includes(entry.action) ? [i] : []));
+        if (rows.length === 0)
+            return undefined;
+        const top = this.menu.rowY(Math.min(...rows)) - ROW_H / 2;
+        const bottom = this.menu.rowY(Math.max(...rows)) + ROW_H / 2;
+        return { x: LIST_X - 14, y: top, w: 528, h: bottom - top };
     }
     statusLine() {
         if (!hasSave())
@@ -104,32 +148,32 @@ export class TitleScene extends Screen {
             { action: 'new', name: 'NEWGAME', ext: 'EXE', note: 'A NEW CAMPAIGN', about: 'START A NEW CAMPAIGN: AN 8-BIT SINGLE-CYCLE CPU AND NO MONEY.' },
             { action: 'practice', name: 'PRACTICE', ext: 'EXE', note: `TIER ${tier.number}: ${tier.name}`, about: 'PRACTICE YOUR CPU: NOTES WAIT FOR YOU.' },
             { action: 'saves', name: 'SAVES', ext: '', note: `${used} OF ${CAMPAIGN_SLOTS.length} SLOTS USED`, about: 'LOAD A SAVE, OR EXPORT, IMPORT AND DELETE SAVES.' },
-            { action: 'briefings', name: 'BRIEFS', ext: '', note: `${read} OF ${Object.keys(LESSONS).length} READ`, about: 'REREAD A BRIEFING YOU HAVE FINISHED.' },
+            { action: 'briefings', name: 'BRIEFS', ext: '', note: `${read} OF ${Object.keys(LESSONS).length} SEEN`, about: "EVERY LESSON TICK GIVES, TO PLAY AGAIN WHENEVER YOU LIKE." },
             { action: 'settings', name: 'SETTINGS', ext: 'CFG', note: 'RELAXED MODE, SOUND, SCREEN', about: 'RELAXED MODE, AUDIO CALIBRATION, VOLUME, SCREEN EFFECTS AND DARK MODE.' },
             { action: 'readme', name: 'README', ext: 'TXT', note: 'HOW TO PLAY', about: 'HOW TO PLAY, A PAGE AT A TIME.' },
             { action: 'credits', name: 'CREDITS', ext: 'TXT', note: 'MADE BY, FONTS, LICENSES', about: 'WHO MADE WHAT.' },
             { action: 'shutdown', name: 'SHUTDOWN', ext: 'EXE', note: 'POWER OFF', about: 'TURN THE COMPUTER OFF.' },
         ];
     }
-    /** Every briefing, as a text file: the ones you've finished, and your CPU's own, can be read. */
+    /** BRIEFS: TICK's welcome, the board's tour and every lesson, all open, to play again. */
     briefingEntries() {
         const progress = getProgress();
-        const current = tierOf(progress).lessonId;
-        const lessons = Object.values(LESSONS).map((lesson) => {
-            const read = progress.seenLessons.includes(lesson.id);
-            const open = read || lesson.id === current;
-            return {
-                action: 'lesson',
-                lessonId: lesson.id,
-                name: lesson.id.toUpperCase().slice(0, 8),
-                ext: 'TXT',
-                note: lesson.title.replace(/^LESSON \d+: /, '').slice(0, 26),
-                value: read ? 'READ' : open ? 'NEW' : 'LOCKED',
-                locked: !open,
-                about: open ? `OPEN ${lesson.title}.` : 'LOCKED: BUY THE PART IT EXPLAINS FIRST.',
-            };
-        });
-        return [{ action: 'up', name: '..', ext: '', note: 'BACK', about: 'BACK TO THE MAIN FOLDER.' }, ...lessons];
+        const seen = (yes) => (yes ? 'SEEN' : 'NEW');
+        const lessons = Object.values(LESSONS).map((lesson) => ({
+            action: 'lesson',
+            lessonId: lesson.id,
+            name: lesson.id.toUpperCase().slice(0, 8),
+            ext: 'EXE',
+            note: lesson.title.replace(/^LESSON \d+: /, '').slice(0, 26),
+            value: seen(progress.seenLessons.includes(lesson.id)),
+            about: lesson.practice ? `TICK TEACHES ${lesson.title} ON THE SONG SCREEN, THEN A PRACTICE.` : `TICK EXPLAINS ${lesson.title} ON THE SONG SCREEN.`,
+        }));
+        return [
+            { action: 'up', name: '..', ext: '', note: 'BACK', about: 'BACK TO THE MAIN FOLDER.' },
+            { action: 'welcome', name: 'WELCOME', ext: 'EXE', note: 'WHAT THIS GAME IS FOR', value: seen(getSettings().welcomed), about: "TICK'S WELCOME: WHAT THE GAME TEACHES, AND WHERE TO FIND THINGS." },
+            { action: 'boardTour', name: 'BOARD', ext: 'EXE', note: 'THE CONTRACT BOARD', value: seen(progress.seenLessons.includes(BOARD_TOUR_ID)), about: 'TICK SHOWS YOU AROUND THE CONTRACT BOARD.' },
+            ...lessons,
+        ];
     }
     /** Lists a folder, the cursor on `selected` (an action or lesson id) if it's there. */
     openFolder(folder, selected) {
@@ -141,6 +185,12 @@ export class TitleScene extends Screen {
             text.setVisible(true);
         this.entries = folder === 'root' ? this.rootEntries() : this.briefingEntries();
         const { era } = this;
+        // BRIEFS has more files than the main folder: a list with closer rows.
+        const rowHeight = folder === 'root' ? ROW_H : BRIEFS_ROW_H;
+        if (this.menu.rowHeight !== rowHeight) {
+            this.menu.destroy();
+            this.menu = new ListMenu(this, era, { x: LIST_X, top: LIST_TOP, width: 500, rowHeight, size: 16 });
+        }
         this.prompt.setText(commandLine(era, FOLDER_PATH[folder], listCommand(era)));
         const start = this.entries.findIndex((entry) => entry.action === selected || entry.lessonId === selected);
         this.menu.setRows(this.entries.map((entry) => ({ label: listingLine(entry.name, entry.ext, entry.note, era), value: entry.value, dim: entry.locked })), Math.max(0, start));
@@ -195,13 +245,19 @@ export class TitleScene extends Screen {
         this.about.setText(this.entries[this.menu.selected]?.about ?? '');
     }
     // ---- keys ----
-    onKey(key) {
+    onKey(key, event) {
         if (this.menu.busy || this.off)
             return true;
         // A key while the menu is still arriving just shows all of it.
         if (this.finishArrival) {
             this.finishArrival();
             return true;
+        }
+        // TICK's welcome: Enter shows the rest of the words, then goes on.
+        if (this.guide.waiting) {
+            if (key === 'Enter' && !event.repeat)
+                this.guide.next();
+            return key !== 'M';
         }
         if (this.reading) {
             if (['ArrowRight', 'ArrowDown', 'Enter', ' '].includes(key))
@@ -277,7 +333,14 @@ export class TitleScene extends Screen {
             case 'up':
                 return this.openFolder('root', 'briefings');
             case 'lesson':
-                this.scene.start('briefing', { lessonId: entry.lessonId });
+                if (entry.lessonId)
+                    openLesson(this, entry.lessonId, { scene: 'title', data: { folder: 'briefings', selected: entry.lessonId } });
+                return;
+            case 'welcome':
+                this.scene.restart({ welcome: true });
+                return;
+            case 'boardTour':
+                this.scene.start('board', { tour: true });
                 return;
             case 'settings':
                 this.scene.start('settings');
@@ -338,7 +401,10 @@ export class TitleScene extends Screen {
             });
         }
         at(t, () => fades.forEach((text, i) => this.tweens.add({ targets: text, alpha: alphas[i], duration: 450, delay: i * 120 })));
-        at(t + 900, () => (this.finishArrival = undefined));
+        at(t + 900, () => {
+            this.finishArrival = undefined;
+            this.welcomeIfDue();
+        });
         this.finishArrival = () => {
             for (const timer of this.arrival)
                 timer.remove();
@@ -350,6 +416,7 @@ export class TitleScene extends Screen {
             fades.forEach((text, i) => text.setAlpha(alphas[i]));
             this.menu.showRows(Number.POSITIVE_INFINITY);
             this.finishArrival = undefined;
+            this.welcomeIfDue();
         };
     }
     /**

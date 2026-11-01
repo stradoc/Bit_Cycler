@@ -54,7 +54,7 @@ export class ListMenu {
   private readonly x: number;
   private readonly top: number;
   private readonly width: number;
-  private readonly rowHeight: number;
+  readonly rowHeight: number;
   private readonly size: number;
   private readonly middle: number;
   private readonly depth: number | undefined;

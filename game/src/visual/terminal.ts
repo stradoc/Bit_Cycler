@@ -23,15 +23,15 @@ const LCD_TEXTURE = 'lcd';
 /** The DOS menu bar's items, and which one each screen is. */
 const DOS_MENU = ['FILE', 'CONTRACTS', 'SHOP', 'RUN', 'HELP'] as const;
 const DOS_ITEM: Readonly<Record<string, (typeof DOS_MENU)[number]>> = {
-  title: 'FILE', settings: 'FILE', saves: 'FILE', dev: 'FILE', board: 'CONTRACTS', shop: 'SHOP', pipeline: 'RUN', briefing: 'HELP',
+  title: 'FILE', settings: 'FILE', saves: 'FILE', dev: 'FILE', board: 'CONTRACTS', shop: 'SHOP', pipeline: 'RUN',
 };
 /** Where each scene is: a terminal prompt in the modern window's title bar, an app's document name in the classic one. */
 const PATHS: Readonly<Record<string, string>> = {
-  boot: '~', title: '~', settings: '~/settings', saves: '~/saves', dev: '~/dev', board: '~/contracts', shop: '~/shop', briefing: '~/briefings', pipeline: '~/run',
+  boot: '~', title: '~', settings: '~/settings', saves: '~/saves', dev: '~/dev', board: '~/contracts', shop: '~/shop', pipeline: '~/run',
 };
 const TITLES: Readonly<Record<string, string>> = {
   title: 'BIT CYCLER', settings: 'BIT CYCLER - SETTINGS', saves: 'BIT CYCLER - SAVES', dev: 'BIT CYCLER - DEVELOPER', board: 'BIT CYCLER - CONTRACTS',
-  shop: 'BIT CYCLER - SHOP', briefing: 'BIT CYCLER - BRIEFING', pipeline: 'BIT CYCLER - RUN',
+  shop: 'BIT CYCLER - SHOP', pipeline: 'BIT CYCLER - RUN',
 };
 
 /**

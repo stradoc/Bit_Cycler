@@ -21,13 +21,13 @@ The game opens on a dark screen: press any key to switch the computer on. It boo
 
 Each song opens with a short count-in naming the loop's key registers (`NEXT`, `END`). After every song you watch its replay (`←` / `→` speed, `Space` pause, click anything to learn what it is), then the results: where the cycles went, CPI, and the time the whole contract takes at your pace.
 
-**Menus.** Arrows choose, `Enter` opens, `Esc` or `Q` goes back (on the board, in the shop and in a briefing it opens the pause menu), `M` turns the computer's hum on or off. On the main menu: CONTINUE, NEWGAME, PRACTICE (your CPU, with notes that wait for you), SAVES (three slots, export and import), BRIEFS (reread lessons), SETTINGS, README.TXT and CREDITS.TXT, SHUTDOWN. On the board: `S` opens the shop. In the shop: `Enter` buys, `B` goes back to the board.
+**Menus.** Arrows choose, `Enter` opens, `Esc` or `Q` goes back (on the board and in the shop it opens the pause menu), `M` turns the computer's hum on or off. On the main menu: CONTINUE, NEWGAME, PRACTICE (your CPU, with notes that wait for you), SAVES (three slots, export and import), BRIEFS (every lesson TICK gives, to play again, and TICK's welcome), SETTINGS, README.TXT and CREDITS.TXT, SHUTDOWN. On the board: `S` opens the shop. In the shop: `Enter` buys, `B` goes back to the board.
 
 **Settings.** Relaxed mode (wider timing and a slower beat), audio calibration (line the light up with the click), volume, the hum, CRT effects and dark mode for the 90s desktop.
 
 **Eras.** Your computer's look follows its CPU chip. Each wider chip you buy in the shop moves it into the next era: a green CRT (8-bit), DOS (16-bit), a 90s desktop (32-bit) and a modern terminal (64-bit).
 
-**New hardware comes with a lesson.** TICK, the robot who lives in the computer, shows you the new parts on the real screen (or a few cards on the idea, for lessons TICK hasn't taken over yet), then a practice, where notes wait for you and TICK explains each new situation, then the real thing. On the board, the job sheet shows the chosen contract: the loop you'll play, its notes, the memory it uses, and how long your CPU would take.
+**TICK teaches as you go.** TICK, the robot who lives in the computer, welcomes you on the main menu, shows you around the contract board, and teaches each new part of the CPU on the real screen the first time it comes up, pointing at it and holding up pictures; then a practice, where notes wait for you and TICK explains each new situation, then the real thing. Press `Enter` to see the rest of what TICK is saying, and `Enter` again to go on. Every lesson is in BRIEFS on the main menu. On the board, the job sheet shows the chosen contract: the loop you'll play, its notes, the memory it uses, and how long your CPU would take.
 
 ## Educational purpose and learning objectives
 

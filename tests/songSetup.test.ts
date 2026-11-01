@@ -90,10 +90,13 @@ test('the simulator runs the setup\'s hardware', () => {
 });
 
 test("the guide's tour plays once: retries and replays drop it", () => {
-  const first = songSetup({ practice: true, tour: 'tier1' }, NEW_GAME, url());
-  assert.equal(first.tour, 'tier1');
+  const first = songSetup({ practice: true, tour: ['tier1'], afterTour: { scene: 'title' } }, NEW_GAME, url());
+  assert.deepEqual(first.tour, ['tier1']);
+  assert.deepEqual(first.afterTour, { scene: 'title' });
   assert.equal(songSetup(playAgain(first), NEW_GAME, url()).tour, undefined);
+  assert.equal(songSetup(playAgain(first), NEW_GAME, url()).afterTour, undefined);
   assert.equal(songSetup(watch(first, recording), NEW_GAME, url()).tour, undefined);
-  assert.equal(songSetup({}, NEW_GAME, url('practice&tour=tier1')).tour, 'tier1');
+  assert.deepEqual(songSetup({}, NEW_GAME, url('practice&tour=tier1')).tour, ['tier1']);
+  assert.deepEqual(songSetup({}, NEW_GAME, url('tour=memwall,cache')).tour, ['memwall', 'cache']);
   assert.equal(songSetup({ replay: recording }, NEW_GAME, url('tour=tier1')).tour, undefined);
 });

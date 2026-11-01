@@ -18,14 +18,14 @@ test('files and folders are named the way each era listed them', () => {
   assert.equal(readCommand(ERAS[3], 'README', 'TXT'), 'cat readme.txt');
 });
 
-test('listing lines keep their columns, and every briefing fits as a file', () => {
+test('listing lines keep their columns, and every lesson fits as a file in BRIEFS', () => {
   for (const era of ERAS) {
     const a = listingLine('CONTINUE', 'EXE', '%', era);
     const b = listingLine('SAVES', '', '%', era);
     assert.equal(a.indexOf('%'), b.indexOf('%'), `${era.name}: notes line up`);
     for (const lesson of Object.values(LESSONS)) {
       const note = lesson.title.replace(/^LESSON \d+: /, '').slice(0, 26);
-      assert.ok(listingLine(lesson.id.toUpperCase().slice(0, 8), 'TXT', note, era).length <= 42, lesson.id);
+      assert.ok(listingLine(lesson.id.toUpperCase().slice(0, 8), 'EXE', note, era).length <= 42, lesson.id);
     }
   }
 });

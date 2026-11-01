@@ -2,7 +2,6 @@ import { installCheats } from './cheats.js';
 import { keepKeyboardFocus } from './input/keyFocus.js';
 import { BoardScene } from './scenes/BoardScene.js';
 import { BootScene } from './scenes/BootScene.js';
-import { BriefingScene } from './scenes/BriefingScene.js';
 import { DevScene } from './scenes/DevScene.js';
 import { PipelineScene } from './scenes/PipelineScene.js';
 import { SavesScene } from './scenes/SavesScene.js';
@@ -35,7 +34,7 @@ const game = new Phaser.Game({
     // Keyboard is handled in input/keys.ts; Phaser's plugin double-fires keys within a frame.
     input: { keyboard: false },
     // The first scene starts the game: the intro, then the main menu ('title').
-    scene: [BootScene, TitleScene, SettingsScene, SavesScene, DevScene, BoardScene, ShopScene, BriefingScene, PipelineScene],
+    scene: [BootScene, TitleScene, SettingsScene, SavesScene, DevScene, BoardScene, ShopScene, PipelineScene],
 });
 installCheats(game);
 if (new URLSearchParams(location.search).has('fps'))

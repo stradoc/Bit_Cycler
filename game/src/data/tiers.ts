@@ -6,7 +6,7 @@ import type { Predictor } from '../sim/pipeline.ts';
 export type Tier = {
   readonly number: number;
   readonly name: string;
-  /** Lesson (briefing) shown before the tier is first played. */
+  /** The lesson (TICK's tour, data/tours.ts) played before the tier is first played. */
   readonly lessonId: string;
   /** Scene that plays the tier. */
   readonly scene: 'pipeline';

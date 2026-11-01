@@ -12,10 +12,12 @@ export type Settings = {
   readonly crt: number;
   /** The intro has played in full once; after that it boots quickly. */
   readonly bootSeen: boolean;
+  /** TICK's welcome on the main menu has played (once per computer; BRIEFS plays it again). */
+  readonly welcomed: boolean;
 };
 
 const STORAGE_KEY = 'bit-cycler-settings';
-const DEFAULTS: Settings = { offset: 0, relaxed: false, music: true, dark: false, volume: 1, crt: 1, bootSeen: false };
+const DEFAULTS: Settings = { offset: 0, relaxed: false, music: true, dark: false, volume: 1, crt: 1, bootSeen: false, welcomed: false };
 
 let current: Settings | undefined;
 

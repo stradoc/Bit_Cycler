@@ -35,7 +35,7 @@ const ABOUT: Readonly<Record<Row, string>> = {
   money: 'MONEY TO SPEND IN THE SHOP.',
   board: "THROWS AWAY THE BOARD'S JOBS AND DEALS NEW ONES.",
   everything: 'THE WIDEST CHIP, THE LAST TIER AND EVERY UPGRADE.',
-  lesson: '[LEFT/RIGHT] PICKS A LESSON, [ENTER] OPENS IT: TICK\'S TOUR AND ITS PRACTICE, OR ITS BRIEFING.',
+  lesson: "[LEFT/RIGHT] PICKS A LESSON, [ENTER] PLAYS IT: TICK'S TOUR, THEN ITS PRACTICE IF IT HAS ONE.",
   seen: "LESSONS AND TOURS MARKED SEEN DON'T PLAY BY THEMSELVES. [ENTER] MARKS ALL SEEN OR NONE.",
   play: 'THE CONTRACT BOARD, PLAYING THE DEVELOPER SAVE.',
   practice: 'A PRACTICE SONG ON THIS TIER: NOTES WAIT FOR YOU.',
@@ -231,7 +231,7 @@ export class DevScene extends Screen {
         this.cue('move');
         return this.refresh();
       case 'lesson':
-        openLesson(this, LESSON_IDS[this.lesson]);
+        openLesson(this, LESSON_IDS[this.lesson], { scene: 'dev', data: { selected: this.menu.selected } });
         return;
       case 'practice':
         this.scene.start(tier.scene, { practice: true, ...tier.options });

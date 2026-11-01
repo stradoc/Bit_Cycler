@@ -49,8 +49,7 @@ Add these to the URL, e.g. `http://localhost:8000/?scene=play&autoplay`. Any `?s
 | `&clock=150` | Start with the clock dial at 50–150% |
 | `&contract=standard` | Play the board's first contract in that section (`starter` / `standard` / `advanced`), with pay and results |
 | `&autoplay` | Every note played perfectly (demos, checking results) |
-| `?scene=briefing&lesson=tier2` | Open a lesson's briefing cards directly |
-| `?scene=pipeline&single&practice&tour=tier1` | Play a lesson's tour of the song screen, then its practice (lessons with a tour: `tier1`) |
+| `?scene=pipeline&single&practice&tour=tier1` | Play a lesson's tour of the song screen, then its practice (any lesson id in `data/lessons.ts`; `tour=memwall,cache` plays two in a row). The developer screen's OPEN LESSON and the main menu's BRIEFS do the same with the right hardware |
 | `?money=5000` | Set the money |
 | `?era=1` … `?era=4` | Show an era (8/16/32/64-bit look) until the page reloads; otherwise the save's CPU chip decides |
 | `?fps` | Frames per second and the canvas size in the corner |

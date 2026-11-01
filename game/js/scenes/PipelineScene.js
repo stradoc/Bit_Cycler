@@ -185,13 +185,17 @@ export class PipelineScene extends Screen {
         this.music = new LayeredMusic(this.ctx);
         this.events.once('shutdown', () => this.conductor?.stop());
         this.panel.refresh();
-        // A lesson's tour of the screen comes first; the song starts when it ends.
-        const tour = setup.tour ? SONG_TOURS[setup.tour] : undefined;
-        if (tour && setup.tour) {
-            const lesson = setup.tour;
-            this.guide.tour(tour, (target) => this.where(target), () => {
-                updateProgress((p) => ({ ...p, seenLessons: [...new Set(p.seenLessons).add(lesson)] }));
-                this.startConductor();
+        // A lesson's tour of the screen comes first (two in a row: the memory wall, then the cache);
+        // the song starts when it ends, or the game goes on elsewhere (a lesson with no practice).
+        const lessons = setup.tour ?? [];
+        const steps = lessons.flatMap((id) => SONG_TOURS[id] ?? []);
+        if (steps.length > 0) {
+            this.guide.tour(steps, (target) => this.where(target), () => {
+                updateProgress((p) => ({ ...p, seenLessons: [...new Set([...p.seenLessons, ...lessons])] }));
+                if (setup.afterTour)
+                    this.scene.start(setup.afterTour.scene, setup.afterTour.data);
+                else
+                    this.startConductor();
             });
         }
         else {
@@ -255,8 +259,9 @@ export class PipelineScene extends Screen {
     handleKey(event) {
         const key = keyOf(event);
         const { setup } = this;
-        if (this.guide.touring) {
-            if (key === 'Enter' || key === ' ' || key === 'ArrowRight')
+        // TICK's tour or a tip: Enter shows the rest of the words, then closes them. The song waits.
+        if (this.guide.waiting) {
+            if (key === 'Enter' && !event.repeat)
                 this.guide.next();
             return;
         }
@@ -303,7 +308,7 @@ export class PipelineScene extends Screen {
         const items = [];
         const replay = setup.replay;
         if (this.guide.touring) {
-            items.push({ label: 'SKIP THE TOUR', about: 'START THE PRACTICE NOW, WITHOUT THE REST OF THE TOUR.', run: () => this.guide.skip() });
+            // No skipping TICK: the tour waits under the menu.
         }
         else if (setup.watching && replay) {
             items.push({ label: 'WATCH FROM THE START', about: 'THE REPLAY AGAIN, FROM ITS FIRST NOTE.', run: () => this.scene.restart(watch(setup, replay)) });
@@ -361,7 +366,7 @@ export class PipelineScene extends Screen {
                 return;
             if (outcome !== 'issued' && outcome !== 'stalled') {
                 this.buzz();
-                this.guide.say({ say: this.words.mistake(outcome), point: this.where('line'), dim: TIP_DIM });
+                this.guide.say({ say: this.words.mistake(outcome), point: this.where('line'), dim: TIP_DIM, keys: '[ENTER] OK', hold: true });
                 return;
             }
             this.guide.quiet();
@@ -554,7 +559,7 @@ export class PipelineScene extends Screen {
         if (!this.setup.practice || !tip || this.explained.has(tip.id))
             return false;
         this.explained.add(tip.id);
-        this.guide.say({ say: tip.message, point: this.where(tip.point ?? 'line'), dim: TIP_DIM });
+        this.guide.say({ say: tip.message, point: this.where(tip.point ?? 'line'), dim: TIP_DIM, keys: '[ENTER] OK', hold: true });
         return true;
     }
     // ---- memory waits ----
@@ -696,7 +701,7 @@ export class PipelineScene extends Screen {
             if (contract)
                 updateProgress((p) => completeContract(p, contract.id, Math.random, late));
             // Every real run is followed by its replay; the results come at the end of it.
-            this.guide.say({ say: 'Run complete! Now watch your replay. Click anything in it to learn what it is.', dim: 0.3 });
+            this.guide.say({ say: 'Run complete! Now watch your replay. Click anything in it to learn what it is.', dim: 0.3, keys: '[ENTER] OK', hold: true });
             const recording = {
                 cycles: this.recording,
                 dials: this.dialRecording,

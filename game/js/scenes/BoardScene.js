@@ -45,7 +45,9 @@ export class BoardScene extends Screen {
     constructor() {
         super('board');
     }
-    create() {
+    /** `tour`: play the board's tour even if it's been seen (BRIEFS on the main menu). */
+    create(data) {
+        const replayTour = data?.tour ?? false;
         this.setUp();
         const progress = getProgress();
         const worn = progress.chipMaxDial < THERMAL.maxDial ? `   CHIP WORN: MAX ${Math.round(progress.chipMaxDial * 100)}%` : '';
@@ -82,8 +84,8 @@ export class BoardScene extends Screen {
         this.drawSheet();
         // The first visit: the guide shows the board around.
         this.guide = new Guide(this, this.era);
-        if (!progress.seenLessons.includes(BOARD_TOUR_ID)) {
-            this.guide.tour(BOARD_TOUR, (target) => this.where(target), () => updateProgress((p) => ({ ...p, seenLessons: [...p.seenLessons, BOARD_TOUR_ID] })));
+        if (replayTour || !progress.seenLessons.includes(BOARD_TOUR_ID)) {
+            this.guide.tour(BOARD_TOUR, (target) => this.where(target), () => updateProgress((p) => ({ ...p, seenLessons: [...new Set(p.seenLessons).add(BOARD_TOUR_ID)] })));
         }
     }
     update() {
@@ -178,11 +180,12 @@ export class BoardScene extends Screen {
         this.cue('confirm');
         this.menu.press(() => playContract(this, contract));
     }
-    onKey(key) {
-        if (this.guide.touring) {
-            if (key === 'Enter' || key === ' ' || key === 'ArrowRight')
+    onKey(key, event) {
+        // TICK's tour: Enter shows the rest of the words, then goes on (a held-down key doesn't race through).
+        if (this.guide.waiting) {
+            if (key === 'Enter' && !event.repeat)
                 this.guide.next();
-            return true;
+            return key !== 'M';
         }
         if (this.menu.busy)
             return true;

@@ -5,7 +5,7 @@ import { ListMenu } from './list.ts';
 import { ALPHA, TEXT } from './theme.ts';
 import { Box, eraText } from './widgets.ts';
 
-// The pause menu: Esc (or Q) on the board, the shop, a briefing or a song
+// The pause menu: Esc (or Q) on the board, in the shop or in a song
 // opens a box over the dimmed screen with RESUME first and the places you
 // can go from there. The screen says what it offers (Screen.pauseItems) and
 // what pausing means for it (a song stops its clock); this draws it and

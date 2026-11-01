@@ -1,4 +1,4 @@
-import { briefAfterPurchase } from '../flow.ts';
+import { teachAfterPurchase } from '../flow.ts';
 import { formatMhz, formatMoney } from '../format.ts';
 import { getProgress, setProgress } from '../save.ts';
 import { bitsName, buy, cpuLine, ratedMhz, shopItems, type ShopItem } from '../sim/progress.ts';
@@ -15,7 +15,7 @@ const ROW_H = 19;
 const CHIP_X = 770;
 const CHIP_Y = 210;
 const INFO_Y = 358;
-/** A purchase shakes the chip this long (ms); a part's briefing starts after it. */
+/** A purchase shakes the chip this long (ms); TICK's lesson on the part starts after it. */
 const SHAKE_MS = 700;
 
 /**
@@ -32,7 +32,7 @@ export class ShopScene extends Screen {
   private about!: Phaser.GameObjects.Text;
   private message!: Phaser.GameObjects.Text;
   private shakeUntil = 0;
-  /** A purchase is shaking the chip before its briefing: ignore keys until then. */
+  /** A purchase is shaking the chip before its lesson: ignore keys until then. */
   private busy = false;
 
   constructor() {
@@ -105,16 +105,16 @@ export class ShopScene extends Screen {
     this.refresh();
     this.message.setText(
       item.lessonId !== undefined
-        ? 'FITTED! NOW ITS BRIEFING...'
+        ? 'FITTED! TICK WILL SHOW YOU HOW IT WORKS...'
         : item.group === 'CLOCK'
           ? `CLOCK NOW ${formatMhz(ratedMhz(bought))}: CONTRACTS TAKE LESS TIME AND THE BEAT IS FASTER.`
           : 'FITTED!',
     );
-    // New hardware comes with a briefing you have to read: it starts once the chip stops shaking.
+    // New hardware comes with TICK's lesson on it: it starts once the chip stops shaking.
     const lessonId = item.lessonId;
     if (lessonId !== undefined) {
       this.busy = true;
-      this.time.delayedCall(SHAKE_MS + 300, () => briefAfterPurchase(this, lessonId));
+      this.time.delayedCall(SHAKE_MS + 300, () => teachAfterPurchase(this, lessonId));
     } else if (this.eraChanged()) {
       // A new chip moves the computer into its era: the shop comes back in the new look.
       this.busy = true;
