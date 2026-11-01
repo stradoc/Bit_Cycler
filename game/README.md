@@ -27,7 +27,7 @@ Each song opens with a short count-in naming the loop's key registers (`NEXT`, `
 
 **Eras.** Your computer's look follows its CPU chip. Each wider chip you buy in the shop moves it into the next era: a green CRT (8-bit), DOS (16-bit), a 90s desktop (32-bit) and a modern terminal (64-bit).
 
-**TICK teaches as you go.** TICK, the robot who lives in the computer, welcomes you on the main menu, shows you around the contract board, and teaches each new part of the CPU on the real screen the first time it comes up, pointing at it and holding up pictures; then a practice, where notes wait for you and TICK explains each new situation, then the real thing. Press `Enter` to see the rest of what TICK is saying, and `Enter` again to go on. Every lesson is in BRIEFS on the main menu. On the board, the job sheet shows the chosen contract: the loop you'll play, its notes, the memory it uses, and how long your CPU would take.
+**TICK teaches as you go.** TICK, the robot who lives in the computer, welcomes you on the main menu, shows you around the contract board and walks you through your first job (a bakery's till) instruction by instruction, and teaches each new part of the CPU on the real screen the first time it comes up, pointing at it and holding up pictures; then a practice, where notes wait for you and TICK explains each new situation, then the real thing. Press `Enter` to see the rest of what TICK is saying, and `Enter` again to go on. Every lesson is in BRIEFS on the main menu. On the board, the job sheet shows the chosen contract: the loop you'll play, its notes, the memory it uses, and how long your CPU would take.
 
 ## Educational purpose and learning objectives
 

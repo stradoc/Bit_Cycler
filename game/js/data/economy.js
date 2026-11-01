@@ -130,6 +130,8 @@ export const SECTIONS = [
     { id: 'advanced', name: 'ADVANCED', instructions: [1e13, 7e13], deadline: [7 * DAY, 60 * DAY], pay: [500, 1200] },
 ];
 export const CONTRACTS_PER_SECTION = 2;
+/** A new game's first job, the only one on the board until it's done (data/programs.ts TUTORIAL_PROGRAM): what it pays, and how soon it's needed. */
+export const TUTORIAL_JOB = { pay: 50, deadline: 1 * MINUTE };
 /** Finishing after the deadline pays this much of the pay. */
 export const LATE_PAY_FACTOR = 0.5;
 /** A job your CPU would finish within this share of its deadline (playing perfectly) is tight: a sloppy run could be late. */

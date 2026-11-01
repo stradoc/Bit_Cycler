@@ -1,5 +1,5 @@
 import { parseSave, saveText, type Saved } from './saveFile.ts';
-import { fillBoard, NEW_GAME, type Progress } from './sim/progress.ts';
+import { fillBoard, NEW_GAME, newCampaign, type Progress } from './sim/progress.ts';
 
 // Saves the player's progress in the browser, like settings.ts does for
 // preferences. There are three campaign slots and a developer slot (the
@@ -122,7 +122,7 @@ export function updateProgress(change: (progress: Progress) => Progress): Progre
 /** A new game in `slot` (erasing what was there), which becomes the active slot. */
 export function newGame(slot: SlotId = activeSlot()): Progress {
   switchSlot(slot);
-  return setProgress(fillBoard(NEW_GAME, Math.random));
+  return setProgress(newCampaign());
 }
 
 export function deleteSlot(slot: SlotId): void {

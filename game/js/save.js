@@ -1,5 +1,5 @@
 import { parseSave, saveText } from './saveFile.js';
-import { fillBoard, NEW_GAME } from './sim/progress.js';
+import { fillBoard, NEW_GAME, newCampaign } from './sim/progress.js';
 export const CAMPAIGN_SLOTS = ['1', '2', '3'];
 const slotKey = (slot) => `bit-cycler-save-${slot}`;
 const ACTIVE_KEY = 'bit-cycler-slot';
@@ -108,7 +108,7 @@ export function updateProgress(change) {
 /** A new game in `slot` (erasing what was there), which becomes the active slot. */
 export function newGame(slot = activeSlot()) {
     switchSlot(slot);
-    return setProgress(fillBoard(NEW_GAME, Math.random));
+    return setProgress(newCampaign());
 }
 export function deleteSlot(slot) {
     write(slotKey(slot), null);

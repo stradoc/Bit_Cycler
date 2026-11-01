@@ -1,8 +1,8 @@
 // The player's progress: money, the CPU chip (its word size) and parts, clock,
 // memory and cooling upgrades, chip wear, and the contract board. Pure functions over a plain object, so the
 // rules are testable; game/src/save.ts stores it.
-import { BASE_MHZ, CHIPS, CLOCK, CONTRACTS_PER_SECTION, COOLING, CPU_PARTS, LATE_PAY_FACTOR, MEMORY_PARTS, OVERCLOCKING_PRICE, REPAIR_PRICE_PER_STEP, SECTIONS, TIGHT_SHARE, } from '../data/economy.js';
-import { programByName } from '../data/programs.js';
+import { BASE_MHZ, CHIPS, CLOCK, CONTRACTS_PER_SECTION, COOLING, CPU_PARTS, LATE_PAY_FACTOR, MEMORY_PARTS, OVERCLOCKING_PRICE, REPAIR_PRICE_PER_STEP, SECTIONS, TIGHT_SHARE, TUTORIAL_JOB, } from '../data/economy.js';
+import { programByName, TUTORIAL_PROGRAM } from '../data/programs.js';
 import { generateProgram } from './generator.js';
 import { formatDuration, formatMhz } from '../format.js';
 import { tierByNumber } from '../data/tiers.js';
@@ -191,8 +191,11 @@ export function newContract(section, id, random, busyClients = new Set()) {
     }
     return { id, section, program: generated.name, instructions, deadline, pay };
 }
-/** Tops the board up to CONTRACTS_PER_SECTION in every section. */
+/** Tops the board up to CONTRACTS_PER_SECTION in every section (not while the tutorial job is on it). */
 export function fillBoard(progress, random) {
+    // The tutorial job stands alone until it's done.
+    if (progress.board.some(isTutorial))
+        return progress;
     const board = [...progress.board];
     let { nextId } = progress;
     for (const section of SECTIONS) {
@@ -202,6 +205,20 @@ export function fillBoard(progress, random) {
         }
     }
     return { ...progress, board, nextId };
+}
+/** The tutorial job (a new game's first): the whole program, played once. */
+export function tutorialContract(id) {
+    const spec = programByName(TUTORIAL_PROGRAM);
+    const instructions = trace(new Cpu(assemble(spec.source, 8), 8, spec.memory)).length;
+    return { id, section: 'starter', program: TUTORIAL_PROGRAM, instructions, ...TUTORIAL_JOB };
+}
+/** The first job, which the board offers on its own until it's done. */
+export function isTutorial(contract) {
+    return contract.program === TUTORIAL_PROGRAM;
+}
+/** A new game: its board holds only the tutorial job, for TICK's first lesson; the usual jobs come once it's done. */
+export function newCampaign() {
+    return { ...NEW_GAME, board: [tutorialContract(1)], nextId: 2 };
 }
 /** A contract was played: it pays (half if `late`), and a new one takes its place (the board never runs out). */
 export function completeContract(progress, id, random, late = false) {

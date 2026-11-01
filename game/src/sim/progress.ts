@@ -15,11 +15,12 @@ import {
   REPAIR_PRICE_PER_STEP,
   SECTIONS,
   TIGHT_SHARE,
+  TUTORIAL_JOB,
   type PartId,
   type SectionId,
   type WordBits,
 } from '../data/economy.ts';
-import { programByName } from '../data/programs.ts';
+import { programByName, TUTORIAL_PROGRAM } from '../data/programs.ts';
 import { generateProgram } from './generator.ts';
 import { formatDuration, formatMhz } from '../format.ts';
 import { tierByNumber, type Tier } from '../data/tiers.ts';
@@ -278,8 +279,10 @@ export function newContract(section: SectionId, id: number, random: Random, busy
   return { id, section, program: generated.name, instructions, deadline, pay };
 }
 
-/** Tops the board up to CONTRACTS_PER_SECTION in every section. */
+/** Tops the board up to CONTRACTS_PER_SECTION in every section (not while the tutorial job is on it). */
 export function fillBoard(progress: Progress, random: Random): Progress {
+  // The tutorial job stands alone until it's done.
+  if (progress.board.some(isTutorial)) return progress;
   const board = [...progress.board];
   let { nextId } = progress;
   for (const section of SECTIONS) {
@@ -289,6 +292,23 @@ export function fillBoard(progress: Progress, random: Random): Progress {
     }
   }
   return { ...progress, board, nextId };
+}
+
+/** The tutorial job (a new game's first): the whole program, played once. */
+export function tutorialContract(id: number): Contract {
+  const spec = programByName(TUTORIAL_PROGRAM);
+  const instructions = trace(new Cpu(assemble(spec.source, 8), 8, spec.memory)).length;
+  return { id, section: 'starter', program: TUTORIAL_PROGRAM, instructions, ...TUTORIAL_JOB };
+}
+
+/** The first job, which the board offers on its own until it's done. */
+export function isTutorial(contract: Contract): boolean {
+  return contract.program === TUTORIAL_PROGRAM;
+}
+
+/** A new game: its board holds only the tutorial job, for TICK's first lesson; the usual jobs come once it's done. */
+export function newCampaign(): Progress {
+  return { ...NEW_GAME, board: [tutorialContract(1)], nextId: 2 };
 }
 
 /** A contract was played: it pays (half if `late`), and a new one takes its place (the board never runs out). */

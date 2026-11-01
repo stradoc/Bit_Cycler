@@ -72,7 +72,7 @@ Or type them in the browser's console (F12, then Console) while the game runs; `
 | `cheat.overclock()` / `cheat.overclock(false)` | Own / remove the overclocking upgrade |
 | `cheat.wear(1.2)` | The chip's max clock after overheating (1.0–1.5) |
 | `cheat.unlockAll()` | Every part, max clock, fan, overclocking, the L1 cache, $100,000 |
-| `cheat.board()` | New random contracts |
+| `cheat.board()` | New random contracts (also clears a new game's tutorial job) |
 | `cheat.lessons()` / `cheat.lessons(false)` | Mark every lesson and tour (the board's too) seen / unseen, in this save |
 | `cheat.autoplay()` / `cheat.autoplay(false)` | Songs play themselves |
 | `cheat.temp(94)` | Set the chip's temperature mid-song |

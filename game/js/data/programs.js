@@ -63,7 +63,45 @@ col:  lb   x4, 0(x1)
             { reg: 6, tag: 'GRID', about: 'END OF THE GRID: STOP AT 12' },
         ],
     },
+    {
+        name: 'BAKERY TILL',
+        // A new game's first job (the tutorial): each core instruction (addi, lb, sub, sb, add, bne) comes up once,
+        // early, with small numbers, so TICK can go through every one. For 2 sales: the change, and the day's takings.
+        source: `
+      addi x1, x0, 0      # x1 = which sale (its address)
+      addi x2, x0, 2      # x2 = how many sales
+      addi x5, x0, 0      # x5 = the day's takings
+loop: lb   x3, 0(x1)      # x3 = the price
+      lb   x4, 4(x1)      # x4 = what the customer paid
+      sub  x6, x4, x3     # x6 = their change
+      sb   x6, 8(x1)      # the change, for the till's drawer
+      add  x5, x5, x3     # add the price to the takings
+      addi x1, x1, 1
+      bne  x1, x2, loop
+      sb   x5, 12(x0)     # the day's takings
+    `,
+        memory: [3, 5, 0, 0, 5, 9],
+        elements: 2,
+        verb: 'RING UP',
+        unit: 'SALES: CHANGE AND TAKINGS',
+        roles: {
+            1: 'which sale: its address in memory',
+            2: 'how many sales (2): the loop stops when x1 reaches it',
+            3: 'the price of this sale',
+            4: 'what the customer paid',
+            5: "the day's takings: a running total of the prices",
+            6: "the customer's change: what they paid, minus the price",
+        },
+        memoryNote: 'Addresses 0-1 hold the prices (3, 5), 4-5 what each customer paid (5, 9). The change goes to 8-9, the takings (8) to 12.',
+        client: 'CORNER BAKERY',
+        keys: [
+            { reg: 1, tag: 'NEXT', about: "NEXT SALE'S ADDRESS, FROM 0" },
+            { reg: 2, tag: 'END', about: 'STOP WHEN x1 REACHES 2' },
+        ],
+    },
 ];
+/** A new game's first job: the only one on the board until it's done. */
+export const TUTORIAL_PROGRAM = 'BAKERY TILL';
 const generated = new Map();
 /** A fixed program by name, or a contract's generated one ("CHECKSUM #4821"), rebuilt from its seed. */
 export function programByName(name) {

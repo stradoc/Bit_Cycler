@@ -6,7 +6,7 @@ import { formatCount, formatDuration, formatMoney } from '../format.js';
 import { getProgress, updateProgress } from '../save.js';
 import { UNITS } from '../sim/isa.js';
 import { jobSheet } from '../sim/jobSheet.js';
-import { contractSeconds, cpiFor, cpuLine, isLocked, isTight, jobItems, ratedMhz } from '../sim/progress.js';
+import { contractSeconds, cpiFor, cpuLine, isLocked, isTight, isTutorial, jobItems, ratedMhz } from '../sim/progress.js';
 import { THERMAL } from '../sim/thermal.js';
 import { cssColor } from '../ui/eras.js';
 import { Guide } from '../ui/guide.js';
@@ -63,7 +63,7 @@ export class BoardScene extends Screen {
                 middle: formatMoney(contract.pay),
                 value: standing === 'locked' ? 'SLOW' : standing === 'tight' ? 'TIGHT' : 'OK',
                 dim: standing === 'locked',
-                group: first ? SECTIONS.find((s) => s.id === contract.section)?.name : undefined,
+                group: first ? (isTutorial(contract) ? 'YOUR FIRST JOB' : SECTIONS.find((s) => s.id === contract.section)?.name) : undefined,
             };
         });
         this.menu = new ListMenu(this, this.era, { x: LIST_X, top: LIST_TOP, width: LIST_W, rowHeight: ROW_H, size: 15, middle: 58 });

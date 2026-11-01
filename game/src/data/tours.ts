@@ -52,7 +52,7 @@ export const BOARD_TOUR: readonly TourStep<BoardTarget>[] = [
   { say: "Don't worry about reading it yet! In the song, each instruction becomes a note. This counts the notes for each lane.", point: 'notes' },
   { say: 'MEMORY is where the computer keeps its numbers, in numbered spots. The marks show which spots this job reads and writes.', point: 'memory' },
   { say: 'This is how long your CPU will take, against the deadline. A messy run is slower, and a late job pays half.', point: 'time' },
-  { say: "Pick a STARTER job and press ENTER. I'll meet you on the next screen!", point: 'list' },
+  { say: "Pick a job and press ENTER. Your first is a small one, picked so I can show you everything. See you on the next screen!", point: 'list' },
 ];
 
 /** Every lesson as a tour of the song screen, by lesson id (data/lessons.ts). */
