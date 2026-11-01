@@ -1,4 +1,8 @@
 const MEMORY_BYTES = 256;
+/** The address a load or store works out: a register's value plus the instruction's number, wrapped round to memory's size. */
+export function addressOf(base, imm) {
+    return (base + imm) & (MEMORY_BYTES - 1);
+}
 /** Single-cycle CPU: one instruction completes per clock cycle. */
 export class Cpu {
     program;
@@ -67,7 +71,7 @@ export class Cpu {
         return value & ((1 << this.wordBits) - 1);
     }
     address(rs1, imm) {
-        return (this.regs[rs1] + imm) & (MEMORY_BYTES - 1);
+        return addressOf(this.regs[rs1], imm);
     }
     write(pc, instr, rd, value) {
         if (rd === 0)

@@ -29,8 +29,8 @@ export type MenuTarget = 'menu' | 'new' | 'briefs' | 'readme' | 'settings';
 /** The contract board's parts the guide can point at (scenes/BoardScene.ts). */
 export type BoardTarget = 'list' | 'job' | 'loop' | 'notes' | 'memory' | 'time';
 
-/** The song screen's parts the guide can point at (scenes/PipelineScene.ts). */
-export type SongTarget = 'lanes' | 'line' | 'rows' | 'gauge' | 'listing' | 'registers' | 'memory' | 'cache' | 'stats';
+/** The song screen's parts the guide can point at (scenes/PipelineScene.ts); `x3` is one register's row. */
+export type SongTarget = 'lanes' | 'line' | 'rows' | 'gauge' | 'listing' | 'registers' | 'memory' | 'cache' | 'stats' | `x${number}`;
 
 export const WELCOME_TOUR: readonly TourStep<MenuTarget>[] = [
   { say: `Hi! I'm ${GUIDE_NAME}, and I live inside this computer. Welcome to Bit Cycler!` },

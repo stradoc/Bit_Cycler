@@ -113,6 +113,11 @@ export class Panel extends Part {
     say(message) {
         this.feedback.setText(message);
     }
+    /** Where register `r`'s row is, for the guide to point at. */
+    registerArea(r) {
+        const row = this.regTexts[r];
+        return { x: row.x - 6, y: row.y - 3, w: 200, h: row.height + 6 };
+    }
     /** The middles of the rows the bus wires plug into: the first column of registers, then memory. */
     wireRows() {
         return [...this.regTexts.slice(0, 4), ...this.memTexts].map((text) => text.y + 9);

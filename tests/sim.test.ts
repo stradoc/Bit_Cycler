@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { PROGRAMS } from '../game/src/data/programs.ts';
 import { assemble } from '../game/src/sim/assembler.ts';
 import { Cpu, trace } from '../game/src/sim/cpu.ts';
-import { describe, format, tokens, unitOf } from '../game/src/sim/isa.ts';
+import { describe, format, keepsTotal, tokens, unitOf } from '../game/src/sim/isa.ts';
 
 const sumArray = PROGRAMS[0];
 
@@ -81,4 +81,13 @@ test('lb sign-extends to the register width', () => {
   const cpu = new Cpu(assemble('lb x1, 0(x0)'), 16, [0xff]);
   cpu.step();
   assert.equal(cpu.regs[1], 0xffff); // -1 in 16 bits
+});
+
+test('an add into its own register keeps a running total only if nothing else in its loop writes that register', () => {
+  const sum = assemble('addi x3, x0, 0\nloop: lb x4, 0(x1)\nadd x3, x3, x4\naddi x1, x1, 1\nbne x1, x2, loop\nsb x3, 8(x0)', 8);
+  assert.equal(keepsTotal(sum, 2), true);
+  const mix = assemble('loop: lb x6, 0(x1)\nlb x7, 1(x1)\nadd x6, x6, x7\nsb x6, 0(x1)\naddi x1, x1, 2\nbne x1, x2, loop', 8);
+  assert.equal(keepsTotal(mix, 2), false, 'x6 is loaded afresh each time round');
+  const once = assemble('addi x3, x0, 1\nadd x3, x3, x3', 8);
+  assert.equal(keepsTotal(once, 1), false, 'not in a loop');
 });

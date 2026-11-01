@@ -85,6 +85,20 @@ export function destReg(instr: Instruction): number | undefined {
   }
 }
 
+/**
+ * The instruction at `pc` keeps a running total: it adds into its own
+ * register (x3 = x3 + x4) inside a loop, and nothing else in that loop
+ * writes the register (so it isn't loaded afresh each time round).
+ */
+export function keepsTotal(program: Program, pc: number): boolean {
+  const instr = program.instructions[pc];
+  if (instr?.op !== 'add' || instr.rd !== instr.rs1 || instr.rd === 0) return false;
+  const loop = program.instructions.findIndex((other, i) => (other.op === 'beq' || other.op === 'bne') && other.target <= pc && i >= pc);
+  if (loop < 0) return false;
+  const target = (program.instructions[loop] as Branch).target;
+  return program.instructions.slice(target, loop + 1).every((other, i) => target + i === pc || destReg(other) !== instr.rd);
+}
+
 export function unitOf(instr: Instruction): Unit {
   switch (instr.op) {
     case 'lb':

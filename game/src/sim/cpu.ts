@@ -4,6 +4,11 @@ export type WordBits = 8 | 16;
 
 const MEMORY_BYTES = 256;
 
+/** The address a load or store works out: a register's value plus the instruction's number, wrapped round to memory's size. */
+export function addressOf(base: number, imm: number): number {
+  return (base + imm) & (MEMORY_BYTES - 1);
+}
+
 /** What one executed instruction did, for display and scoring. */
 export type Step = {
   readonly pc: number;
@@ -87,7 +92,7 @@ export class Cpu {
   }
 
   private address(rs1: number, imm: number): number {
-    return (this.regs[rs1] + imm) & (MEMORY_BYTES - 1);
+    return addressOf(this.regs[rs1], imm);
   }
 
   private write(pc: number, instr: Instruction, rd: number, value: number): Step {

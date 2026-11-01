@@ -10,8 +10,8 @@ import { tempoForClock } from '../rhythm/tempo.js';
 import { getProgress, updateProgress } from '../save.js';
 import { getSettings } from '../settings.js';
 import { assemble } from '../sim/assembler.js';
-import { Cpu } from '../sim/cpu.js';
-import { unitOf } from '../sim/isa.js';
+import { addressOf, Cpu } from '../sim/cpu.js';
+import { keepsTotal, unitOf } from '../sim/isa.js';
 import { CACHE_LINES, freezeBeats } from '../sim/memory.js';
 import { completeContract, thermalConfig } from '../sim/progress.js';
 import { Chip, THERMAL } from '../sim/thermal.js';
@@ -101,6 +101,10 @@ export class PipelineScene extends Screen {
     paused = false;
     /** The pause menu found the replay already paused (so closing it leaves it paused). */
     replayWasPaused = false;
+    /** Tier 1's practice: the instruction TICK is taking a close look at, with what it read, until it has run. */
+    closeLook;
+    /** ...its answer is on its way up the wire: TICK points at it once it lands, and the keys wait. */
+    landing = false;
     /** ?autoplay, or cheat.autoplay() from the console. */
     get autoplay() {
         return this.autoplayParam || cheatFlags.autoplay;
@@ -130,6 +134,8 @@ export class PipelineScene extends Screen {
         this.replayBeat = -0.5;
         this.speedIndex = 1;
         this.paused = false;
+        this.closeLook = undefined;
+        this.landing = false;
         this.chartOffset = 0;
         this.explained = new Set();
     }
@@ -211,6 +217,8 @@ export class PipelineScene extends Screen {
             rows: { x: LANE_X0 - 90, y: HIT_Y - 22, w: LANES_W + 90, h: bottom - HIT_Y + 22 },
             gauge: { x: 4, y: 0, w: LANE_X0 - 12, h: GAUGE_BOTTOM + 36 },
         };
+        if (/^x\d+$/.test(target))
+            return this.panel.registerArea(Number(target.slice(1)));
         return target in highway ? highway[target] : this.panel.areas[target];
     }
     update() {
@@ -248,7 +256,8 @@ export class PipelineScene extends Screen {
         this.highway.drawHazard(now);
         this.updateFreeze(beat, now);
         this.updateHeat(now);
-        if (this.run.done)
+        // Practice ends once TICK has finished saying what the last instruction did.
+        if (this.run.done && !(this.setup.practice && (this.landing || this.closeLook || this.guide.waiting)))
             this.drainAndFinish(beat);
     }
     // ---- input ----
@@ -260,7 +269,7 @@ export class PipelineScene extends Screen {
         const key = keyOf(event);
         const { setup } = this;
         // TICK's tour or a tip: Enter shows the rest of the words, then closes them. The song waits.
-        if (this.guide.waiting) {
+        if (this.guide.waiting || this.landing) {
             if (key === 'Enter' && !event.repeat)
                 this.guide.next();
             return;
@@ -425,6 +434,8 @@ export class PipelineScene extends Screen {
         while (!this.run.done) {
             // A memory wait passes on its own: only a decision holds the chart.
             if (this.run.pipeline.stages.ID && !this.run.decided && !this.run.frozen) {
+                // A new kind of instruction gets TICK's close look as soon as it's next, before a quick key can play it.
+                this.lookClosely();
                 if (beat > this.run.dueBeat) {
                     this.chartOffset += beat - this.run.dueBeat;
                     beat = this.run.dueBeat;
@@ -500,6 +511,41 @@ export class PipelineScene extends Screen {
             this.onAccess(report.access.slot, report.access.access);
         this.panel.refresh();
         this.syncClock();
+        const look = this.closeLook;
+        const done = report.committed;
+        if (look && done?.seq === look.seq) {
+            this.closeLook = undefined;
+            this.landing = true;
+            // Once the answer has travelled up the wire into its register (or memory).
+            this.time.delayedCall(this.beatSeconds() * 1000 + 250, () => {
+                this.landing = false;
+                this.guide.tour(this.words.closeLookDone(done.instr, look.reads, done), (target) => this.where(target), () => { });
+            });
+        }
+    }
+    /**
+     * Tier 1's practice: the first instruction of each kind gets a close look
+     * from TICK as it reaches the line, with the numbers really in its
+     * registers (and memory), and again once it has run (onCycle). Returns
+     * whether it started.
+     */
+    lookClosely() {
+        const slot = this.run.pipeline.stages.ID;
+        if (!this.setup.singleCycle || !this.setup.practice || !slot || this.explained.has(slot.instr.op))
+            return false;
+        // One at a time: the last one's answer lands, and TICK says so, first.
+        if (this.guide.waiting || this.landing || this.closeLook)
+            return false;
+        const { instr } = slot;
+        // The single-cycle CPU runs it as its beat ends, so the registers and memory still hold what it will read.
+        const { regs, memory } = this.run.pipeline.cpu;
+        const b = 'rs2' in instr ? regs[instr.rs2] : 0;
+        const byte = instr.op === 'lb' ? memory[addressOf(regs[instr.rs1], instr.imm)] : 0;
+        const reads = { a: regs[instr.rs1], b, byte, total: keepsTotal(this.run.pipeline.cpu.program, slot.pc) };
+        this.explained.add(instr.op);
+        this.closeLook = { seq: slot.seq, reads };
+        this.guide.tour(this.words.closeLook(instr, reads), (target) => this.where(target), () => { });
+        return true;
     }
     /**
      * A load or store reached memory. A hit (or anything that fits in the
@@ -556,7 +602,8 @@ export class PipelineScene extends Screen {
     }
     /** A practice tip, the first time it comes up. Returns whether it was shown. */
     tip(tip) {
-        if (!this.setup.practice || !tip || this.explained.has(tip.id))
+        // Not over TICK's tour or a close look still under way: the tip waits for the next time it comes up.
+        if (!this.setup.practice || !tip || this.explained.has(tip.id) || this.guide.touring || this.landing || this.closeLook)
             return false;
         this.explained.add(tip.id);
         this.guide.say({ say: tip.message, point: this.where(tip.point ?? 'line'), dim: TIP_DIM, keys: '[ENTER] OK', hold: true });

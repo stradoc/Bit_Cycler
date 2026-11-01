@@ -1,13 +1,14 @@
 import { GLOSSARY, type Entry } from '../data/glossary.ts';
-import type { SongTarget } from '../data/tours.ts';
+import type { SongTarget, TourStep } from '../data/tours.ts';
 import { formatDuration, formatMhz } from '../format.ts';
 import type { Decision, Outcome, PipelineRun } from '../rhythm/pipelineRun.ts';
-import { describe, format, UNIT_ROLES, unitOf, type Instruction } from '../sim/isa.ts';
+import { addressOf } from '../sim/cpu.ts';
+import { describe, format, UNIT_ROLES, unitOf, type Instruction, type RType, type Unit } from '../sim/isa.ts';
 import { BLOCK_BYTES, blockOf, CACHE_LINES, lineOf, MEMORY_TIMING, tagOf, type Access, type MissKind } from '../sim/memory.ts';
 import type { Hazard, Slot, Stage } from '../sim/pipeline.ts';
 import type { Chip } from '../sim/thermal.ts';
 import { THERMAL } from '../sim/thermal.ts';
-import { addressBits, bin, LANE_KEYS, MISS_WORDS, STAGE_NAMES, type FreezeView } from './layout.ts';
+import { addressBits, bin, hex, LANE_KEYS, MISS_WORDS, STAGE_NAMES, type FreezeView } from './layout.ts';
 import type { SongSetup } from './setup.ts';
 import type { Shown } from './view.ts';
 
@@ -31,6 +32,27 @@ const PLAIN: Readonly<Record<Instruction['op'], string>> = {
   beq: 'It jumps to another instruction if two registers match.',
   bne: 'It jumps back (to repeat) if two registers differ.',
 };
+
+/**
+ * What an instruction reads as it reaches the line, for lesson 1's close
+ * look: its two registers (rs1, rs2), for a load the byte at its address,
+ * and whether it keeps a running total (sim/isa.ts keepsTotal).
+ */
+export type Reads = { readonly a: number; readonly b: number; readonly byte: number; readonly total?: boolean };
+
+/** Each math or logic instruction: its symbol, and what it does in words. */
+const SYMBOL: Readonly<Record<RType['op'], string>> = { add: '+', sub: '-', and: 'AND', or: 'OR', xor: 'XOR' };
+const MEANING: Readonly<Record<RType['op'], string>> = {
+  add: 'add two registers and store the answer in one',
+  sub: 'take one register from another and store the answer',
+  and: 'keep only the bits that are on in both',
+  or: 'keep the bits that are on in either',
+  xor: 'keep the bits where the two differ',
+};
+const BITWISE: ReadonlySet<Instruction['op']> = new Set(['and', 'or', 'xor']);
+
+/** Why an instruction goes down each lane, to start a sentence. */
+const LANE_WORK: Readonly<Record<Unit, string>> = { ALU: 'This is math or logic', MEM: 'This is memory work', BRANCH: 'This decides what runs next' };
 
 export class SongWords {
   private readonly run: PipelineRun;
@@ -228,6 +250,119 @@ export class SongWords {
       return [{ id: 'guess', message }, route];
     }
     return [route];
+  }
+
+  /**
+   * Tier 1's practice, as an instruction of a new kind reaches the line:
+   * TICK goes through it with the numbers really in its registers (and, for
+   * a load, in memory), then hands over to the player.
+   */
+  closeLook(instr: Instruction, reads: Reads): TourStep<SongTarget>[] {
+    const reg = (r: number) => `x${r}` as const;
+    const holds = (r: number, value: number) => (r === 0 ? `${reg(r)} always holds 0.` : `Right now ${reg(r)} holds ${value}.`);
+    const intro = (meaning: string): TourStep<SongTarget> => ({ say: `Let's look closely at this one: ${format(instr)}. ${meaning}`, point: 'listing' });
+    const lane = (unit: Unit, watch: string): TourStep<SongTarget> => ({
+      say: `${LANE_WORK[unit]}, so it goes down the ${unit} lane. Press ${LANE_KEYS[unit]} when it reaches the line, and watch ${watch}.`,
+      point: 'lanes',
+    });
+    switch (instr.op) {
+      case 'add':
+      case 'sub':
+      case 'and':
+      case 'or':
+      case 'xor': {
+        const bits = BITWISE.has(instr.op);
+        const shown = (value: number) => (bits ? `${value}, or ${bin(value & 0xff, 8)} in BITS (ones and zeros)` : `${value}`);
+        return [
+          intro(`It means ${reg(instr.rd)} = ${reg(instr.rs1)} ${SYMBOL[instr.op]} ${reg(instr.rs2)}: ${MEANING[instr.op]}.`),
+          { say: instr.rs1 === 0 ? `First, the CPU reads x0, which always holds 0.` : `First, the CPU reads ${reg(instr.rs1)}. It holds ${shown(reads.a)}.`, point: reg(instr.rs1) },
+          { say: `Then it reads ${reg(instr.rs2)}${instr.rs2 === instr.rs1 ? ' again' : ''}, which holds ${shown(reads.b)}.`, point: reg(instr.rs2) },
+          lane('ALU', reg(instr.rd)),
+        ];
+      }
+      case 'addi':
+        return [
+          intro(`It means ${reg(instr.rd)} = ${reg(instr.rs1)} + ${instr.imm}. The ${instr.imm} is written in the instruction itself: an IMMEDIATE.`),
+          {
+            say: instr.rs1 === 0 ? `x0 always holds 0, so this just puts ${instr.imm} into ${reg(instr.rd)}: the easy way to set a register.` : `The CPU reads ${reg(instr.rs1)}. ${holds(instr.rs1, reads.a)}`,
+            point: reg(instr.rs1),
+          },
+          lane('ALU', reg(instr.rd)),
+        ];
+      case 'lb': {
+        const address = addressOf(reads.a, instr.imm);
+        return [
+          intro(`It LOADS: it copies a byte from memory into ${reg(instr.rd)}. The ADDRESS to read is ${reg(instr.rs1)} + ${instr.imm}.`),
+          { say: `${holds(instr.rs1, reads.a)} So the address is ${reads.a} + ${instr.imm} = ${address}.`, point: reg(instr.rs1) },
+          { say: `Memory address ${address} holds ${reads.byte} (memory shows it as ${hex(reads.byte)}).`, point: 'memory' },
+          lane('MEM', reg(instr.rd)),
+        ];
+      }
+      case 'sb': {
+        const address = addressOf(reads.a, instr.imm);
+        return [
+          intro(`It STORES: it copies ${reg(instr.rs2)} into memory. The ADDRESS to write is ${reg(instr.rs1)} + ${instr.imm}.`),
+          { say: `${reg(instr.rs2)} holds ${reads.b & 0xff}: that's what gets stored.`, point: reg(instr.rs2) },
+          { say: `${holds(instr.rs1, reads.a)} So the address is ${reads.a} + ${instr.imm} = ${address}.`, point: reg(instr.rs1) },
+          lane('MEM', 'memory'),
+        ];
+      }
+      case 'beq':
+      case 'bne': {
+        const same = reads.a === reads.b;
+        const taken = instr.op === 'beq' ? same : !same;
+        return [
+          intro(`It BRANCHES: if ${reg(instr.rs1)} and ${reg(instr.rs2)} are ${instr.op === 'beq' ? 'the same' : 'different'}, jump to ${instr.label}. If not, carry on.`),
+          { say: `${reg(instr.rs1)} holds ${reads.a}.`, point: reg(instr.rs1) },
+          { say: `${reg(instr.rs2)} holds ${reads.b}. They're ${same ? 'the same' : 'different'}, so it will ${taken ? 'jump (TAKEN)' : 'carry on (NOT TAKEN)'}.`, point: reg(instr.rs2) },
+          lane('BRANCH', "the program's arrow"),
+        ];
+      }
+    }
+  }
+
+  /** ...and once it has run and its answer has landed: what happened, pointing at it. */
+  closeLookDone(instr: Instruction, reads: Reads, done: Slot): TourStep<SongTarget>[] {
+    const reg = (r: number) => `x${r}` as const;
+    // What doesn't fit in a byte wraps round, as the register does.
+    const sum = (exact: number, result: number, sums: string) =>
+      exact === result ? `${sums} = ${result}` : `${sums} is ${exact}, but a register only holds 0-255, so it wraps round to ${result}`;
+    switch (instr.op) {
+      case 'add':
+      case 'sub':
+      case 'and':
+      case 'or':
+      case 'xor': {
+        const exact = instr.op === 'add' ? reads.a + reads.b : instr.op === 'sub' ? reads.a - reads.b : instr.op === 'and' ? reads.a & reads.b : instr.op === 'or' ? reads.a | reads.b : reads.a ^ reads.b;
+        const result = exact & 0xff;
+        if (instr.rd === 0) return [{ say: `The answer was ${result}, but x0 always stays 0, so it was thrown away.`, point: 'x0' }];
+        const worked = BITWISE.has(instr.op)
+          ? `In bits, ${bin(reads.a & 0xff, 8)} ${SYMBOL[instr.op]} ${bin(reads.b & 0xff, 8)} = ${bin(result, 8)}: that's ${result}`
+          : sum(exact, result, `${reads.a} ${SYMBOL[instr.op]} ${reads.b}`);
+        const steps: TourStep<SongTarget>[] = [{ say: `See! ${worked}, and the ALU stored it in ${reg(instr.rd)}.`, point: reg(instr.rd) }];
+        if (reads.total) {
+          steps.push({ say: `The answer replaced the ${reads.a} that ${reg(instr.rd)} held. Each time the loop comes round, it adds the next number: a running total.`, point: reg(instr.rd) });
+        }
+        return steps;
+      }
+      case 'addi': {
+        const exact = reads.a + instr.imm;
+        if (instr.rd === 0) return [{ say: `x0 always stays 0, so the answer was thrown away.`, point: 'x0' }];
+        const steps: TourStep<SongTarget>[] = [{ say: `See! ${sum(exact, exact & 0xff, `${reads.a} + ${instr.imm}`)}, stored in ${reg(instr.rd)}.`, point: reg(instr.rd) }];
+        if (instr.rd === instr.rs1 && instr.imm === 1) steps.push({ say: `Adding 1 to ${reg(instr.rd)} each time round is how the loop keeps count of where it is.`, point: reg(instr.rd) });
+        return steps;
+      }
+      case 'lb':
+        return [{ say: `See! The ${reads.byte} from address ${addressOf(reads.a, instr.imm)} was copied into ${reg(instr.rd)}. Memory still has its own copy.`, point: reg(instr.rd) }];
+      case 'sb':
+        return [{ say: `See! ${reads.b & 0xff} was copied into memory at address ${addressOf(reads.a, instr.imm)}. ${reg(instr.rs2)} still holds it too.`, point: 'memory' }];
+      case 'beq':
+      case 'bne': {
+        if (!done.step?.taken) return [{ say: `See! It didn't jump: the arrow carried straight on to the next instruction.`, point: 'listing' }];
+        const back = instr.target <= done.pc;
+        return [{ say: back ? `See! The arrow jumped back to ${instr.label}: the loop runs again, on the next number.` : `See! The arrow jumped ahead to ${instr.label}.`, point: 'listing' }];
+      }
+    }
   }
 
   /** A wrong key in practice: what it should have been, and why. */
