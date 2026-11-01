@@ -110,7 +110,7 @@ export const README = {
             '  [SPACE]  STALL: WAIT FOR A VALUE',
             "           THAT ISN'T READY YET",
             '  [G] [H]  CLOCK DOWN / UP',
-            '  [ESC]    PAUSE MENU (OR [Q])',
+            '  [Q]      PAUSE MENU (OR [ESC])',
         ],
         [
             'THE SCORE',

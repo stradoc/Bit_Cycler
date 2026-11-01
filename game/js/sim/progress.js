@@ -30,6 +30,14 @@ export const NEW_GAME = {
     today: { jobs: 0, late: 0, earned: 0 },
     history: [],
 };
+/** The player has seen a lesson or tour (data/tours.ts TAUGHT_IDS). */
+export function hasSeen(progress, id) {
+    return progress.seenLessons.includes(id);
+}
+/** Lessons or tours marked seen (each once). */
+export function withSeen(progress, ...ids) {
+    return { ...progress, seenLessons: [...new Set([...progress.seenLessons, ...ids])] };
+}
 // ---- the CPU you own ----
 export function tierOf(progress) {
     return tierByNumber(1 + progress.parts.length);

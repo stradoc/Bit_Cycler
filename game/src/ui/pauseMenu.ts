@@ -66,7 +66,7 @@ export class PauseMenu {
     );
     const aboutY = listTop + this.items.length * ROW_H + 4;
     this.about = eraText(scene, era, WIDTH / 2, aboutY, '', TEXT.small).setOrigin(0.5, 0).setAlign('center').setWordWrapWidth(WIDTH_BOX - 40).setAlpha(ALPHA.about).setDepth(DEPTH + 3);
-    const hint = eraText(scene, era, WIDTH / 2, top + boxH - 18, '[UP/DOWN] CHOOSE    [ENTER] SELECT    [ESC] RESUME', TEXT.hint - 1)
+    const hint = eraText(scene, era, WIDTH / 2, top + boxH - 18, '[UP/DOWN] CHOOSE    [ENTER] SELECT    [Q] RESUME', TEXT.hint - 1)
       .setOrigin(0.5)
       .setAlpha(ALPHA.hint)
       .setDepth(DEPTH + 3);

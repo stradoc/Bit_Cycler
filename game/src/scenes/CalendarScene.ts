@@ -1,7 +1,11 @@
+import { CALENDAR_TOUR, CALENDAR_TOUR_ID, type CalendarTarget } from '../data/tours.ts';
 import { formatClock, formatHours, formatMoney } from '../format.ts';
-import { getProgress } from '../save.ts';
+import { getProgress, updateProgress } from '../save.ts';
+import { teaching } from '../settings.ts';
+import { hasSeen, withSeen } from '../sim/progress.ts';
 import { calendarDate, clockSeconds, DAY_START, eventsOn, monthWeeks, MONTHS, recordOf, shortDate, timeLeft, weekday, WEEKDAYS, type CalendarEvent } from '../sim/workday.ts';
 import { cssColor } from '../ui/eras.ts';
+import { Guide, type Rect } from '../ui/guide.ts';
 import type { PauseItem } from '../ui/pauseMenu.ts';
 import { Screen } from '../ui/screen.ts';
 import { LAYOUT, TEXT } from '../ui/theme.ts';
@@ -44,12 +48,23 @@ export class CalendarScene extends Screen {
   private marks: Phaser.GameObjects.GameObject[] = [];
   private detail!: Phaser.GameObjects.Container;
   private month!: Phaser.GameObjects.Text;
+  private guide!: Guide;
+  /** Where today's box is, for TICK to point at. */
+  private todayBox: Rect | undefined;
 
   constructor() {
     super('calendar');
   }
 
-  create(): void {
+  /** Opening the calendar again reuses this scene: start clean. */
+  init(): void {
+    this.marks = [];
+    this.todayBox = undefined;
+  }
+
+  /** `tour`: TICK's tour of the calendar even if it's been seen (BRIEFS on the main menu). */
+  create(data?: { tour?: boolean }): void {
+    const replayTour = data?.tour ?? false;
     this.setUp();
     const progress = getProgress();
     this.selected = progress.day;
@@ -59,8 +74,24 @@ export class CalendarScene extends Screen {
     this.grid = this.textAt(GRID_X, GRID_Y, '', TEXT.small).setLineSpacing(0);
     panel(this, this.era, DETAIL_X, DETAIL_Y, DETAIL_W, DETAIL_H, 'THE DAY');
     this.detail = this.add.container(0, 0);
-    this.hints('[ARROWS] CHOOSE A DAY', '[B] CONTRACT BOARD', '[ESC] MENU');
+    this.hints('[ARROWS] CHOOSE A DAY', '[B] CONTRACT BOARD', '[Q] MENU');
     this.draw();
+    // The first look: TICK shows the calendar around.
+    this.guide = new Guide(this, this.era);
+    if (replayTour || (teaching().tours && !hasSeen(progress, CALENDAR_TOUR_ID))) {
+      this.guide.tour(CALENDAR_TOUR, (target) => this.where(target), () => updateProgress((p) => withSeen(p, CALENDAR_TOUR_ID)));
+    }
+  }
+
+  update(): void {
+    super.update();
+    this.guide.update(performance.now());
+  }
+
+  /** Where the calendar's parts are, for the guide to point at. */
+  private where(target: CalendarTarget): Rect | undefined {
+    const month = { x: GRID_X - 8, y: GRID_Y - 6, w: this.grid.width + 16, h: this.grid.height + 12 };
+    return { month, today: this.todayBox ?? month, day: { x: DETAIL_X, y: DETAIL_Y, w: DETAIL_W, h: DETAIL_H } }[target];
   }
 
   protected pauseItems(): PauseItem[] {
@@ -88,7 +119,10 @@ export class CalendarScene extends Screen {
         const x = GRID_X + (1 + col * (cellWidth + 1)) * charW;
         const y = GRID_Y + (headerLines + row * (cellLines + 1)) * lineH;
         const box = this.add.rectangle(x - 1, y - 1, cellWidth * charW + 2, cellLines * lineH + 2).setOrigin(0);
-        if (day === progress.day) box.setFillStyle(this.era.accent, 0.18);
+        if (day === progress.day) {
+          box.setFillStyle(this.era.accent, 0.18);
+          this.todayBox = { x: x - 4, y: y - 4, w: cellWidth * charW + 8, h: cellLines * lineH + 8 };
+        }
         if (day === this.selected) box.setStrokeStyle(2, this.era.accent, 1);
         this.marks.push(box);
       }),
@@ -150,7 +184,12 @@ export class CalendarScene extends Screen {
     line(y, events.flatMap(eventLines).join('\n')).setLineSpacing(3);
   }
 
-  protected onKey(key: string): boolean | void {
+  protected onKey(key: string, event: KeyboardEvent): boolean | void {
+    // TICK's tour: Enter shows the rest of the words, then goes on.
+    if (this.guide.waiting) {
+      if (key === 'Enter' && !event.repeat) this.guide.next();
+      return key !== 'M';
+    }
     const step = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[key];
     if (step !== undefined) {
       this.selected += step;

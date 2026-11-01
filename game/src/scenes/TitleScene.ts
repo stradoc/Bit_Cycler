@@ -1,13 +1,13 @@
 import { powerOff, stopHum } from '../audio/sound.ts';
 import { programListing } from '../data/boot.ts';
 import { LESSONS } from '../data/lessons.ts';
-import { BOARD_TOUR_ID, WELCOME_AFTER, WELCOME_QUESTION, type MenuTarget } from '../data/tours.ts';
+import { BOARD_TOUR_ID, CALENDAR_TOUR_ID, FIRST_DAY_ID, WELCOME_AFTER, WELCOME_QUESTION, type MenuTarget } from '../data/tours.ts';
 import { openLesson } from '../flow.ts';
 import { banner, commandLine, CREDITS, listCommand, listingFooter, listingLine, readCommand, README, type TextFile } from '../data/menuFiles.ts';
 import { formatMoney } from '../format.ts';
 import { activeSlot, CAMPAIGN_SLOTS, getProgress, hasSave, newGame, slotName } from '../save.ts';
 import { getSettings, updateSettings } from '../settings.ts';
-import { cpuLine, tierOf } from '../sim/progress.ts';
+import { cpuLine, hasSeen, tierOf } from '../sim/progress.ts';
 import { baseEra, cssColor } from '../ui/eras.ts';
 import { Guide, type Rect } from '../ui/guide.ts';
 import { ListMenu } from '../ui/list.ts';
@@ -16,7 +16,7 @@ import { ALPHA, LAYOUT } from '../ui/theme.ts';
 import { HEIGHT, WIDTH } from '../visual/display.ts';
 
 /** What a file on the menu's disk does when opened. */
-type Action = 'continue' | 'new' | 'practice' | 'saves' | 'briefings' | 'settings' | 'readme' | 'credits' | 'shutdown' | 'up' | 'lesson' | 'welcome' | 'boardTour';
+type Action = 'continue' | 'new' | 'practice' | 'saves' | 'briefings' | 'settings' | 'readme' | 'credits' | 'shutdown' | 'up' | 'lesson' | 'welcome' | 'boardTour' | 'firstDay' | 'calendarTour';
 
 /** One file or folder in a listing (a folder has no extension). */
 type Entry = {
@@ -39,7 +39,7 @@ const LIST_X = 230;
 const LIST_TOP = 172;
 const ROW_H = 26;
 /** BRIEFS holds more files: its rows are closer together. */
-const BRIEFS_ROW_H = 21;
+const BRIEFS_ROW_H = 19;
 /** The code in the margins scrolls up this fast (layout pixels a second). */
 const CODE_SPEED = 14;
 /** The margins' code columns: their left edges, and the band they show in. */
@@ -112,7 +112,7 @@ export class TitleScene extends Screen {
     this.footer = this.text(LIST_X, 446, '', 14).setOrigin(0, 0.5).setAlpha(0.7);
     this.about = this.aboutLine();
     const status = this.text(WIDTH / 2, LAYOUT.message, this.statusLine(), 14).setAlpha(0.65);
-    const hints = this.hints('[UP/DOWN] CHOOSE', '[ENTER] OPEN', '[ESC] BACK', '[M] COMPUTER HUM');
+    const hints = this.hints('[UP/DOWN] CHOOSE', '[ENTER] OPEN', '[Q] BACK', '[M] COMPUTER HUM');
     this.lower = [status, hints];
     this.openFolder(this.welcomeDue ? 'root' : (data?.folder ?? 'root'), data?.selected);
     this.guide = new Guide(this, era);
@@ -209,7 +209,9 @@ export class TitleScene extends Screen {
     return [
       { action: 'up', name: '..', ext: '', note: 'BACK', about: 'BACK TO THE MAIN FOLDER.' },
       { action: 'welcome', name: 'WELCOME', ext: 'EXE', note: 'WHAT THIS GAME IS FOR', value: seen(getSettings().welcomed), about: "TICK'S WELCOME: WHAT THE GAME TEACHES, AND WHERE TO FIND THINGS." },
-      { action: 'boardTour', name: 'BOARD', ext: 'EXE', note: 'THE CONTRACT BOARD', value: seen(progress.seenLessons.includes(BOARD_TOUR_ID)), about: 'TICK SHOWS YOU AROUND THE CONTRACT BOARD.' },
+      { action: 'boardTour', name: 'BOARD', ext: 'EXE', note: 'THE CONTRACT BOARD', value: seen(hasSeen(progress, BOARD_TOUR_ID)), about: 'TICK SHOWS YOU AROUND THE CONTRACT BOARD.' },
+      { action: 'firstDay', name: 'WORKDAY', ext: 'EXE', note: 'YOUR FIRST DAY', value: seen(hasSeen(progress, FIRST_DAY_ID)), about: 'TICK ON THE WORKDAY: JOB GRADES, THE HOURS, LATER JOBS, LOGGING OFF.' },
+      { action: 'calendarTour', name: 'CALENDAR', ext: 'EXE', note: 'THE CALENDAR', value: seen(hasSeen(progress, CALENDAR_TOUR_ID)), about: 'TICK SHOWS YOU AROUND THE CALENDAR.' },
       ...lessons,
     ];
   }
@@ -261,7 +263,7 @@ export class TitleScene extends Screen {
     if (!file) return;
     const pages = file.pages.length;
     this.viewer.setText(file.pages[this.page].join('\n'));
-    this.about.setText(pages > 1 ? `PAGE ${this.page + 1} OF ${pages}   [LEFT/RIGHT] TURN THE PAGE   [ESC] CLOSE` : '[ESC] OR [ENTER] CLOSE');
+    this.about.setText(pages > 1 ? `PAGE ${this.page + 1} OF ${pages}   [LEFT/RIGHT] TURN THE PAGE   [Q] CLOSE` : '[Q] OR [ENTER] CLOSE');
   }
 
   /** Turns the open file's page; past the last one, closes it. */
@@ -374,7 +376,13 @@ export class TitleScene extends Screen {
         this.scene.restart({ welcome: true });
         return;
       case 'boardTour':
-        this.scene.start('board', { tour: true });
+        this.scene.start('board', { tour: BOARD_TOUR_ID });
+        return;
+      case 'firstDay':
+        this.scene.start('board', { tour: FIRST_DAY_ID });
+        return;
+      case 'calendarTour':
+        this.scene.start('calendar', { tour: true });
         return;
       case 'settings':
         this.scene.start('settings');

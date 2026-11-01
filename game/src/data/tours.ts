@@ -16,6 +16,11 @@ export const WELCOME_TOUR_ID = 'welcome';
 /** The board's tour, as Progress.seenLessons remembers it. */
 export const BOARD_TOUR_ID = 'board';
 
+/** The first day's tours, as Progress.seenLessons remembers them: the first real board, the first timecard, the first look at the calendar. */
+export const FIRST_DAY_ID = 'firstday';
+export const TIMECARD_TOUR_ID = 'timecard';
+export const CALENDAR_TOUR_ID = 'calendar';
+
 /** One thing the guide says: words, and a part of the screen to point at or a picture to hold up. */
 export type TourStep<Target extends string> = {
   readonly say: string;
@@ -27,7 +32,10 @@ export type TourStep<Target extends string> = {
 export type MenuTarget = 'menu' | 'new' | 'briefs' | 'readme' | 'settings';
 
 /** The contract board's parts the guide can point at (scenes/BoardScene.ts). */
-export type BoardTarget = 'list' | 'job' | 'loop' | 'notes' | 'memory' | 'time' | 'calendar';
+export type BoardTarget = 'list' | 'job' | 'loop' | 'notes' | 'memory' | 'time' | 'calendar' | 'workday' | 'card';
+
+/** The calendar screen's parts the guide can point at (scenes/CalendarScene.ts). */
+export type CalendarTarget = 'month' | 'today' | 'day';
 
 /** The song screen's parts the guide can point at (scenes/PipelineScene.ts); `x3` is one register's row. */
 export type SongTarget = 'lanes' | 'line' | 'rows' | 'gauge' | 'listing' | 'registers' | 'memory' | 'cache' | 'stats' | `x${number}`;
@@ -70,7 +78,7 @@ export const WELCOME_TOUR: readonly TourStep<MenuTarget>[] = [
   { say: 'Start here. NEWGAME begins a new game; CONTINUE picks up where you left off.', point: 'new' },
   { say: 'Every lesson I give is kept in BRIEFS. Open it any time to see one again.', point: 'briefs' },
   { say: 'README has the keys and the rules. SETTINGS has the sound, the timing, and RELAXED mode if the beat is too fast.', point: 'readme' },
-  { say: 'While you play, press ESC for the pause menu. After a song, click anything in its replay to learn what it is.' },
+  { say: 'While you play, press Q for the pause menu. After a song, click anything in its replay to learn what it is.' },
   { say: "Don't try to remember it all: I'll explain each thing the first time you need it. Let's go!", point: 'new' },
 ];
 
@@ -80,7 +88,7 @@ export const WELCOME_AFTER: Readonly<Record<TutorialLevel, readonly TourStep<Men
   short: [
     { say: "Alright, the short version. I'll still show you each new part of the CPU as you get it, but I won't go through every instruction." },
     { say: 'Every lesson I give is kept in BRIEFS, if you want one again.', point: 'briefs' },
-    { say: 'Press ESC for the pause menu while you play, and change how much I explain in SETTINGS. Let\'s go!', point: 'settings' },
+    { say: 'Press Q for the pause menu while you play, and change how much I explain in SETTINGS. Let\'s go!', point: 'settings' },
   ],
   skip: [{ say: "Got it! I'll stay out of your way. Every lesson is in BRIEFS, and SETTINGS can bring me back.", point: 'briefs' }],
 };
@@ -95,6 +103,31 @@ export const BOARD_TOUR: readonly TourStep<BoardTarget>[] = [
   { say: 'This is how long your CPU will take, against the deadline. A messy run is slower, and a late job pays half.', point: 'time' },
   { say: "This is your workday: 8 hours from 9:00. Each job uses up its time. Press L to log off, and a new day starts with new jobs.", point: 'calendar' },
   { say: "Pick a job and press ENTER. Your first is a small one, picked so I can show you everything. See you on the next screen!", point: 'list' },
+];
+
+/** Your first day: the first board with real jobs on it, once the tutorial job is done. */
+export const FIRST_DAY_TOUR: readonly TourStep<BoardTarget>[] = [
+  { say: 'Nice work! Now the real jobs arrive, sized to your CPU. EASY jobs leave room for mistakes; FAIR ones leave less.', point: 'list' },
+  { say: "STRETCH jobs pay the most, but they're TIGHT: one sloppy run and you finish late, which pays half.", point: 'list' },
+  { say: 'This bar is your workday: 8 hours from 9:00. The # marks are the hours used; the = marks are what the chosen job would take.', point: 'workday' },
+  { say: "Move to a job, or hover over it, to see its = marks. One that won't fit before 5:00 says LATER and waits for tomorrow.", point: 'list' },
+  { say: "Each job is due a few hours after you take it, and only stays on the board for a day or two, so don't wait too long.", point: 'time' },
+  { say: "When you've done enough, press L to log off. The day's timecard comes up, then a new morning with new jobs.", point: 'calendar' },
+  { say: 'Press C any time to see your calendar: every day so far, and what\'s coming. Have a good first day!' },
+];
+
+/** The first timecard, as the first day ends. */
+export const TIMECARD_TOUR: readonly TourStep<BoardTarget>[] = [
+  { say: "That's your timecard: when you started and stopped, the jobs you finished, how many were late, and what you earned.", point: 'card' },
+  { say: 'Press ENTER to clock out. Tomorrow brings new jobs, and offers that were on their last day are gone.', point: 'card' },
+];
+
+/** The first look at the calendar. */
+export const CALENDAR_TOUR: readonly TourStep<CalendarTarget>[] = [
+  { say: 'This is your calendar: the whole month, a box for each day. You started on Monday, November 1.', point: 'month' },
+  { say: "Today is shaded. The days you've finished show what you earned.", point: 'today' },
+  { say: "Choose any day with the arrows to see it here: a finished day's timecard, or what's coming that day.", point: 'day' },
+  { say: 'Days when offers end are marked, so you can plan which jobs to take first. Press B to go back to the board.', point: 'month' },
 ];
 
 /** Every lesson as a tour of the song screen, by lesson id (data/lessons.ts). */
@@ -200,5 +233,5 @@ export const SONG_TOURS: Readonly<Record<string, readonly TourStep<SongTarget>[]
   ],
 };
 
-/** Everything the game teaches, as Progress.seenLessons remembers it: every lesson, and the board's tour. */
-export const TAUGHT_IDS: readonly string[] = [...Object.keys(LESSONS), BOARD_TOUR_ID];
+/** Everything the game teaches, as Progress.seenLessons remembers it: every lesson, the board's tour and the first day's. */
+export const TAUGHT_IDS: readonly string[] = [...Object.keys(LESSONS), BOARD_TOUR_ID, FIRST_DAY_ID, TIMECARD_TOUR_ID, CALENDAR_TOUR_ID];

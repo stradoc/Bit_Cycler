@@ -104,6 +104,16 @@ export const NEW_GAME: Progress = {
   history: [],
 };
 
+/** The player has seen a lesson or tour (data/tours.ts TAUGHT_IDS). */
+export function hasSeen(progress: Progress, id: string): boolean {
+  return progress.seenLessons.includes(id);
+}
+
+/** Lessons or tours marked seen (each once). */
+export function withSeen(progress: Progress, ...ids: readonly string[]): Progress {
+  return { ...progress, seenLessons: [...new Set([...progress.seenLessons, ...ids])] };
+}
+
 /** A random number in [0, 1); injectable so tests are repeatable. */
 export type Random = () => number;
 

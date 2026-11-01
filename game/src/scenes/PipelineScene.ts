@@ -14,7 +14,7 @@ import { addressOf, Cpu } from '../sim/cpu.ts';
 import { keepsTotal, unitOf, type Unit } from '../sim/isa.ts';
 import { CACHE_LINES, freezeBeats, type Access } from '../sim/memory.ts';
 import type { Slot } from '../sim/pipeline.ts';
-import { thermalConfig } from '../sim/progress.ts';
+import { thermalConfig, withSeen } from '../sim/progress.ts';
 import { finishJob } from '../sim/workday.ts';
 import { Chip, THERMAL } from '../sim/thermal.ts';
 import { Bus } from '../song/bus.ts';
@@ -214,7 +214,7 @@ export class PipelineScene extends Screen {
     const steps = lessons.flatMap((id) => SONG_TOURS[id] ?? []);
     if (steps.length > 0) {
       this.guide.tour(steps, (target) => this.where(target), () => {
-        updateProgress((p) => ({ ...p, seenLessons: [...new Set([...p.seenLessons, ...lessons])] }));
+        updateProgress((p) => withSeen(p, ...lessons));
         if (setup.afterTour) this.scene.start(setup.afterTour.scene, setup.afterTour.data);
         else this.startConductor();
       });

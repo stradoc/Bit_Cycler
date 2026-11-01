@@ -43,7 +43,7 @@ export function practiceLines(run: PipelineRun, returnTo: string | undefined): s
     '',
     "NOW PLAY FOR REAL: NOTES WON'T WAIT.",
     '',
-    returnTo ? '[ENTER] CONTRACT BOARD' : '[ENTER] PLAY    [ESC] MENU',
+    returnTo ? '[ENTER] CONTRACT BOARD' : '[ENTER] PLAY    [Q] MENU',
   ];
 }
 
@@ -148,6 +148,6 @@ export function resultLines(f: Finished): string[] {
     if (paid) lines.push(`  MONEY NOW ${formatMoney(f.money)}`);
   }
 
-  lines.push('', contract && paid ? '[ENTER] CONTRACT BOARD    [W] WATCH AGAIN    [ESC] MENU' : '[ENTER] PLAY AGAIN    [W] WATCH AGAIN    [ESC] MENU');
+  lines.push('', contract && paid ? '[ENTER] CONTRACT BOARD    [W] WATCH AGAIN    [Q] MENU' : '[ENTER] PLAY AGAIN    [W] WATCH AGAIN    [Q] MENU');
   return lines;
 }

@@ -1,7 +1,11 @@
+import { CALENDAR_TOUR, CALENDAR_TOUR_ID } from '../data/tours.js';
 import { formatClock, formatHours, formatMoney } from '../format.js';
-import { getProgress } from '../save.js';
+import { getProgress, updateProgress } from '../save.js';
+import { teaching } from '../settings.js';
+import { hasSeen, withSeen } from '../sim/progress.js';
 import { calendarDate, clockSeconds, DAY_START, eventsOn, monthWeeks, MONTHS, recordOf, shortDate, timeLeft, weekday, WEEKDAYS } from '../sim/workday.js';
 import { cssColor } from '../ui/eras.js';
+import { Guide } from '../ui/guide.js';
 import { Screen } from '../ui/screen.js';
 import { LAYOUT, TEXT } from '../ui/theme.js';
 import { panel } from '../ui/widgets.js';
@@ -39,10 +43,20 @@ export class CalendarScene extends Screen {
     marks = [];
     detail;
     month;
+    guide;
+    /** Where today's box is, for TICK to point at. */
+    todayBox;
     constructor() {
         super('calendar');
     }
-    create() {
+    /** Opening the calendar again reuses this scene: start clean. */
+    init() {
+        this.marks = [];
+        this.todayBox = undefined;
+    }
+    /** `tour`: TICK's tour of the calendar even if it's been seen (BRIEFS on the main menu). */
+    create(data) {
+        const replayTour = data?.tour ?? false;
         this.setUp();
         const progress = getProgress();
         this.selected = progress.day;
@@ -53,8 +67,22 @@ export class CalendarScene extends Screen {
         this.grid = this.textAt(GRID_X, GRID_Y, '', TEXT.small).setLineSpacing(0);
         panel(this, this.era, DETAIL_X, DETAIL_Y, DETAIL_W, DETAIL_H, 'THE DAY');
         this.detail = this.add.container(0, 0);
-        this.hints('[ARROWS] CHOOSE A DAY', '[B] CONTRACT BOARD', '[ESC] MENU');
+        this.hints('[ARROWS] CHOOSE A DAY', '[B] CONTRACT BOARD', '[Q] MENU');
         this.draw();
+        // The first look: TICK shows the calendar around.
+        this.guide = new Guide(this, this.era);
+        if (replayTour || (teaching().tours && !hasSeen(progress, CALENDAR_TOUR_ID))) {
+            this.guide.tour(CALENDAR_TOUR, (target) => this.where(target), () => updateProgress((p) => withSeen(p, CALENDAR_TOUR_ID)));
+        }
+    }
+    update() {
+        super.update();
+        this.guide.update(performance.now());
+    }
+    /** Where the calendar's parts are, for the guide to point at. */
+    where(target) {
+        const month = { x: GRID_X - 8, y: GRID_Y - 6, w: this.grid.width + 16, h: this.grid.height + 12 };
+        return { month, today: this.todayBox ?? month, day: { x: DETAIL_X, y: DETAIL_Y, w: DETAIL_W, h: DETAIL_H } }[target];
     }
     pauseItems() {
         return this.places();
@@ -80,8 +108,10 @@ export class CalendarScene extends Screen {
             const x = GRID_X + (1 + col * (cellWidth + 1)) * charW;
             const y = GRID_Y + (headerLines + row * (cellLines + 1)) * lineH;
             const box = this.add.rectangle(x - 1, y - 1, cellWidth * charW + 2, cellLines * lineH + 2).setOrigin(0);
-            if (day === progress.day)
+            if (day === progress.day) {
                 box.setFillStyle(this.era.accent, 0.18);
+                this.todayBox = { x: x - 4, y: y - 4, w: cellWidth * charW + 8, h: cellLines * lineH + 8 };
+            }
             if (day === this.selected)
                 box.setStrokeStyle(2, this.era.accent, 1);
             this.marks.push(box);
@@ -142,7 +172,13 @@ export class CalendarScene extends Screen {
         }
         line(y, events.flatMap(eventLines).join('\n')).setLineSpacing(3);
     }
-    onKey(key) {
+    onKey(key, event) {
+        // TICK's tour: Enter shows the rest of the words, then goes on.
+        if (this.guide.waiting) {
+            if (key === 'Enter' && !event.repeat)
+                this.guide.next();
+            return key !== 'M';
+        }
         const step = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[key];
         if (step !== undefined) {
             this.selected += step;

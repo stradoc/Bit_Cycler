@@ -176,7 +176,7 @@ export class TerminalLook {
             parts.push(word, key);
             x += word.width + 10;
         }
-        const status = scene.add.text(14, HEIGHT + DOS_BAR / 2, ' ESC QUIT  │  BIT CYCLER', style).setOrigin(0, 0.5).setDepth(992);
+        const status = scene.add.text(14, HEIGHT + DOS_BAR / 2, ' Q BACK  │  BIT CYCLER', style).setOrigin(0, 0.5).setDepth(992);
         const mode = scene.add.text(WIDTH - 14, HEIGHT + DOS_BAR / 2, '16-BIT  640K ', style).setOrigin(1, 0.5).setDepth(992);
         parts.push(status, mode);
         return parts;

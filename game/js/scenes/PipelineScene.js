@@ -13,7 +13,7 @@ import { assemble } from '../sim/assembler.js';
 import { addressOf, Cpu } from '../sim/cpu.js';
 import { keepsTotal, unitOf } from '../sim/isa.js';
 import { CACHE_LINES, freezeBeats } from '../sim/memory.js';
-import { thermalConfig } from '../sim/progress.js';
+import { thermalConfig, withSeen } from '../sim/progress.js';
 import { finishJob } from '../sim/workday.js';
 import { Chip, THERMAL } from '../sim/thermal.js';
 import { Bus } from '../song/bus.js';
@@ -201,7 +201,7 @@ export class PipelineScene extends Screen {
         const steps = lessons.flatMap((id) => SONG_TOURS[id] ?? []);
         if (steps.length > 0) {
             this.guide.tour(steps, (target) => this.where(target), () => {
-                updateProgress((p) => ({ ...p, seenLessons: [...new Set([...p.seenLessons, ...lessons])] }));
+                updateProgress((p) => withSeen(p, ...lessons));
                 if (setup.afterTour)
                     this.scene.start(setup.afterTour.scene, setup.afterTour.data);
                 else

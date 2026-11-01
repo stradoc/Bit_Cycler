@@ -2,13 +2,13 @@ import { GRADES } from '../data/economy.js';
 import { banner } from '../data/menuFiles.js';
 import { programByName } from '../data/programs.js';
 import { playContract } from '../flow.js';
-import { BOARD_TOUR, BOARD_TOUR_ID } from '../data/tours.js';
+import { BOARD_TOUR, BOARD_TOUR_ID, FIRST_DAY_ID, FIRST_DAY_TOUR, TIMECARD_TOUR, TIMECARD_TOUR_ID } from '../data/tours.js';
 import { formatClock, formatCount, formatDuration, formatHours, formatMoney } from '../format.js';
 import { getProgress, setProgress, updateProgress } from '../save.js';
 import { teaching } from '../settings.js';
 import { UNITS } from '../sim/isa.js';
 import { jobSheet } from '../sim/jobSheet.js';
-import { contractSeconds, cpiFor, cpuLine, isLocked, isTight, isTutorial, jobItems, ratedMhz } from '../sim/progress.js';
+import { contractSeconds, cpiFor, cpuLine, hasSeen, isLocked, isTight, isTutorial, jobItems, ratedMhz, withSeen } from '../sim/progress.js';
 import { THERMAL } from '../sim/thermal.js';
 import { clockSeconds, DAY_END, DAY_SECONDS, DAY_START, dayOver, endDay, fitsToday, gradeName, shortDate, timeLeft, weekday } from '../sim/workday.js';
 import { cssColor } from '../ui/eras.js';
@@ -29,8 +29,12 @@ const SHEET_Y = 92;
 const SHEET_W = LAYOUT.right - SHEET_X;
 const SHEET_H = 362;
 const PAD = 16;
-/** Over the board: the timecard as the day ends. */
-const OVERLAY_DEPTH = 1500;
+/** Over the board, but under TICK (who points at it): the timecard as the day ends. */
+const OVERLAY_DEPTH = 800;
+/** The timecard's box: its middle and size, high enough that TICK fits under it to explain it. */
+const CARD = { y: 236, w: 360, h: 230 };
+/** The board's tours, by the id BRIEFS replays them with. */
+const TOURS = { [BOARD_TOUR_ID]: BOARD_TOUR, [FIRST_DAY_ID]: FIRST_DAY_TOUR };
 function standingOf(contract) {
     const progress = getProgress();
     if (isLocked(contract, progress))
@@ -71,9 +75,13 @@ export class BoardScene extends Screen {
     constructor() {
         super('board');
     }
-    /** `tour`: play the board's tour even if it's been seen (BRIEFS on the main menu). */
+    /** A restart (clocking out) reuses this scene: nothing from the last day carries over. */
+    init() {
+        this.card = undefined;
+    }
+    /** `tour`: a tour to play even if it's been seen (BRIEFS on the main menu): the board's, or the first day's. */
     create(data) {
-        const replayTour = data?.tour ?? false;
+        const replayTour = data?.tour;
         this.setUp();
         const progress = getProgress();
         const worn = progress.chipMaxDial < THERMAL.maxDial ? `   CHIP WORN: MAX ${Math.round(progress.chipMaxDial * 100)}%` : '';
@@ -110,15 +118,17 @@ export class BoardScene extends Screen {
         this.textAt(LIST_X, this.menu.rowY(rows.length - 1) + ROW_H + 8, 'FINISH LATE (A SLOPPY RUN): HALF PAY', TEXT.small - 1).setAlpha(ALPHA.subtitle);
         this.drawCalendar();
         this.message = this.messageLine();
-        this.hints('[UP/DOWN] CHOOSE', '[ENTER] TAKE CONTRACT', '[L] LOG OFF', '[C] CALENDAR', '[S] SHOP', '[ESC] MENU');
+        this.hints('[UP/DOWN] CHOOSE', '[ENTER] TAKE CONTRACT', '[L] LOG OFF', '[C] CALENDAR', '[S] SHOP', '[Q] MENU');
         this.drawSheet();
         this.showDay(this.contracts[this.menu.selected]);
         // The mouse leaving the game: back to the chosen job's estimate.
         this.input.on('gameout', () => this.showDay(this.contracts[this.menu.selected]));
         // The first visit: the guide shows the board around.
         this.guide = new Guide(this, this.era);
-        if (replayTour || (teaching().tours && !progress.seenLessons.includes(BOARD_TOUR_ID))) {
-            this.guide.tour(BOARD_TOUR, (target) => this.where(target), () => updateProgress((p) => ({ ...p, seenLessons: [...new Set(p.seenLessons).add(BOARD_TOUR_ID)] })));
+        // TICK's tours: the board on the first visit (the tutorial job alone), then the first day once the real jobs arrive.
+        const tour = replayTour ?? (!teaching().tours ? undefined : !hasSeen(progress, BOARD_TOUR_ID) ? BOARD_TOUR_ID : !progress.board.some(isTutorial) && !hasSeen(progress, FIRST_DAY_ID) ? FIRST_DAY_ID : undefined);
+        if (tour && TOURS[tour]) {
+            this.guide.tour(TOURS[tour], (target) => this.where(target), () => updateProgress((p) => withSeen(p, tour)));
         }
         else if (dayOver(progress)) {
             // The last job used up the day's hours: its timecard.
@@ -176,12 +186,16 @@ export class BoardScene extends Screen {
             earned: formatMoney(progress.today.earned),
         });
         const shade = this.add.rectangle(0, 0, WIDTH, 540, this.era.bg, 0.75).setOrigin(0).setDepth(OVERLAY_DEPTH).setInteractive();
-        const box = new Box(this, this.era, WIDTH / 2, 270, 360, 260, { strokeWidth: 2 }).setDepth(OVERLAY_DEPTH + 1);
-        const title = this.text(WIDTH / 2, 166, over ? "THAT'S THE DAY" : 'LOG OFF?', TEXT.title - 4).setFontStyle('bold').setColor(cssColor(this.era.accent)).setDepth(OVERLAY_DEPTH + 2);
-        const card = this.text(WIDTH / 2, 272, lines.join('\n'), TEXT.small).setLineSpacing(2).setDepth(OVERLAY_DEPTH + 2);
-        const keys = this.text(WIDTH / 2, 378, over ? '[ENTER] CLOCK OUT' : '[ENTER] CLOCK OUT    [ESC] KEEP WORKING', TEXT.hint).setAlpha(ALPHA.hint).setDepth(OVERLAY_DEPTH + 2);
+        const box = new Box(this, this.era, WIDTH / 2, CARD.y, CARD.w, CARD.h, { strokeWidth: 2 }).setDepth(OVERLAY_DEPTH + 1);
+        const title = this.text(WIDTH / 2, CARD.y - CARD.h / 2 + 24, over ? "THAT'S THE DAY" : 'LOG OFF?', TEXT.title - 4).setFontStyle('bold').setColor(cssColor(this.era.accent)).setDepth(OVERLAY_DEPTH + 2);
+        const card = this.text(WIDTH / 2, CARD.y + 6, lines.join('\n'), TEXT.small).setLineSpacing(2).setDepth(OVERLAY_DEPTH + 2);
+        const keys = this.text(WIDTH / 2, CARD.y + CARD.h / 2 - 18, over ? '[ENTER] CLOCK OUT' : '[ENTER] CLOCK OUT    [Q] KEEP WORKING', TEXT.hint).setAlpha(ALPHA.hint).setDepth(OVERLAY_DEPTH + 2);
         this.card = [shade, ...box.parts, title, card, keys];
         this.cue('confirm');
+        // The first timecard: TICK says what it is.
+        if (teaching().tours && !hasSeen(progress, TIMECARD_TOUR_ID)) {
+            this.guide.tour(TIMECARD_TOUR, (target) => this.where(target), () => updateProgress((p) => withSeen(p, TIMECARD_TOUR_ID)));
+        }
     }
     /** Clocks out: the timecard's day ends, and the board opens on the next morning. */
     clockOut() {
@@ -216,6 +230,8 @@ export class BoardScene extends Screen {
             memory: { ...inner, y: SHEET_Y + 242, h: 76 },
             time: { ...inner, y: SHEET_Y + 318, h: 38 },
             calendar: { x: LIST_X - 12, y: this.calendarTop - 8, w: LAYOUT.right - LIST_X + 24, h: LAYOUT.about + 12 - (this.calendarTop - 8) },
+            workday: { x: this.dayBar.x - this.dayBar.width / 2 - 8, y: LAYOUT.about - 13, w: this.dayBar.width + 16, h: 26 },
+            card: { x: WIDTH / 2 - CARD.w / 2 - 6, y: CARD.y - CARD.h / 2 - 6, w: CARD.w + 12, h: CARD.h + 12 },
         };
         return areas[target];
     }
