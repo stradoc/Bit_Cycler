@@ -27,7 +27,7 @@ Each song opens with a short count-in naming the loop's key registers (`NEXT`, `
 
 **Eras.** Your computer's look follows its CPU chip. Each wider chip you buy in the shop moves it into the next era: a green CRT (8-bit), DOS (16-bit), a 90s desktop (32-bit) and a modern terminal (64-bit).
 
-**New hardware comes with a briefing** (a few cards on the idea), then a practice, then the real thing.
+**New hardware comes with a lesson.** TICK, the robot who lives in the computer, shows you the new parts on the real screen (or a few cards on the idea, for lessons TICK hasn't taken over yet), then a practice, where notes wait for you and TICK explains each new situation, then the real thing. On the board, the job sheet shows the chosen contract: the loop you'll play, its notes, the memory it uses, and how long your CPU would take.
 
 ## Educational purpose and learning objectives
 

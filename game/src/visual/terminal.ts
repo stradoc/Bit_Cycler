@@ -192,10 +192,9 @@ export class TerminalLook {
     const colors = palette(era);
     const [left, top, w, h] = [-4, -WINDOW_BAR - 4, WIDTH + 8, HEIGHT + WINDOW_BAR + 8];
     const body = scene.add.graphics().setDepth(-1000).fillStyle(colors.face).fillRect(left, top, w, h);
-    bevel(body, era, left, top, w, h, true);
-    const bar = scene.add
-      .graphics()
-      .setDepth(990)
+    // The window's top edge and title bar are drawn over everything, so notes on their way down don't show through the edge.
+    const bar = scene.add.graphics().setDepth(990).fillStyle(colors.face).fillRect(left, top, w, -top);
+    bevel(bar, era, left, top, w, h, true)
       .fillGradientStyle(frame.bar, frame.bar2, frame.bar, frame.bar2, 1)
       .fillRect(-1, -WINDOW_BAR, WIDTH + 2, WINDOW_BAR - 3);
     const parts: Phaser.GameObjects.GameObject[] = [body, bar, this.deskAbove(frame.desk, top)];

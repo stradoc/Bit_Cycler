@@ -88,3 +88,12 @@ test('the simulator runs the setup\'s hardware', () => {
   const setup = songSetup({ forwarding: true, predictor: '1-bit' }, worn, url());
   assert.deepEqual(pipelineOptions(setup, 40), { forwarding: true, predictor: '1-bit', singleCycle: false, cache: true, mhz: 40 });
 });
+
+test("the guide's tour plays once: retries and replays drop it", () => {
+  const first = songSetup({ practice: true, tour: 'tier1' }, NEW_GAME, url());
+  assert.equal(first.tour, 'tier1');
+  assert.equal(songSetup(playAgain(first), NEW_GAME, url()).tour, undefined);
+  assert.equal(songSetup(watch(first, recording), NEW_GAME, url()).tour, undefined);
+  assert.equal(songSetup({}, NEW_GAME, url('practice&tour=tier1')).tour, 'tier1');
+  assert.equal(songSetup({ replay: recording }, NEW_GAME, url('tour=tier1')).tour, undefined);
+});

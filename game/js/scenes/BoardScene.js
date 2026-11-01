@@ -1,168 +1,194 @@
 import { SECTIONS } from '../data/economy.js';
 import { programByName } from '../data/programs.js';
 import { playContract } from '../flow.js';
+import { BOARD_TOUR, BOARD_TOUR_ID } from '../data/tours.js';
 import { formatCount, formatDuration, formatMoney } from '../format.js';
-import { getProgress } from '../save.js';
-import { contractSeconds, cpuLine, isLocked, isTight, jobItems } from '../sim/progress.js';
+import { getProgress, updateProgress } from '../save.js';
+import { UNITS } from '../sim/isa.js';
+import { jobSheet } from '../sim/jobSheet.js';
+import { contractSeconds, cpiFor, cpuLine, isLocked, isTight, jobItems, ratedMhz } from '../sim/progress.js';
 import { THERMAL } from '../sim/thermal.js';
 import { cssColor } from '../ui/eras.js';
+import { Guide } from '../ui/guide.js';
+import { ListMenu } from '../ui/list.js';
 import { Screen } from '../ui/screen.js';
 import { ALPHA, LAYOUT, TEXT } from '../ui/theme.js';
-import { Box } from '../ui/widgets.js';
-import { isSmooth } from '../visual/display.js';
-const CARD_W = 284;
-const CARD_H = 150;
-const COLUMN_X = [168, 480, 792];
-const ROW_Y = [212, 378];
-/** A taken card stays pressed in this long (ms) before its contract starts, like a real button on release. */
-const PRESS_MS = 130;
+import { panel } from '../ui/widgets.js';
+import { bar, deadlineBar } from '../visual/asciiChart.js';
+const LIST_X = 48;
+const LIST_W = 316;
+const LIST_TOP = 118;
+const ROW_H = 26;
+/** The job sheet: the chosen contract in full. */
+const SHEET_X = 400;
+const SHEET_Y = 92;
+const SHEET_W = LAYOUT.right - SHEET_X;
+const SHEET_H = 362;
+const PAD = 16;
+function standingOf(contract) {
+    const progress = getProgress();
+    return isLocked(contract, progress) ? 'locked' : isTight(contract, progress) ? 'tight' : 'ready';
+}
 /**
- * The contract board: endless random jobs in three sections. Each shows how
- * long your CPU would take for the whole job (instructions x CPI x clock
- * period); jobs that would take over 30 days are locked until it's faster.
+ * The contract board: endless random jobs in three sections, listed by
+ * client and pay, with the chosen one's job sheet beside them: the job, the
+ * loop that does it, the notes it plays, the memory it uses, and how long
+ * your CPU would take for all of it (instructions x CPI x clock period).
+ * Jobs your CPU couldn't finish by their deadline are locked until it's faster.
  */
 export class BoardScene extends Screen {
-    cards = [];
-    selected = 0;
+    menu;
+    contracts = [];
+    sheet;
     message;
-    /** A card is pressed in and its contract about to start: ignore keys. */
-    busy = false;
-    /** The modern era's selection frame, which glides from card to card. */
-    selector;
+    guide;
     constructor() {
         super('board');
-    }
-    init() {
-        this.cards = [];
-        this.busy = false;
     }
     create() {
         this.setUp();
         const progress = getProgress();
-        const { era } = this;
         const worn = progress.chipMaxDial < THERMAL.maxDial ? `   CHIP WORN: MAX ${Math.round(progress.chipMaxDial * 100)}%` : '';
         this.header('CONTRACT BOARD', `YOUR CPU: ${cpuLine(progress)}${worn}`);
         this.corner(formatMoney(progress.money));
-        SECTIONS.forEach((section, column) => {
-            this.text(COLUMN_X[column], 104, section.name, 18).setFontStyle('bold').setColor(cssColor(era.accent));
-            const [soon, late] = section.deadline;
-            this.text(COLUMN_X[column], 126, `NEEDED IN ${formatDuration(soon)} TO ${formatDuration(late)}`, 12).setAlpha(0.6);
-            progress.board
-                .filter((c) => c.section === section.id)
-                .forEach((contract, row) => this.drawCard(contract, COLUMN_X[column], ROW_Y[row]));
+        // Section by section, as the economy lists them.
+        this.contracts = SECTIONS.flatMap((section) => progress.board.filter((c) => c.section === section.id));
+        const rows = this.contracts.map((contract, i) => {
+            const standing = standingOf(contract);
+            const first = i === 0 || this.contracts[i - 1].section !== contract.section;
+            return {
+                label: programByName(contract.program).client ?? contract.program,
+                middle: formatMoney(contract.pay),
+                value: standing === 'locked' ? 'SLOW' : standing === 'tight' ? 'TIGHT' : 'OK',
+                dim: standing === 'locked',
+                group: first ? SECTIONS.find((s) => s.id === contract.section)?.name : undefined,
+            };
         });
-        this.text(480, LAYOUT.about, 'TIME = INSTRUCTIONS x CPI x CLOCK PERIOD. MISS THE DEADLINE (A SLOPPY RUN RAISES CPI): HALF PAY.', TEXT.small - 1).setAlpha(ALPHA.subtitle);
+        this.menu = new ListMenu(this, this.era, { x: LIST_X, top: LIST_TOP, width: LIST_W, rowHeight: ROW_H, size: 15, middle: 58 });
+        this.menu.setRows(rows, Math.max(0, this.contracts.findIndex((c) => standingOf(c) !== 'locked')));
+        // Clicking a row chooses it; clicking the chosen one takes it.
+        rows.forEach((_, i) => {
+            this.add
+                .zone(LIST_X - 8, this.menu.rowY(i), LIST_W + 16, ROW_H)
+                .setOrigin(0, 0.5)
+                .setInteractive({ useHandCursor: true })
+                .on('pointerdown', () => (i === this.menu.selected ? this.take() : this.choose(i - this.menu.selected)));
+        });
+        panel(this, this.era, SHEET_X, SHEET_Y, SHEET_W, SHEET_H, 'JOB SHEET');
+        this.sheet = this.add.container(0, 0);
+        this.textAt(LIST_X, this.menu.rowY(rows.length - 1) + ROW_H + 8, 'FINISH LATE (A SLOPPY RUN): HALF PAY', TEXT.small - 1).setAlpha(ALPHA.subtitle);
         this.message = this.messageLine();
-        this.hints('[ARROWS] CHOOSE', '[ENTER] TAKE CONTRACT', '[S] SHOP', '[M] HUM', '[Q] MAIN MENU');
-        // Start on the first contract that can be taken.
-        this.selected = Math.max(0, this.cards.findIndex((c) => !c.locked));
-        const first = this.cards[this.selected]?.frame;
-        this.selector = isSmooth() && first ? this.add.rectangle(first.x, first.y, CARD_W + 8, CARD_H + 8).setStrokeStyle(2, era.accent, 1) : undefined;
-        this.highlight();
+        this.hints('[UP/DOWN] CHOOSE', '[ENTER] TAKE CONTRACT', '[S] SHOP', '[M] HUM', '[Q] MAIN MENU');
+        this.drawSheet();
+        // The first visit: the guide shows the board around.
+        this.guide = new Guide(this, this.era);
+        if (!progress.seenLessons.includes(BOARD_TOUR_ID)) {
+            this.guide.tour(BOARD_TOUR, (target) => this.where(target), () => updateProgress((p) => ({ ...p, seenLessons: [...p.seenLessons, BOARD_TOUR_ID] })));
+        }
     }
-    drawCard(contract, x, y) {
+    update() {
+        super.update();
+        this.guide.update(performance.now());
+    }
+    /** Where the parts of the board are, for the guide to point at. */
+    where(target) {
+        const inner = { x: SHEET_X + 6, w: SHEET_W - 12 };
+        const bottom = this.menu.rowY(this.contracts.length - 1) + ROW_H / 2 + 4;
+        const areas = {
+            list: { x: LIST_X - 12, y: LIST_TOP - 30, w: LIST_W + 24, h: bottom - LIST_TOP + 30 },
+            job: { ...inner, y: SHEET_Y + 8, h: 76 },
+            loop: { x: inner.x, y: SHEET_Y + 92, w: 286, h: 136 },
+            notes: { x: SHEET_X + 292, y: SHEET_Y + 92, w: SHEET_W - 298, h: 76 },
+            memory: { ...inner, y: SHEET_Y + 242, h: 76 },
+            time: { ...inner, y: SHEET_Y + 318, h: 38 },
+        };
+        return areas[target];
+    }
+    choose(delta) {
+        if (delta === 0)
+            return;
+        this.menu.move(delta);
+        this.message.setText('');
+        this.drawSheet();
+    }
+    /** The chosen contract's job sheet. */
+    drawSheet() {
+        this.sheet.removeAll(true);
+        const contract = this.contracts[this.menu.selected];
+        if (!contract)
+            return;
         const progress = getProgress();
-        const { era } = this;
         const spec = programByName(contract.program);
-        const locked = isLocked(contract, progress);
-        // Its frame lights up when chosen (highlight()); the box draws the era's card (raised, or double-lined with a shadow).
-        const box = new Box(this, era, x, y, CARD_W, CARD_H, { fill: null, stroke: era.accent, strokeAlpha: 0.4, shadow: 6 });
-        const frame = box.body;
-        const left = x - CARD_W / 2 + 14;
-        const texts = [];
-        const line = (dy, content, size = 14) => {
-            const text = this.text(left, y - CARD_H / 2 + dy, content, size).setOrigin(0, 0.5).setAlpha(locked ? 0.5 : 0.95);
-            texts.push(text);
+        const job = jobSheet(contract.program);
+        const standing = standingOf(contract);
+        const left = SHEET_X + PAD;
+        const right = SHEET_X + SHEET_W - PAD;
+        const line = (x, y, content, size = TEXT.small, alpha = 0.95) => {
+            const text = this.textAt(x, y, content, size).setAlpha(alpha);
+            this.sheet.add(text);
             return text;
         };
-        line(22, spec.client ?? spec.name, 16).setFontStyle('bold');
-        const pay = this.text(x + CARD_W / 2 - 14, y - CARD_H / 2 + 22, formatMoney(contract.pay), 16)
-            .setOrigin(1, 0.5)
-            .setAlpha(locked ? 0.5 : 1);
-        texts.push(pay);
-        // Squeezed to fit the card if the job's description is long.
-        const job = line(48, `${spec.verb} ${formatCount(jobItems(contract))} ${spec.unit}`);
-        job.setScale(Math.min(1, (CARD_W - 28) / job.width), 1);
-        line(68, `= ${formatCount(contract.instructions)} INSTRUCTIONS`, 13).setAlpha(locked ? 0.4 : 0.7);
-        line(94, `NEEDED IN: ${formatDuration(contract.deadline)}`, 15);
-        const time = line(116, `YOUR CPU:  ${formatDuration(contractSeconds(contract, progress))}`, 15);
-        if (locked) {
-            time.setColor(cssColor(this.colors.danger)).setAlpha(1);
-            line(138, 'TOO SLOW: NEEDS A FASTER CPU', 13).setColor(cssColor(this.colors.warn)).setAlpha(1);
-        }
-        else if (isTight(contract, progress)) {
-            time.setColor(cssColor(this.colors.warn));
-            line(138, 'TIGHT: PLAY CLEANLY OR BE LATE', 13).setColor(cssColor(this.colors.warn));
-        }
-        const index = this.cards.length;
-        this.cards.push({ contract, box, frame, locked, texts });
-        frame.setInteractive({ useHandCursor: true }).on('pointerdown', () => {
-            this.selected = index;
-            this.highlight();
-            this.take();
-        });
-    }
-    highlight() {
-        const { accent: fg } = this.era;
-        const { selector } = this;
-        this.cards.forEach((card, i) => {
-            const on = i === this.selected;
-            if (!selector) {
-                card.frame.setStrokeStyle(on ? 2 : 1, fg, on ? 1 : 0.4).setFillStyle(fg, on ? 0.08 : 0);
-                return;
-            }
-            // Modern: the chosen card's tint fades in while the frame glides over to it.
-            this.tweens.killTweensOf(card.frame);
-            this.tweens.add({ targets: card.frame, fillAlpha: on ? 0.08 : 0, duration: 180, ease: 'Quad.Out' });
-            if (on) {
-                this.tweens.killTweensOf(selector);
-                this.tweens.add({ targets: selector, x: card.frame.x, y: card.frame.y, duration: 200, ease: 'Cubic.Out' });
-            }
-        });
-        this.message.setText('');
+        const heading = (x, y, content) => line(x, y, content, TEXT.small - 1, 0.8).setColor(cssColor(this.era.accent));
+        // Who it's for, the pay, and the job in their words.
+        line(left, SHEET_Y + 16, spec.client ?? spec.name, TEXT.body + 2, 1).setFontStyle('bold');
+        line(right, SHEET_Y + 16, formatMoney(contract.pay), TEXT.body + 2, 1).setOrigin(1, 0);
+        line(left, SHEET_Y + 42, `${spec.verb} ${formatCount(jobItems(contract))} ${spec.unit}`, TEXT.body);
+        const verdict = {
+            ready: 'YOUR CPU HAS TIME TO SPARE.',
+            tight: 'TIGHT: PLAY CLEANLY OR BE LATE.',
+            locked: 'TOO SLOW: A FASTER CPU FROM THE SHOP [S] CAN DO IT.',
+        }[standing];
+        // The warning color for both: the danger red is hard to read on DOS blue.
+        const color = standing === 'ready' ? this.era.fg : this.colors.warn;
+        line(left, SHEET_Y + 64, verdict, TEXT.small, 1).setColor(cssColor(color));
+        // The loop the song plays, and the notes it sends down each lane.
+        const top = SHEET_Y + 98;
+        heading(left, top, `THE LOOP, RUN ${job.loopRuns} TIMES`);
+        job.loop.forEach((code, i) => line(left, top + 20 + i * 17, code, TEXT.small));
+        const notesX = SHEET_X + 300;
+        const total = UNITS.reduce((sum, unit) => sum + job.notes[unit], 0);
+        heading(notesX, top, `${total} NOTES IN THE SONG`);
+        UNITS.forEach((unit, i) => line(notesX, top + 20 + i * 17, `${unit.padEnd(6)} ${bar(job.notes[unit], total, 8)} ${job.notes[unit]}`, TEXT.small));
+        // Which memory it reads and writes: one character per address.
+        const memory = SHEET_Y + 248;
+        const strip = (marks) => marks.map((on) => (on ? '#' : '.')).join('');
+        heading(left, memory, `MEMORY IT USES, ADDRESSES 0-${job.reads.length - 1}`);
+        line(left, memory + 20, `       ${'0'.padEnd(8)}${'8'.padEnd(8)}${'16'.padEnd(8)}24`, TEXT.small, 0.6);
+        line(left, memory + 37, `READS  ${strip(job.reads)}`);
+        line(left, memory + 54, `WRITES ${strip(job.writes)}`);
+        // How long your CPU takes for the whole job, against the deadline.
+        const seconds = contractSeconds(contract, progress);
+        const time = SHEET_Y + 330;
+        const period = formatDuration(1 / (ratedMhz(progress) * 1e6));
+        line(left, time - 8, `${formatCount(contract.instructions)} INSTRUCTIONS x CPI ${cpiFor(contract.program, progress).toFixed(2)} x ${period} = ${formatDuration(seconds)}`, TEXT.small, 0.8);
+        line(left, time + 10, `NEEDED IN ${formatDuration(contract.deadline)}`.padEnd(22) + deadlineBar(seconds, contract.deadline, 22), TEXT.small).setColor(cssColor(color));
     }
     take() {
-        const card = this.cards[this.selected];
-        if (!card)
+        const contract = this.contracts[this.menu.selected];
+        if (!contract)
             return;
-        if (card.locked) {
+        if (standingOf(contract) === 'locked') {
             this.cue('error');
             this.message.setText('TOO SLOW FOR THIS JOB: A FASTER CLOCK OR NEW PARTS IN THE SHOP [S] WILL GET YOU THERE');
             return;
         }
         this.cue('confirm');
-        if (!card.box.canPress) {
-            playContract(this, card.contract);
-            return;
-        }
-        // The 90s desktop: the card presses in, and the contract starts as it's released.
-        this.busy = true;
-        card.box.press(true, card.texts);
-        this.time.delayedCall(PRESS_MS, () => playContract(this, card.contract));
-    }
-    /** Arrow keys move within the 3 x 2 grid of cards (cards are stored column by column). */
-    move(dx, dy) {
-        const rows = ROW_Y.length;
-        const column = Math.floor(this.selected / rows);
-        const row = this.selected % rows;
-        const next = Phaser.Math.Wrap(column + dx, 0, COLUMN_X.length) * rows + Phaser.Math.Clamp(row + dy, 0, rows - 1);
-        if (next < this.cards.length && next !== this.selected) {
-            this.selected = next;
-            this.cue('move');
-        }
-        this.highlight();
+        this.menu.press(() => playContract(this, contract));
     }
     onKey(key) {
-        if (this.busy)
+        if (this.guide.touring) {
+            if (key === 'Enter' || key === ' ' || key === 'ArrowRight')
+                this.guide.next();
+            else if (key === 'Escape' || key === 'Q')
+                this.back();
             return true;
-        if (key === 'ArrowLeft')
-            this.move(-1, 0);
-        else if (key === 'ArrowRight')
-            this.move(1, 0);
-        else if (key === 'ArrowUp')
-            this.move(0, -1);
+        }
+        if (this.menu.busy)
+            return true;
+        if (key === 'ArrowUp')
+            this.choose(-1);
         else if (key === 'ArrowDown')
-            this.move(0, 1);
+            this.choose(1);
         else if (key === 'Enter' || key === ' ')
             this.take();
         else if (key === 'S') {

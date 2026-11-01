@@ -1,6 +1,6 @@
 import { cheatFlags } from './cheatFlags.ts';
 import { CHIPS, CLOCK, COOLING } from './data/economy.ts';
-import { LESSONS } from './data/lessons.ts';
+import { TAUGHT_IDS } from './data/tours.ts';
 import { formatMhz, formatMoney } from './format.ts';
 import { activeSlot, getProgress, newGame, slotName, updateProgress } from './save.ts';
 import { bitsName, chipByBits, fillBoard, fitChip, ratedMhz, tierOf, withEverything, withTier, withWordBits, type Progress } from './sim/progress.ts';
@@ -23,7 +23,7 @@ const HELP = `Bit Cycler cheats (type in this console):
   cheat.wear(1.2)       chip's max clock after overheating (1.0-1.5)
   cheat.unlockAll()     every part, max clock, fan, overclocking, the L1 cache, $100,000
   cheat.board()         new random contracts
-  cheat.lessons(true)   mark every briefing read (false: unread again)
+  cheat.lessons(true)   mark every lesson and tour seen (false: unseen again)
   cheat.autoplay()      the game plays songs for you (false to stop)
   cheat.temp(94)        set the chip's temperature mid-song
   cheat.reset()         new game (wipes the save)`;
@@ -63,8 +63,8 @@ export function installCheats(game: Phaser.Game): void {
     unlockAll: () => change(withEverything),
     board: () => change((p) => fillBoard({ ...p, board: [] }, Math.random)),
     lessons: (read = true) => {
-      updateProgress((p) => ({ ...p, seenLessons: read ? Object.keys(LESSONS) : [] }));
-      return `briefings marked ${read ? 'read' : 'unread'} (${getProgress().seenLessons.length} read)`;
+      updateProgress((p) => ({ ...p, seenLessons: read ? [...TAUGHT_IDS] : [] }));
+      return `lessons and tours marked ${read ? 'seen' : 'unseen'} (${getProgress().seenLessons.length} seen)`;
     },
     autoplay: (on = true) => {
       cheatFlags.autoplay = on;

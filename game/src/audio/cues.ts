@@ -21,6 +21,8 @@ export type CueOptions = {
 type Extras = {
   /** One beat of waiting for memory: the beat's length (s), and how many cycles tick by in it. */
   readonly waiting: { readonly length: number; readonly ticks: number };
+  /** One word the guide says: the note it's said on (Hz). */
+  readonly 'guide-talk': { readonly pitch: number };
 };
 
 /** A cue's own options after the time and volume: `cue(scene, 'waiting', { at, length, ticks })`, `cue(scene, 'move')`. */
@@ -116,6 +118,26 @@ const CUES = {
     flat(ctx, at, pitch, 0.025, 0.05 * scale, 'square', 10000);
     tone(ctx, at, pitch * 2.2, 0.04, 0.06 * scale);
     noiseBurst(ctx, at, 0.035, 'highpass', 6000, 0.3 * scale);
+  },
+
+  // ---- the guide (ui/guide.ts) ----
+  /**
+   * One word: a short, soft square-wave syllable that dips a little in
+   * pitch as it fades, with a brighter overtone on top, so it reads as a
+   * small robot talking rather than a beep.
+   */
+  'guide-talk': (ctx, at, scale, { pitch }: Extras['guide-talk']) => {
+    const length = 0.045 + Math.random() * 0.015;
+    tone(ctx, at, pitch * 1.06, length, 0.13 * scale, 'square', pitch * 0.94);
+    tone(ctx, at, pitch * 2, length * 0.6, 0.04 * scale, 'triangle');
+  },
+  /** A tour starting: three quick notes going up (C, E, G), like a cheerful "hi there!". */
+  'guide-hello': (ctx, at, scale) => {
+    [1047, 1319, 1568].forEach((pitch, i) => tone(ctx, at + i * 0.07, pitch, 0.09, 0.09 * scale, 'square', pitch * 1.02));
+  },
+  /** A tour ending: two notes going down (G, C), a "bye!". */
+  'guide-bye': (ctx, at, scale) => {
+    [1568, 1047].forEach((pitch, i) => tone(ctx, at + i * 0.09, pitch, 0.12, 0.09 * scale, 'square', pitch * 0.98));
   },
 
   // ---- the computer (the boot, timed with its text in data/boot.ts) ----

@@ -3,6 +3,7 @@ import { tokens, type Instruction, type Program } from '../sim/isa.ts';
 import { BLOCK_BYTES, blockOf, CACHE_LINES, lineOf, tagOf, type Access } from '../sim/memory.ts';
 import { STAGES, type Stage } from '../sim/pipeline.ts';
 import { cssColor } from '../ui/eras.ts';
+import type { Rect } from '../ui/guide.ts';
 import { panel } from '../ui/widgets.ts';
 import { hintColor } from '../visual/branchHint.ts';
 import { codeLine } from '../visual/codeLine.ts';
@@ -35,6 +36,8 @@ export class Panel extends Part {
   private readonly feedback: Phaser.GameObjects.Text;
   /** The count-in's text (key registers and beats left); gone once the song starts. */
   private countIn: Phaser.GameObjects.Text | undefined;
+  /** Where its boxes are, for the guide to point at (the cache's only once it's bought). */
+  readonly areas: Record<'listing' | 'registers' | 'memory' | 'cache' | 'stats', Rect>;
 
   /** `countInPulse`: the song opens with a count-in, the key registers pulsing this slowly (ms); undefined: no count-in. */
   constructor(view: SongView, program: Program, countInPulse: number | undefined) {
@@ -53,6 +56,8 @@ export class Panel extends Part {
       this.listingLayer.setMask(window.createGeometryMask());
     }
     let y = LISTING_TOP + LISTING_ROWS * LISTING_LINE + 16;
+    const listingArea = { x: BOX_X, y: LISTING_TOP - 10, w: BOX_W, h: LISTING_ROWS * LISTING_LINE + 16 };
+    const registersArea = { x: BOX_X, y, w: BOX_W, h: 4 * LINE + 20 };
     clickable(panel(this.scene, this.era, BOX_X, y, BOX_W, 4 * LINE + 20, 'REGISTERS  (<- STILL COMPUTING)'), () => GLOSSARY.REGISTERS);
     y += 12;
     // A size smaller than the rest of the panel, so a key register's tag fits beside "<-MEM".
@@ -66,6 +71,8 @@ export class Panel extends Part {
     y += 4 * LINE + 18;
     // Memory, 8 bytes (two cache blocks) per row; the L1 cache sits beside it once it's bought.
     const memoryW = setup.l1 ? MEMORY_W_CACHED : BOX_W;
+    const memoryArea = { x: BOX_X, y, w: memoryW, h: MEMORY_ROWS * LINE + 20 };
+    const cacheArea = { x: BOX_X + memoryW + 6, y, w: BOX_W - memoryW - 6, h: MEMORY_ROWS * LINE + 20 };
     clickable(panel(this.scene, this.era, BOX_X, y, memoryW, MEMORY_ROWS * LINE + 20, 'MEMORY'), () => words.memory());
     if (setup.l1) {
       const cacheX = BOX_X + memoryW + 6;
@@ -82,6 +89,7 @@ export class Panel extends Part {
     const lookup = setup.l1 ? 'LOADS LOOK IN THE CACHE FIRST' : 'LOADS AND STORES GO TO RAM';
     this.lookupText = clickable(this.text(PANEL_X, y, lookup, 13).setAlpha(0.8), () => (setup.l1 ? GLOSSARY.LOOKUP : GLOSSARY.RAM));
     y += 22;
+    this.areas = { listing: listingArea, registers: registersArea, memory: memoryArea, cache: setup.l1 ? cacheArea : memoryArea, stats: { x: BOX_X, y: y - 6, w: BOX_W, h: 64 } };
     this.statsText = clickable(this.text(PANEL_X, y, '', 14).setLineSpacing(3), () => GLOSSARY.STATS);
     y += 36;
     this.throughputText = clickable(this.text(PANEL_X, y, '', 14), () => GLOSSARY.THROUGHPUT);

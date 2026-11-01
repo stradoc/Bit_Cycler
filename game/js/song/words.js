@@ -4,6 +4,19 @@ import { describe, format, UNIT_ROLES, unitOf } from '../sim/isa.js';
 import { BLOCK_BYTES, blockOf, CACHE_LINES, lineOf, MEMORY_TIMING, tagOf } from '../sim/memory.js';
 import { THERMAL } from '../sim/thermal.js';
 import { addressBits, bin, LANE_KEYS, MISS_WORDS, STAGE_NAMES } from './layout.js';
+/** What each kind of instruction is for, in everyday words: tier 1's tips are for players who have never seen one. */
+const PLAIN = {
+    add: 'It adds two registers together.',
+    sub: 'It takes one register away from another.',
+    and: 'It keeps the bits that are on in both registers.',
+    or: 'It keeps the bits that are on in either register.',
+    xor: 'It keeps the bits where the two registers differ.',
+    addi: 'It adds a number, written right in it, to a register.',
+    lb: 'It copies a number from memory into a register.',
+    sb: 'It copies a register into memory.',
+    beq: 'It jumps to another instruction if two registers match.',
+    bne: 'It jumps back (to repeat) if two registers differ.',
+};
 export class SongWords {
     run;
     setup;
@@ -138,12 +151,12 @@ export class SongWords {
                 return {};
             return {
                 feedback: 'BRANCH TAKEN:\nWRONG NEXT INSTRUCTION FLUSHED',
-                tip: { id: 'branch', message: 'BRANCH TAKEN: the instruction behind\nit was the wrong one, so it was\nflushed. Costs 1 cycle, not your fault.' },
+                tip: { id: 'branch', message: 'BRANCH TAKEN: the CPU had already fetched\nthe wrong next instruction, so it was\nthrown out (FLUSHED). 1 cycle, not your fault.' },
             };
         }
         const feedback = mispredicted ? 'WRONG GUESS:\nNEXT INSTRUCTION FLUSHED' : `GOOD GUESS: ${taken ? 'TAKEN' : 'NOT TAKEN'}\nNO CYCLE LOST`;
         if (mispredicted)
-            return { feedback, tip: { id: 'wrong-guess', message: 'WRONG GUESS: the CPU fetched the wrong\nnext instruction, so it was flushed.\nIt cost 1 cycle.' } };
+            return { feedback, tip: { id: 'wrong-guess', message: 'WRONG GUESS: the CPU fetched the wrong\nnext instruction, so it was thrown out\n(FLUSHED). It cost 1 cycle.' } };
         if (taken)
             return { feedback, tip: { id: 'right-guess', message: "RIGHT GUESS: the loop's first instruction\nwas fetched straight away.\nNo cycle lost." } };
         return { feedback };
@@ -183,9 +196,9 @@ export class SongWords {
         const unit = unitOf(slot.instr);
         // Tier 1: each kind of instruction, the first time it reaches the line.
         if (this.setup.singleCycle)
-            return [{ id: slot.instr.op, message: `NEW INSTRUCTION: ${format(slot.instr)}\n${describe(slot.instr)}\n${UNIT_ROLES[unit]} -> press ${LANE_KEYS[unit]} (${unit})` }];
+            return [{ id: slot.instr.op, message: `NEW INSTRUCTION: ${format(slot.instr)}\n${PLAIN[slot.instr.op]}\n${describe(slot.instr)}\n${UNIT_ROLES[unit]} -> press ${LANE_KEYS[unit]} (${unit})` }];
         if (hazard)
-            return [{ id: 'hazard', message: `HAZARD: ${slot.instr.op} needs x${hazard.reg}, but\n${this.whyNotReady(hazard)}\nPress SPACE until the link is gone.` }];
+            return [{ id: 'hazard', point: 'rows', message: `HAZARD: ${slot.instr.op} needs x${hazard.reg}, but\n${this.whyNotReady(hazard)}\nPress SPACE until the link is gone.` }];
         const route = { id: 'route', message: `NO LINK: nothing below is still\ncomputing what it needs.\nRoute it: press ${LANE_KEYS[unit]} (${unit})` };
         if (this.setup.guessing && pipeline.branchOutcome() !== undefined) {
             const message = this.setup.predictor
@@ -228,21 +241,21 @@ export class SongWords {
         if (!this.setup.l1) {
             if (access.cycles <= 1)
                 return undefined;
-            return { id: 'ram', message: `WAITING ON RAM: memory takes ${MEMORY_TIMING.ramNs} ns,\n${access.cycles} cycles at ${at}. Everything freezes\nuntil it answers. No key needed.` };
+            return { id: 'ram', point: 'memory', message: `WAITING ON RAM: memory takes ${MEMORY_TIMING.ramNs} ns,\n${access.cycles} cycles at ${at}. Everything freezes\nuntil it answers. No key needed.` };
         }
         if (access.kind === 'store')
-            return { id: 'buffer', message: 'STORE: it goes to RAM through the\nwrite buffer, so the CPU never\nwaits for it.' };
+            return { id: 'buffer', point: 'cache', message: 'STORE: it goes to RAM through the\nwrite buffer, so the CPU never\nwaits for it.' };
         if (access.hit) {
             const block = blockOf(access.address) * BLOCK_BYTES;
-            return { id: 'hit', message: `HIT: byte ${access.address} came in with its\nblock (bytes ${block}-${block + 3}). No trip to RAM,\nno waiting.` };
+            return { id: 'hit', point: 'cache', message: `HIT: byte ${access.address} came in with its\nblock (bytes ${block}-${block + 3}). No trip to RAM,\nno waiting.` };
         }
         if (access.cycles <= 1)
             return undefined;
-        return { id: 'miss', message: `MISS: line ${lineOf(access.address)} doesn't hold byte ${access.address}.\nIts whole block comes from RAM:\n${access.cycles} cycles at ${at}. Just watch.` };
+        return { id: 'miss', point: 'cache', message: `MISS: line ${lineOf(access.address)} doesn't hold byte ${access.address}.\nIts whole block comes from RAM:\n${access.cycles} cycles at ${at}. Just watch.` };
     }
     /** Tier 3: a value forwarded into the instruction that needed it. */
     forwarded(reg, producer) {
-        return { id: 'forward', message: `FORWARDED: x${reg} came straight from\n${producer.instr.op} (watch the wire light up).\nNo stall needed!` };
+        return { id: 'forward', point: 'rows', message: `FORWARDED: x${reg} came straight from\n${producer.instr.op} (watch the wire light up).\nNo stall needed!` };
     }
     // ---- what things are, when clicked in a replay ----
     stage(stage) {

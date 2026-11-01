@@ -2,6 +2,8 @@ import { cheatFlags } from '../cheatFlags.ts';
 import { CHIPS, CLOCK, COOLING } from '../data/economy.ts';
 import { LESSONS } from '../data/lessons.ts';
 import { folderPath } from '../data/menuFiles.ts';
+import { TAUGHT_IDS } from '../data/tours.ts';
+import { openLesson } from '../flow.ts';
 import { formatMhz, formatMoney } from '../format.ts';
 import { activeSlot, getProgress, newGame, slotName, switchSlot, updateProgress, type SlotId } from '../save.ts';
 import { bitsName, chipOf, fillBoard, fitChip, ratedMhz, tierOf, withEverything, withTier, withWordBits, type Progress } from '../sim/progress.ts';
@@ -23,7 +25,7 @@ let returnSlot: SlotId | undefined;
 
 /**
  * The developer screen (the backquote key on the main menu): the console
- * cheats (cheats.ts) on a screen, plus any briefing, practice and the board.
+ * cheats (cheats.ts) on a screen, plus any lesson, practice and the board.
  * It plays its own save, so testing never touches a campaign; BACK returns to
  * the slot you came from.
  */
@@ -70,9 +72,9 @@ export class DevScene extends Screen {
       wear: ['CHIP WEAR', `MAX CLOCK ${Math.round(p.chipMaxDial * 100)}%`],
       everything: ['UNLOCK EVERYTHING'],
       board: ['NEW CONTRACTS'],
-      lessons: ['BRIEFINGS READ', `${p.seenLessons.length} OF ${LESSON_IDS.length}`],
+      lessons: ['LESSONS AND TOURS SEEN', `${p.seenLessons.length} OF ${TAUGHT_IDS.length}`],
       autoplay: ['AUTOPLAY SONGS', onOff(cheatFlags.autoplay)],
-      briefing: ['OPEN BRIEFING', LESSONS[LESSON_IDS[this.lesson]].title.slice(0, 40)],
+      briefing: ['OPEN LESSON', LESSONS[LESSON_IDS[this.lesson]].title.slice(0, 40)],
       practice: ['PRACTICE THIS TIER'],
       play: ['PLAY: CONTRACT BOARD'],
       reset: [this.confirmReset ? 'RESET: PRESS ENTER AGAIN' : 'RESET THE DEVELOPER SAVE'],
@@ -167,12 +169,12 @@ export class DevScene extends Screen {
       case 'board':
         return this.edit((p) => fillBoard({ ...p, board: [] }, Math.random));
       case 'lessons':
-        return this.edit((p) => ({ ...p, seenLessons: p.seenLessons.length < LESSON_IDS.length ? LESSON_IDS : [] }));
+        return this.edit((p) => ({ ...p, seenLessons: p.seenLessons.length < TAUGHT_IDS.length ? TAUGHT_IDS : [] }));
       case 'autoplay':
         cheatFlags.autoplay = !cheatFlags.autoplay;
         return this.refresh();
       case 'briefing':
-        this.scene.start('briefing', { lessonId: LESSON_IDS[this.lesson] });
+        openLesson(this, LESSON_IDS[this.lesson]);
         return;
       case 'practice':
         this.scene.start(tier.scene, { practice: true, ...tier.options });

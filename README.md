@@ -49,7 +49,8 @@ Add these to the URL, e.g. `http://localhost:8000/?scene=play&autoplay`. Any `?s
 | `&clock=150` | Start with the clock dial at 50–150% |
 | `&contract=standard` | Play the board's first contract in that section (`starter` / `standard` / `advanced`), with pay and results |
 | `&autoplay` | Every note played perfectly (demos, checking results) |
-| `?scene=briefing&lesson=tier2` | Open a lesson directly |
+| `?scene=briefing&lesson=tier2` | Open a lesson's briefing cards directly |
+| `?scene=pipeline&single&practice&tour=tier1` | Play a lesson's tour of the song screen, then its practice (lessons with a tour: `tier1`) |
 | `?money=5000` | Set the money |
 | `?era=1` … `?era=4` | Show an era (8/16/32/64-bit look) until the page reloads; otherwise the save's CPU chip decides |
 | `?fps` | Frames per second and the canvas size in the corner |
@@ -73,7 +74,7 @@ Or type them in the browser's console (F12, then Console) while the game runs; `
 | `cheat.wear(1.2)` | The chip's max clock after overheating (1.0–1.5) |
 | `cheat.unlockAll()` | Every part, max clock, fan, overclocking, the L1 cache, $100,000 |
 | `cheat.board()` | New random contracts |
-| `cheat.lessons()` / `cheat.lessons(false)` | Mark every briefing read / unread (in this save) |
+| `cheat.lessons()` / `cheat.lessons(false)` | Mark every lesson and tour (the board's too) seen / unseen, in this save |
 | `cheat.autoplay()` / `cheat.autoplay(false)` | Songs play themselves |
 | `cheat.temp(94)` | Set the chip's temperature mid-song |
 | `cheat.reset()` | New game in the active slot (wipes it) |

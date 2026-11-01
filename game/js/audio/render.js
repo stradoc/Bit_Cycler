@@ -25,6 +25,7 @@ const [CRT, LCD] = [ERAS[0], ERAS[3]];
 const CUE_FOLDER = {
     move: 'interface', confirm: 'interface', back: 'interface', buy: 'interface', error: 'interface', line: 'interface',
     letter: 'typing', space: 'typing', enter: 'typing',
+    'guide-talk': 'guide', 'guide-hello': 'guide', 'guide-bye': 'guide',
     beep: 'computer', floppy: 'computer', disk: 'computer',
     beat: 'song', downbeat: 'song', 'hit-alu': 'song', 'hit-mem': 'song', 'hit-branch': 'song', stall: 'song', mistake: 'song', waiting: 'song', arrived: 'song',
 };
@@ -44,7 +45,11 @@ const SOUNDS = [
     ...CUE_NAMES.map((name) => ({
         file: `${CUE_FOLDER[name]}/${name}.wav`,
         seconds: 4,
-        make: (ctx) => (name === 'waiting' ? playCue(ctx, name, { at: 0, length: BEAT, ticks: 4 }) : playCue(ctx, name, { at: 0 })),
+        make: (ctx) => name === 'waiting'
+            ? playCue(ctx, name, { at: 0, length: BEAT, ticks: 4 })
+            : name === 'guide-talk'
+                ? playCue(ctx, name, { at: 0, pitch: 620 })
+                : playCue(ctx, name, { at: 0 }),
     })),
     { file: 'computer/power-on-crt.wav', seconds: 5, make: (ctx) => powerOnAt(ctx, CRT, 0) },
     { file: 'computer/power-on-lcd.wav', seconds: 5, make: (ctx) => powerOnAt(ctx, LCD, 0) },

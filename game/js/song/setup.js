@@ -38,6 +38,8 @@ export function songSetup(start, progress, params) {
         returnTo: start.returnTo,
         replay,
         watching: replay !== undefined,
+        // ?tour=tier1 plays a lesson's tour first (with ?practice).
+        tour: replay ? undefined : (start.tour ?? params.get('tour') ?? undefined),
         rows: singleCycle ? SINGLE_CYCLE_ROWS : ROWS,
     };
 }
@@ -51,10 +53,10 @@ export function pipelineOptions(setup, mhz) {
 // latest (after an overheat in this run), unless a replay says otherwise.
 /** Playing again, after practice or a replay: the same CPU, program and contract, for real. */
 export function playAgain(setup) {
-    return { ...setup, practice: false, replay: undefined };
+    return { ...setup, practice: false, replay: undefined, tour: undefined };
 }
 /** Watching a run: the same song, playing back what was played. */
 export function watch(setup, replay) {
-    return { ...setup, practice: false, replay };
+    return { ...setup, practice: false, replay, tour: undefined };
 }
 //# sourceMappingURL=setup.js.map

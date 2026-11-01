@@ -45,6 +45,8 @@ export type SongStart = TierOptions & {
   readonly returnTo?: string;
   /** A run to watch. */
   readonly replay?: Recording;
+  /** The guide's tour of the song screen to play first (a lesson id in data/tours.ts SONG_TOURS). */
+  readonly tour?: string;
 };
 
 /** How this song is set up: the program, the CPU's hardware, and how it's played. */
@@ -74,6 +76,8 @@ export type SongSetup = {
   /** The run being watched, in a replay. */
   readonly replay: Recording | undefined;
   readonly watching: boolean;
+  /** The guide's tour to play before the song starts, if any (only once: retries and replays drop it). */
+  readonly tour: string | undefined;
   /** Where the EX / MEM / WB rows are drawn. */
   readonly rows: Rows;
 };
@@ -114,6 +118,8 @@ export function songSetup(start: SongStart, progress: Progress, params: URLSearc
     returnTo: start.returnTo,
     replay,
     watching: replay !== undefined,
+    // ?tour=tier1 plays a lesson's tour first (with ?practice).
+    tour: replay ? undefined : (start.tour ?? params.get('tour') ?? undefined),
     rows: singleCycle ? SINGLE_CYCLE_ROWS : ROWS,
   };
 }
@@ -130,10 +136,10 @@ export function pipelineOptions(setup: SongSetup, mhz: number): PipelineOptions 
 
 /** Playing again, after practice or a replay: the same CPU, program and contract, for real. */
 export function playAgain(setup: SongSetup): SongStart {
-  return { ...setup, practice: false, replay: undefined };
+  return { ...setup, practice: false, replay: undefined, tour: undefined };
 }
 
 /** Watching a run: the same song, playing back what was played. */
 export function watch(setup: SongSetup, replay: Recording): SongStart {
-  return { ...setup, practice: false, replay };
+  return { ...setup, practice: false, replay, tour: undefined };
 }

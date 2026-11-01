@@ -10,3 +10,4 @@ tempo follows the clock.
   interface/  menu sounds          typing/  keys (recordings)
   computer/   boot, power, chime   song/    hits, stalls, mistakes, memory waits, metronome
   hum/        the menus' hum       music/   the song's music, 1 to 5 layers
+  guide/      TICK's voice (one word, hello, goodbye)

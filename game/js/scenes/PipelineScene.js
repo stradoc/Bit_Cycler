@@ -2,6 +2,7 @@ import { Conductor } from '../audio/conductor.js';
 import { LayeredMusic } from '../audio/music.js';
 import { stopHum } from '../audio/sound.js';
 import { cheatFlags } from '../cheatFlags.js';
+import { SONG_TOURS } from '../data/tours.js';
 import { keyOf } from '../input/keys.js';
 import { NORMAL_WINDOWS, RELAXED_WINDOWS } from '../rhythm/judge.js';
 import { evaluate, PipelineRun } from '../rhythm/pipelineRun.js';
@@ -17,13 +18,14 @@ import { Chip, THERMAL } from '../sim/thermal.js';
 import { Bus } from '../song/bus.js';
 import { Gauge } from '../song/gauge.js';
 import { Highway } from '../song/highway.js';
-import { LANE_X0, LANES_W, REGISTER_COUNT, REPLAY_SPEEDS, ROW_GAP } from '../song/layout.js';
+import { GAUGE_BOTTOM, HIT_Y, LANE_X0, LANES_W, REGISTER_COUNT, REPLAY_SPEEDS, ROW_GAP } from '../song/layout.js';
 import { Panel } from '../song/panel.js';
 import { ReplayControls } from '../song/replay.js';
 import { jobSeconds, practiceLines, resultLines } from '../song/results.js';
 import { pipelineOptions, playAgain, songSetup, watch } from '../song/setup.js';
 import { Fades } from '../song/view.js';
 import { SongWords } from '../song/words.js';
+import { Guide } from '../ui/guide.js';
 import { Screen } from '../ui/screen.js';
 import { Box, glideIn } from '../ui/widgets.js';
 import { HEIGHT, WIDTH } from '../visual/display.js';
@@ -42,6 +44,9 @@ const KEY_UNITS = { D: 'ALU', F: 'MEM', J: 'BRANCH' };
 const HIT_CUE = { ALU: 'hit-alu', MEM: 'hit-mem', BRANCH: 'hit-branch' };
 /** The metronome under the music: about a quarter of its calibration loudness. */
 const SONG_CLICK = 0.27;
+/** Where the guide waits in practice (its top-left corner), below the stats; and how dark the screen gets around what a tip points at. */
+const GUIDE_HOME = { x: 850, y: 426 };
+const TIP_DIM = 0.45;
 /**
  * Each beat, route the instruction in ID to its unit, or stall (Space) while
  * a register it needs is still being computed by an instruction below it;
@@ -60,8 +65,8 @@ export class PipelineScene extends Screen {
     gauge;
     heat;
     replayControls;
-    callout;
-    calloutText;
+    /** The guide: says practice's tips (and plays a lesson's tour first), and tells you about the replay. */
+    guide;
     freezeView;
     lastFrameMs = 0;
     finished = false;
@@ -172,19 +177,42 @@ export class PipelineScene extends Screen {
         this.gauge = new Gauge(this.view, setup.canOverclock && setup.maxDial > 1);
         this.panel = new Panel(this.view, program, this.firstBeat > FIRST_BEAT ? 30000 / this.tempo() : undefined);
         this.bus = new Bus(this.view, this.panel, this.highway);
-        this.drawCallout();
+        this.guide = new Guide(this, this.era, setup.practice ? GUIDE_HOME : undefined);
         if (setup.watching)
             this.replayControls.draw(this.speedIndex, this.paused);
         this.music = new LayeredMusic(this.ctx);
-        this.startConductor();
         this.events.once('shutdown', () => this.conductor?.stop());
         this.panel.refresh();
+        // A lesson's tour of the screen comes first; the song starts when it ends.
+        const tour = setup.tour ? SONG_TOURS[setup.tour] : undefined;
+        if (tour && setup.tour) {
+            const lesson = setup.tour;
+            this.guide.tour(tour, (target) => this.where(target), () => {
+                updateProgress((p) => ({ ...p, seenLessons: [...new Set(p.seenLessons).add(lesson)] }));
+                this.startConductor();
+            });
+        }
+        else {
+            this.startConductor();
+        }
+    }
+    /** Where the parts of the song screen are, for the guide to point at. */
+    where(target) {
+        const bottom = this.setup.rows.WB + ROW_GAP / 2;
+        const highway = {
+            lanes: { x: LANE_X0, y: 0, w: LANES_W, h: bottom + 32 },
+            line: { x: LANE_X0 - 90, y: HIT_Y - 22, w: LANES_W + 90, h: 44 },
+            rows: { x: LANE_X0 - 90, y: HIT_Y - 22, w: LANES_W + 90, h: bottom - HIT_Y + 22 },
+            gauge: { x: 4, y: 0, w: LANE_X0 - 12, h: GAUGE_BOTTOM + 36 },
+        };
+        return target in highway ? highway[target] : this.panel.areas[target];
     }
     update() {
         super.update();
-        if (!this.conductor)
-            return; // no Web Audio
         const now = performance.now();
+        this.guide?.update(now);
+        if (!this.conductor)
+            return; // no Web Audio, or the guide's tour is still on
         const elapsed = now - this.lastFrameMs;
         this.lastFrameMs = now;
         this.highway.update(now);
@@ -223,6 +251,13 @@ export class PipelineScene extends Screen {
     handleKey(event) {
         const key = keyOf(event);
         const { setup } = this;
+        if (this.guide.touring) {
+            if (key === 'Enter' || key === ' ' || key === 'ArrowRight')
+                this.guide.next();
+            else if (key === 'Escape' || key === 'Q')
+                this.scene.start('title');
+            return;
+        }
         if (setup.watching && !this.finished) {
             if (key === 'ArrowLeft')
                 this.setSpeed(this.speedIndex - 1);
@@ -289,10 +324,10 @@ export class PipelineScene extends Screen {
                 return;
             if (outcome !== 'issued' && outcome !== 'stalled') {
                 this.buzz();
-                this.showCallout(this.words.mistake(outcome));
+                this.guide.say({ say: this.words.mistake(outcome), point: this.where('line'), dim: TIP_DIM });
                 return;
             }
-            this.callout.setVisible(false);
+            this.guide.quiet();
             beat = this.run.dueBeat;
         }
         // Close any cycles that ended before this press, so it applies to the right
@@ -482,22 +517,8 @@ export class PipelineScene extends Screen {
         if (!this.setup.practice || !tip || this.explained.has(tip.id))
             return false;
         this.explained.add(tip.id);
-        this.showCallout(tip.message);
+        this.guide.say({ say: tip.message, point: this.where(tip.point ?? 'line'), dim: TIP_DIM });
         return true;
-    }
-    drawCallout() {
-        const box = new Box(this, this.era, 0, 0, LANES_W - 8, 150, { strokeWidth: 2 });
-        this.calloutText = this.text(0, 0, '', 16).setAlign('center').setLineSpacing(8);
-        this.callout = this.add.container(LANE_X0 + LANES_W / 2, 170, [...box.parts, this.calloutText]).setDepth(600).setVisible(false);
-    }
-    showCallout(message) {
-        this.calloutText.setText(message);
-        if (!this.callout.visible) {
-            this.tweens.killTweensOf(this.callout);
-            this.callout.setAlpha(1).setY(170);
-            glideIn(this, [this.callout], 8);
-        }
-        this.callout.setVisible(true);
     }
     // ---- memory waits ----
     /**
@@ -627,7 +648,7 @@ export class PipelineScene extends Screen {
         this.conductor?.stop();
         this.heat.stop();
         this.highway.hideHazard();
-        this.callout.setVisible(false);
+        this.guide.quiet();
         this.replayControls.hideInfo();
         const { setup } = this;
         if (!setup.practice && !setup.watching) {
@@ -638,7 +659,7 @@ export class PipelineScene extends Screen {
             if (contract)
                 updateProgress((p) => completeContract(p, contract.id, Math.random, late));
             // Every real run is followed by its replay; the results come at the end of it.
-            this.showCallout('RUN COMPLETE!\nNOW WATCH YOUR REPLAY.\nCLICK ANYTHING IN IT TO LEARN WHAT IT IS.');
+            this.guide.say({ say: 'Run complete! Now watch your replay. Click anything in it to learn what it is.', dim: 0.3 });
             const recording = {
                 cycles: this.recording,
                 dials: this.dialRecording,
