@@ -53,6 +53,7 @@ function cleanProgress(raw) {
         cacheLevels: Math.round(clamp(progress.cacheLevels, 0, MEMORY_PARTS.length, 0)),
         cooling: Math.round(clamp(progress.cooling, 0, COOLING.length - 1, 0)),
         overclocking: progress.overclocking === true,
+        deepPipeline: progress.deepPipeline === 'on' || progress.deepPipeline === 'off' ? progress.deepPipeline : 'none',
         chipMaxDial: clamp(progress.chipMaxDial, 1, THERMAL.maxDial, THERMAL.maxDial),
         // Contracts saved before deadlines existed are dropped; the board refills when loaded.
         board: Array.isArray(progress.board) ? progress.board.filter(isContract) : [],

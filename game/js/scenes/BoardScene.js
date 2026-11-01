@@ -4,6 +4,7 @@ import { playContract } from '../flow.js';
 import { BOARD_TOUR, BOARD_TOUR_ID } from '../data/tours.js';
 import { formatCount, formatDuration, formatMoney } from '../format.js';
 import { getProgress, updateProgress } from '../save.js';
+import { teaching } from '../settings.js';
 import { UNITS } from '../sim/isa.js';
 import { jobSheet } from '../sim/jobSheet.js';
 import { contractSeconds, cpiFor, cpuLine, isLocked, isTight, isTutorial, jobItems, ratedMhz } from '../sim/progress.js';
@@ -84,7 +85,7 @@ export class BoardScene extends Screen {
         this.drawSheet();
         // The first visit: the guide shows the board around.
         this.guide = new Guide(this, this.era);
-        if (replayTour || !progress.seenLessons.includes(BOARD_TOUR_ID)) {
+        if (replayTour || (teaching().tours && !progress.seenLessons.includes(BOARD_TOUR_ID))) {
             this.guide.tour(BOARD_TOUR, (target) => this.where(target), () => updateProgress((p) => ({ ...p, seenLessons: [...new Set(p.seenLessons).add(BOARD_TOUR_ID)] })));
         }
     }

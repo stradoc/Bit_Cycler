@@ -71,9 +71,9 @@ export class PipelineRun {
   bestStreak = 0;
   /** Cycles played so far (decisions closed), not counting memory waits: indexes a recorded run. */
   steps = 0;
-  /** Beats drawn frozen while waiting for memory (each stands for many cycles). */
-  memoryBeats = 0;
-  /** The memory wait in progress: all its cycles, the beats it's drawn over, and how many of those have passed. */
+  /** Beats drawn frozen while waiting (for memory, or a deep pipeline refilling): each stands for one or more cycles. */
+  waitBeats = 0;
+  /** The wait in progress: all its cycles, the beats it's drawn over, and how many of those have passed. */
   private freeze: { total: number; beats: number; passed: number } | null = null;
   private pending: Decision | null = null;
   /** Seq of the instruction that stalled last cycle and is still waiting in ID. */
@@ -100,24 +100,29 @@ export class PipelineRun {
 
   /**
    * Beat on which the current cycle's decision is due: later by each beat the
-   * clock was stopped, and a memory wait's cycles take only its few frozen beats.
+   * clock was stopped, and a wait's cycles take only its few frozen beats.
    */
   get dueBeat(): number {
     const { pipeline } = this;
-    return this.firstBeat + pipeline.cycle - pipeline.memoryCycles + this.memoryBeats + this.chip.haltedBeats;
+    return this.firstBeat + pipeline.cycle - pipeline.memoryCycles - pipeline.refillCycles + this.waitBeats + this.chip.haltedBeats;
   }
 
-  /** Waiting for memory: the pipeline is frozen and presses are ignored. */
+  /** Waiting for memory, or a deep pipeline refilling after a wrong guess: nothing moves and presses are ignored. */
   get frozen(): boolean {
-    return this.pipeline.memoryWait > 0;
+    return this.pipeline.waitLeft > 0;
   }
 
-  /** The memory wait in progress: its cycles, how many are left, and its frozen beats left. */
+  /** A deep pipeline refilling after a wrong guess (not waiting for memory). */
+  get refilling(): boolean {
+    return this.pipeline.refillWait > 0 && this.pipeline.memoryWait === 0;
+  }
+
+  /** The wait in progress: its cycles, how many are left, and its frozen beats left. */
   get waiting(): { total: number; left: number; beatsLeft: number } | null {
     if (!this.frozen) return null;
-    const total = this.freeze?.total ?? this.pipeline.memoryWait;
+    const total = this.freeze?.total ?? this.pipeline.waitLeft;
     const beats = this.freeze?.beats ?? freezeBeats(total);
-    return { total, left: this.pipeline.memoryWait, beatsLeft: beats - (this.freeze?.passed ?? 0) };
+    return { total, left: this.pipeline.waitLeft, beatsLeft: beats - (this.freeze?.passed ?? 0) };
   }
 
   /** The choice already made this cycle, if any. */
@@ -187,14 +192,14 @@ export class PipelineRun {
   /** One frozen beat: an even share of the wait's cycles pass, all of them by its last beat. */
   private waitBeat(): void {
     const { pipeline } = this;
-    this.freeze ??= { total: pipeline.memoryWait, beats: freezeBeats(pipeline.memoryWait), passed: 0 };
+    this.freeze ??= { total: pipeline.waitLeft, beats: freezeBeats(pipeline.waitLeft), passed: 0 };
     const freeze = this.freeze;
     freeze.passed++;
-    const spentBefore = freeze.total - pipeline.memoryWait;
-    const share = freeze.passed >= freeze.beats ? pipeline.memoryWait : Math.round((freeze.total * freeze.passed) / freeze.beats) - spentBefore;
+    const spentBefore = freeze.total - pipeline.waitLeft;
+    const share = freeze.passed >= freeze.beats ? pipeline.waitLeft : Math.round((freeze.total * freeze.passed) / freeze.beats) - spentBefore;
     const cycles = pipeline.wait(share);
     this.chip.waitBeat(cycles);
-    this.memoryBeats++;
+    this.waitBeats++;
     if (this.frozen) return;
     this.freeze = null;
     // The note on the line sat through the wait: like a stalled note, it isn't arriving on a beat, so any press counts.

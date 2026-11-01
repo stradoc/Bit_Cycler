@@ -1,9 +1,10 @@
+import { DEEP_PIPELINE } from '../data/economy.ts';
 import { programByName, type ProgramSpec } from '../data/programs.ts';
 import type { TierOptions } from '../data/tiers.ts';
 import type { Judgment } from '../rhythm/judge.ts';
 import type { Action, Outcome } from '../rhythm/pipelineRun.ts';
 import type { PipelineOptions, Predictor } from '../sim/pipeline.ts';
-import { hasCache, ratedMhzFor, type Contract, type Progress } from '../sim/progress.ts';
+import { deepActive, hasCache, ratedMhzFor, type Contract, type Progress } from '../sim/progress.ts';
 import { THERMAL } from '../sim/thermal.ts';
 import { ROWS, SINGLE_CYCLE_ROWS, type Rows } from './layout.ts';
 
@@ -37,6 +38,8 @@ export type Recording = {
 export type SongStart = TierOptions & {
   /** The L1 data cache. */
   readonly l1?: boolean;
+  /** The deep pipeline: a faster clock, dearer wrong guesses. */
+  readonly deep?: boolean;
   /** Notes wait for the player, and mistakes are explained. */
   readonly practice?: boolean;
   /** The contract being played (from the board): it pays when a real run finishes. */
@@ -65,6 +68,8 @@ export type SongSetup = {
   readonly predictor: Predictor | undefined;
   /** The L1 data cache (from the shop). */
   readonly l1: boolean;
+  /** The deep pipeline, switched on in the shop (with branch guessing): the rated clock is faster and a wrong guess costs more. */
+  readonly deep: boolean;
   /** The rated clock in MHz, from the clock upgrades owned; the dial over- or underclocks it. */
   readonly ratedMhz: number;
   /** The chip's top clock as the song starts (its wear), and whether H may pass the rated clock. */
@@ -100,6 +105,9 @@ export function songSetup(start: SongStart, progress: Progress, params: URLSearc
   const contract = start.contract ?? progress.board.find((c) => c.section === params.get('contract'));
   const program = start.program ?? contract?.program ?? (predictor ? 'SUM GRID' : 'SUM ARRAY');
   const { replay } = start;
+  const guessing = start.guessing ?? params.has('guessing');
+  // ?deep fits the deep pipeline (on a pipelined CPU); from the save, only where branches are guessed.
+  const deep = !singleCycle && (start.deep ?? ((guessing && deepActive(progress)) || params.has('deep')));
   // ?clock=150 starts the song overclocked, and allows it without the upgrade. Practice always runs at the rated clock.
   const clock = Number(params.get('clock')) / 100;
   return {
@@ -107,11 +115,12 @@ export function songSetup(start: SongStart, progress: Progress, params: URLSearc
     spec: programByName(program),
     singleCycle,
     forwarding: start.forwarding ?? params.has('forwarding'),
-    guessing: start.guessing ?? params.has('guessing'),
+    guessing,
     predictor,
     // ?cache fits the L1 cache.
     l1: start.l1 ?? (hasCache(progress) || params.has('cache')),
-    ratedMhz: ratedMhzFor(progress, !singleCycle),
+    deep,
+    ratedMhz: ratedMhzFor(progress, !singleCycle, deep),
     // Wear is the chip's own, and a replay plays on the chip its run started on.
     // Practice always runs on a new chip, so it never overheats.
     maxDial: replay?.maxDial ?? (practice ? THERMAL.maxDial : progress.chipMaxDial),
@@ -131,8 +140,8 @@ export function songSetup(start: SongStart, progress: Progress, params: URLSearc
 
 /** The hardware the simulator runs for this song, at a clock (MHz). */
 export function pipelineOptions(setup: SongSetup, mhz: number): PipelineOptions {
-  const { forwarding, predictor, singleCycle, l1 } = setup;
-  return { forwarding, predictor, singleCycle, cache: l1, mhz };
+  const { forwarding, predictor, singleCycle, l1, deep } = setup;
+  return { forwarding, predictor, singleCycle, cache: l1, mhz, wrongGuessCycles: deep ? DEEP_PIPELINE.wrongGuessCycles : 1 };
 }
 
 // Starting the song again passes its whole setup on. songSetup reads only what

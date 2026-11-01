@@ -99,8 +99,11 @@ export function resultLines(f: Finished): string[] {
   }
 
   // Where the cycles went: every cycle either finished an instruction or was lost.
-  const fill = Math.max(0, p.cycles - p.instructions - p.stalls - p.flushed - p.memoryCycles);
-  const waited: [string, number][] = p.memoryCycles > 0 ? [[`WAITING ON RAM (${memory.ramTrips} TRIP${memory.ramTrips === 1 ? '' : 'S'})`, p.memoryCycles]] : [];
+  const fill = Math.max(0, p.cycles - p.instructions - p.stalls - p.flushed - p.memoryCycles - p.refillCycles);
+  const waited: [string, number][] = [
+    ...(p.memoryCycles > 0 ? [[`WAITING ON RAM (${memory.ramTrips} TRIP${memory.ramTrips === 1 ? '' : 'S'})`, p.memoryCycles] as [string, number]] : []),
+    ...(p.refillCycles > 0 ? [['REFILLING (DEEP PIPELINE)', p.refillCycles] as [string, number]] : []),
+  ];
   const rows: [string, number][] = setup.singleCycle
     ? [['FINISHED AN INSTRUCTION', p.instructions], ['LOST (MISSED OR WRONG KEY)', p.stalls], ...waited]
     : [

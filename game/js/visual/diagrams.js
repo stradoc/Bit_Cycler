@@ -1,3 +1,4 @@
+import { DEEP_PIPELINE } from '../data/economy.js';
 import { PROGRAMS } from '../data/programs.js';
 import { formatMhz } from '../format.js';
 import { assemble } from '../sim/assembler.js';
@@ -805,6 +806,52 @@ const DIAGRAMS = {
         s.text(cx, cy + 6, 'ALWAYS NOT TAKEN (TIER 3): 20 x 1.75 x 0.25 µs = 8.8 µs', 16, 0.7);
         s.text(cx, cy + 38, 'EVERY GUESS RIGHT:         20 x 1.60 x 0.25 µs = 8.0 µs', 16);
         s.text(cx, cy + 74, '3 LOOP BRANCHES GUESSED RIGHT = 3 CYCLES SAVED', 16, 1, true);
+    },
+    // Five stages against ten: the clock ticks once per stage, and a wrong guess throws away the stages fetched before the branch is decided
+    deep(s, cx, cy) {
+        const rows = [
+            { label: '5 STAGES', stages: ['IF', 'ID', 'EX', 'MEM', 'WB'], decided: 1, w: 96, y: cy - 62, clock: 'CLOCK 1x' },
+            { label: '10 STAGES', stages: ['F1', 'F2', 'F3', 'D1', 'D2', 'E1', 'E2', 'M1', 'M2', 'WB'], decided: DEEP_PIPELINE.wrongGuessCycles, w: 46, y: cy + 40, clock: `CLOCK ${DEEP_PIPELINE.clockFactor}x` },
+        ];
+        for (const row of rows) {
+            const left = cx - 250;
+            s.text(cx - 340, row.y, row.label, 14, 0.8);
+            row.stages.forEach((stage, i) => s.cell(left + row.w / 2 + i * (row.w + 4), row.y, stage, i === row.decided, row.w, 30));
+            // The stages behind the branch: on a wrong guess, everything in them was the wrong path.
+            const wasted = row.decided * (row.w + 4) - 4;
+            s.polyline([[left, row.y + 22], [left + wasted, row.y + 22]]);
+            s.text(left + wasted / 2, row.y + 36, `WRONG GUESS: ${row.decided} THROWN AWAY`, 12, 0.8);
+            s.text(cx + 330, row.y, row.clock, 14, 0.8);
+        }
+        s.text(cx, cy + 116, 'bright: where the branch is decided', 12, 0.6);
+    },
+    // The trade-off on SUM GRID, from the game's own model: the job's time with 5 stages and with 10 (at a faster clock)
+    deeptrade(s, cx, cy) {
+        const spec = PROGRAMS[1];
+        const cycles = (options, guesses) => perfectRun(new Cpu(assemble(spec.source, 8), 8, spec.memory), { forwarding: true, ...options }, guesses).cycles;
+        const rows = [
+            { label: 'ALWAYS GUESSING NOT TAKEN', options: {}, guesses: 'hardware' },
+            { label: '2-BIT PREDICTOR', options: { predictor: '2-bit' }, guesses: 'hardware' },
+            { label: 'GUESSING RIGHT EVERY TIME', options: {}, guesses: 'perfect' },
+        ].map((row) => {
+            const shallow = cycles(row.options, row.guesses);
+            const deep = cycles({ ...row.options, wrongGuessCycles: DEEP_PIPELINE.wrongGuessCycles }, row.guesses);
+            return { ...row, shallow, deep, deepTime: deep / DEEP_PIPELINE.clockFactor };
+        });
+        const longest = Math.max(...rows.flatMap((row) => [row.shallow, row.deepTime]));
+        const left = cx - 150;
+        s.text(cx, cy - 112, 'TIME FOR THE JOB (IN 5-STAGE CYCLES)', 13, 0.7);
+        rows.forEach((row, i) => {
+            const y = cy - 70 + i * 66;
+            s.text(cx - 300, y + 9, row.label, 13, 0.85);
+            const bar = (value, at, bright, words) => {
+                const w = Math.max(4, (300 * value) / longest);
+                s.box(left + w / 2, at, w, 14, bright);
+                s.text(left + w + 12, at, words, 12, 0.8).setOrigin(0, 0.5);
+            };
+            bar(row.shallow, y, false, `5 STAGES: ${row.shallow}`);
+            bar(row.deepTime, y + 18, true, `10 STAGES: ${row.deep} / ${DEEP_PIPELINE.clockFactor} = ${Math.round(row.deepTime)}`);
+        });
     },
 };
 /**

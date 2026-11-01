@@ -8,7 +8,7 @@ import { NORMAL_WINDOWS, RELAXED_WINDOWS } from '../rhythm/judge.ts';
 import { evaluate, PipelineRun, type Action, type CycleReport, type Decision } from '../rhythm/pipelineRun.ts';
 import { tempoForClock } from '../rhythm/tempo.ts';
 import { getProgress, updateProgress } from '../save.ts';
-import { getSettings } from '../settings.ts';
+import { getSettings, teaching } from '../settings.ts';
 import { assemble } from '../sim/assembler.ts';
 import { addressOf, Cpu } from '../sim/cpu.ts';
 import { keepsTotal, unitOf, type Unit } from '../sim/isa.ts';
@@ -19,7 +19,7 @@ import { Chip, THERMAL } from '../sim/thermal.ts';
 import { Bus } from '../song/bus.ts';
 import { Gauge } from '../song/gauge.ts';
 import { Highway } from '../song/highway.ts';
-import { GAUGE_BOTTOM, HIT_Y, LANE_X0, LANES_W, REGISTER_COUNT, REPLAY_SPEEDS, ROW_GAP, type FreezeView } from '../song/layout.ts';
+import { GAUGE_BOTTOM, HIT_Y, LANE_X0, LANES_W, REGISTER_COUNT, REPLAY_SPEEDS, ROW_GAP, type FreezeView, type RefillView } from '../song/layout.ts';
 import { Panel } from '../song/panel.ts';
 import { ReplayControls } from '../song/replay.ts';
 import { jobSeconds, practiceLines, resultLines } from '../song/results.ts';
@@ -73,6 +73,8 @@ export class PipelineScene extends Screen {
   /** The guide: says practice's tips (and plays a lesson's tour first), and tells you about the replay. */
   private guide!: Guide;
   private freezeView: FreezeView | undefined;
+  /** A deep pipeline refilling after a wrong guess, drawn over a few frozen beats. */
+  private refillView: RefillView | undefined;
   private lastFrameMs = 0;
   private finished = false;
   /** The results box is up (Enter / W work). */
@@ -137,6 +139,7 @@ export class PipelineScene extends Screen {
     this.recording = [];
     this.conductor = undefined;
     this.freezeView = undefined;
+    this.refillView = undefined;
     this.lastFrameMs = performance.now();
     this.finished = false;
     this.showingResults = false;
@@ -479,6 +482,11 @@ export class PipelineScene extends Screen {
       this.panel.say(this.words.missed(report.decision.waited));
     }
     for (const slot of report.flushed) this.highway.strike(slot);
+    // A deep pipeline's wrong guess: its front refills, drawn like a memory wait.
+    if (report.mispredicted && this.run.refilling && !this.freezeView) {
+      const total = this.run.pipeline.refillWait;
+      this.refillView = { start: this.run.dueBeat, beats: freezeBeats(total), base: this.run.waitBeats, total };
+    }
     if (report.mispredicted !== undefined) {
       const issued = report.event.kind === 'issued' ? report.event.slot : undefined;
       const { feedback, tip } = this.words.branch(report.mispredicted, issued?.step?.taken ?? false, report.predicted);
@@ -511,7 +519,7 @@ export class PipelineScene extends Screen {
    */
   private lookClosely(): boolean {
     const slot = this.run.pipeline.stages.ID;
-    if (!this.setup.singleCycle || !this.setup.practice || !slot || this.explained.has(slot.instr.op)) return false;
+    if (!this.setup.singleCycle || !this.setup.practice || !slot || this.explained.has(slot.instr.op) || !teaching().closeLooks) return false;
     // One at a time: the last one's answer lands, and TICK says so, first.
     if (this.guide.waiting || this.landing || this.closeLook) return false;
     const { instr } = slot;
@@ -537,7 +545,7 @@ export class PipelineScene extends Screen {
     this.panel.showAccess(this.words.lookup(slot, access), access);
     if (access.cycles > 1) {
       const total = access.cycles - 1;
-      this.freezeView = { start: this.run.dueBeat, beats: freezeBeats(total), base: this.run.memoryBeats, total, slot, access };
+      this.freezeView = { start: this.run.dueBeat, beats: freezeBeats(total), base: this.run.waitBeats, total, slot, access };
       this.panel.markBlock(access.address, this.freezeView.beats * this.beatSeconds());
     } else {
       this.panel.fillLine(access);
@@ -579,7 +587,7 @@ export class PipelineScene extends Screen {
   /** A practice tip, the first time it comes up. Returns whether it was shown. */
   private tip(tip: Tip | undefined): boolean {
     // Not over TICK's tour or a close look still under way: the tip waits for the next time it comes up.
-    if (!this.setup.practice || !tip || this.explained.has(tip.id) || this.guide.touring || this.landing || this.closeLook) return false;
+    if (!this.setup.practice || !tip || !teaching().tips || this.explained.has(tip.id) || this.guide.touring || this.landing || this.closeLook) return false;
     this.explained.add(tip.id);
     this.guide.say({ say: tip.message, point: this.where(tip.point ?? 'line'), dim: TIP_DIM, keys: '[ENTER] OK', hold: true });
     return true;
@@ -592,8 +600,8 @@ export class PipelineScene extends Screen {
    * are placed on a clock that stops during those beats, so they hold still.
    */
   private frozenBeats(beat: number): number {
-    const view = this.freezeView;
-    if (!view) return this.run.memoryBeats;
+    const view = this.freezeView ?? this.refillView;
+    if (!view) return this.run.waitBeats;
     return view.base + Phaser.Math.Clamp(beat - view.start, 0, view.beats);
   }
 
@@ -604,6 +612,14 @@ export class PipelineScene extends Screen {
    */
   private updateFreeze(beat: number, now: number): void {
     this.highway.hideWaiting();
+    const refill = this.refillView;
+    if (refill) {
+      if (!this.run.frozen && beat >= refill.start + refill.beats) this.refillView = undefined;
+      else if (!this.run.chip.halted) {
+        const t = Phaser.Math.Clamp((beat - refill.start) / refill.beats, 0, 1);
+        this.panel.say(this.words.refilling(refill.total, Math.min(refill.total, Math.round(refill.total * t))));
+      }
+    }
     const view = this.freezeView;
     if (!view) return;
     if (!this.run.frozen && beat >= view.start + view.beats) {
@@ -657,8 +673,9 @@ export class PipelineScene extends Screen {
       if (beat <= this.firstBeat || this.finished || this.paused) return;
       const spb = 60 / conductor.bpm;
       if (this.run.frozen) {
-        // Waiting for memory: a low drone, and fast ticks for the cycles going by.
-        const ticks = Math.min(8, Math.ceil((this.freezeView?.total ?? 1) / (this.freezeView?.beats ?? 1)));
+        // Waiting for memory (or refilling): a low drone, and fast ticks for the cycles going by.
+        const view = this.freezeView ?? this.refillView;
+        const ticks = Math.min(8, Math.ceil((view?.total ?? 1) / (view?.beats ?? 1)));
         this.cue('waiting', { at: time, length: spb, ticks });
         wasFrozen = true;
         return;
@@ -725,7 +742,7 @@ export class PipelineScene extends Screen {
       const late = contract ? jobSeconds(this.run, contract) > contract.deadline : false;
       if (contract) updateProgress((p) => completeContract(p, contract.id, Math.random, late));
       // Every real run is followed by its replay; the results come at the end of it.
-      this.guide.say({ say: 'Run complete! Now watch your replay. Click anything in it to learn what it is.', dim: 0.3, keys: '[ENTER] OK', hold: true });
+      if (teaching().tips) this.guide.say({ say: 'Run complete! Now watch your replay. Click anything in it to learn what it is.', dim: 0.3, keys: '[ENTER] OK', hold: true });
       const recording: Recording = {
         cycles: this.recording,
         dials: this.dialRecording,

@@ -9,5 +9,6 @@ export const LESSONS = Object.fromEntries([
     { id: 'overclock', title: 'OVERCLOCKING', scene: 'pipeline', practice: false },
     { id: 'memwall', title: 'THE MEMORY WALL', scene: 'pipeline', options: { forwarding: true }, practice: false },
     { id: 'cache', title: 'THE L1 CACHE', scene: 'pipeline', options: { forwarding: true, l1: true }, practice: true },
+    { id: 'deep', title: 'THE DEEP PIPELINE', scene: 'pipeline', options: { forwarding: true, guessing: true, deep: true }, practice: true },
 ].map((lesson) => [lesson.id, lesson]));
 //# sourceMappingURL=lessons.js.map

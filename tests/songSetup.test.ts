@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { DEEP_PIPELINE } from '../game/src/data/economy.ts';
 import { NEW_GAME, newContract, ratedMhzFor, type Progress } from '../game/src/sim/progress.ts';
 import { THERMAL } from '../game/src/sim/thermal.ts';
 import { ROWS, SINGLE_CYCLE_ROWS } from '../game/src/song/layout.ts';
@@ -86,7 +87,21 @@ test('a replay plays on the chip its run started on, and watching again or playi
 
 test('the simulator runs the setup\'s hardware', () => {
   const setup = songSetup({ forwarding: true, predictor: '1-bit' }, worn, url());
-  assert.deepEqual(pipelineOptions(setup, 40), { forwarding: true, predictor: '1-bit', singleCycle: false, cache: true, mhz: 40 });
+  assert.deepEqual(pipelineOptions(setup, 40), { forwarding: true, predictor: '1-bit', singleCycle: false, cache: true, mhz: 40, wrongGuessCycles: 1 });
+});
+
+test('the deep pipeline: from the save where branches are guessed, a faster rated clock, dearer wrong guesses, kept by retries and replays', () => {
+  const tier4: Progress = { ...NEW_GAME, wordBits: 32, parts: ['pipeline', 'forwarding', 'guessing'], clockLevel: 4, deepPipeline: 'on' };
+  const deep = songSetup({ forwarding: true, guessing: true }, tier4, url());
+  assert.equal(deep.deep, true);
+  assert.equal(deep.ratedMhz, ratedMhzFor(tier4, true, false) * DEEP_PIPELINE.clockFactor);
+  assert.equal(pipelineOptions(deep, deep.ratedMhz).wrongGuessCycles, DEEP_PIPELINE.wrongGuessCycles);
+  assert.equal(songSetup(playAgain(deep), { ...tier4, deepPipeline: 'off' }, url()).deep, true, 'a retry plays the same CPU');
+  assert.equal(songSetup(watch(deep, recording), tier4, url()).deep, true);
+  assert.equal(songSetup({ forwarding: true, guessing: true }, { ...tier4, deepPipeline: 'off' }, url()).deep, false, 'switched off');
+  assert.equal(songSetup({ forwarding: true }, tier4, url()).deep, false, 'a lesson without guessing (tier 3) runs without it');
+  assert.equal(songSetup({ singleCycle: true }, NEW_GAME, url('deep')).deep, false, 'never on the single-cycle CPU');
+  assert.equal(songSetup({ forwarding: true, guessing: true }, NEW_GAME, url('deep')).deep, true, '?deep');
 });
 
 test("the guide's tour plays once: retries and replays drop it", () => {

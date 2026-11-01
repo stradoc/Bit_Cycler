@@ -28,6 +28,7 @@ export class ListMenu {
     size;
     middle;
     depth;
+    heading;
     rows = [];
     /** Each row's middle, worked out from the groups. */
     ys = [];
@@ -48,6 +49,7 @@ export class ListMenu {
         this.size = options.size ?? 18;
         this.middle = options.middle ?? 70;
         this.depth = options.depth;
+        this.heading = options.heading ?? this.rowHeight * GROUP_HEADING;
     }
     /** Shows these rows, keeping the selection (or moving it to `selected`). */
     setRows(rows, selected = this.selected) {
@@ -56,7 +58,7 @@ export class ListMenu {
         let y = this.top;
         this.ys = rows.map((row, i) => {
             if (row.group !== undefined)
-                y += this.rowHeight * GROUP_HEADING + (i > 0 ? GROUP_GAP : 0);
+                y += this.heading + (i > 0 ? GROUP_GAP : 0);
             const at = y;
             y += this.rowHeight;
             return at;
@@ -105,7 +107,7 @@ export class ListMenu {
             if (i >= this.shown)
                 return;
             if (row.group !== undefined)
-                this.drawHeading(row.group, this.rowY(i) - this.rowHeight * GROUP_HEADING);
+                this.drawHeading(row.group, this.rowY(i) - this.heading);
             this.drawRow(row, i === this.selected, this.rowY(i));
         });
         // The modern era's bar outlives redraws: hide it while its row isn't shown.

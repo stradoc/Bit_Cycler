@@ -9,6 +9,7 @@ import {
   CONTRACTS_PER_SECTION,
   COOLING,
   CPU_PARTS,
+  DEEP_PIPELINE,
   LATE_PAY_FACTOR,
   MEMORY_PARTS,
   OVERCLOCKING_PRICE,
@@ -57,6 +58,8 @@ export type Progress = {
   readonly cooling: number;
   /** Bought the overclocking unlock: H can push the clock past its rating. */
   readonly overclocking: boolean;
+  /** The deep pipeline (DEEP_PIPELINE): not bought, or bought and switched off or on in the shop. */
+  readonly deepPipeline: 'none' | 'off' | 'on';
   /** Maximum clock dial: overheating lowers it until repaired. */
   readonly chipMaxDial: number;
   readonly board: readonly Contract[];
@@ -73,6 +76,7 @@ export const NEW_GAME: Progress = {
   cacheLevels: 0,
   cooling: 0,
   overclocking: false,
+  deepPipeline: 'none',
   chipMaxDial: THERMAL.maxDial,
   board: [],
   nextId: 1,
@@ -109,7 +113,22 @@ export function bitsName(bits: number): string {
 /** Your CPU in words, as the screens and the boot show it: "16-BIT, TIER 2 PIPELINE". */
 export function cpuName(progress: Progress): string {
   const tier = tierOf(progress);
-  return `${bitsName(progress.wordBits)}, TIER ${tier.number} ${tier.name}`;
+  return `${bitsName(progress.wordBits)}, TIER ${tier.number} ${tier.name}${deepActive(progress) ? ', DEEP PIPELINE' : ''}`;
+}
+
+/**
+ * The deep pipeline is in use: bought, switched on, and on a CPU that runs
+ * it (branch guessing and its chip; a developer-screen tier or chip below
+ * that leaves it bought but idle).
+ */
+export function deepActive(progress: Progress): boolean {
+  return progress.deepPipeline === 'on' && tierOf(progress).number >= DEEP_PIPELINE.afterTier && progress.wordBits >= DEEP_PIPELINE.bits;
+}
+
+/** The deep pipeline switched the other way (bought: on and off; not bought: unchanged). */
+export function toggleDeep(progress: Progress): Progress {
+  if (progress.deepPipeline === 'none') return progress;
+  return { ...progress, deepPipeline: progress.deepPipeline === 'on' ? 'off' : 'on' };
 }
 
 /** Your CPU and its rated clock: "16-BIT, TIER 2 PIPELINE AT 16 MHz". */
@@ -150,9 +169,15 @@ export function ratedMhz(progress: Progress): number {
   return ratedMhzFor(progress, isPipelined(progress));
 }
 
-/** The rated clock a pipelined or single-cycle CPU would have with these clock upgrades. */
-export function ratedMhzFor(progress: Progress, pipelined: boolean): number {
-  return (pipelined ? BASE_MHZ.pipelined : BASE_MHZ.singleCycle) * CLOCK.factors[progress.clockLevel];
+/**
+ * The rated clock a pipelined or single-cycle CPU would have with these
+ * clock upgrades, and the deep pipeline if it's in use. The deep pipeline's
+ * faster clock stops at the power wall (the top clock step), as real ones
+ * did: there it keeps its dearer wrong guesses and gains nothing.
+ */
+export function ratedMhzFor(progress: Progress, pipelined: boolean, deep = pipelined && deepActive(progress)): number {
+  const clock = (pipelined ? BASE_MHZ.pipelined : BASE_MHZ.singleCycle) * CLOCK.factors[progress.clockLevel];
+  return deep ? Math.min(clock * DEEP_PIPELINE.clockFactor, BASE_MHZ.pipelined * CLOCK.factors[CLOCK.factors.length - 1]) : clock;
 }
 
 /** Owns the L1 cache. */
@@ -183,7 +208,8 @@ const cpiCache = new Map<string, number>();
  */
 export function cpiFor(programName: string, progress: Progress): number {
   const tier = tierOf(progress);
-  const key = `${programName}:${tier.number}:${progress.clockLevel}:${progress.cacheLevels}`;
+  const deep = deepActive(progress);
+  const key = `${programName}:${tier.number}:${progress.clockLevel}:${progress.cacheLevels}:${deep}`;
   const cached = cpiCache.get(key);
   if (cached !== undefined) return cached;
   const spec = programByName(programName);
@@ -194,6 +220,7 @@ export function cpiFor(programName: string, progress: Progress): number {
     predictor: tier.options?.predictor,
     cache: hasCache(progress),
     mhz: ratedMhz(progress),
+    wrongGuessCycles: deep ? DEEP_PIPELINE.wrongGuessCycles : 1,
   });
   const cpi = run.cycles / run.instructions;
   cpiCache.set(key, cpi);
@@ -249,6 +276,7 @@ export function withEverything(progress: Progress): Progress {
     cooling: COOLING.length - 1,
     cacheLevels: MEMORY_PARTS.length,
     overclocking: true,
+    deepPipeline: 'on',
     chipMaxDial: THERMAL.maxDial,
   };
 }
@@ -330,6 +358,8 @@ export type ShopItem = {
   readonly price: number;
   /** 'buy' if it can be bought now (money permitting). */
   readonly state: 'buy' | 'owned' | 'later' | 'max';
+  /** Owned and switchable (the deep pipeline): on or off; Enter switches it (toggleDeep). */
+  readonly switchedOn?: boolean;
   readonly about: string;
   readonly apply: (progress: Progress) => Progress;
 };
@@ -368,7 +398,9 @@ export function shopItems(progress: Progress): ShopItem[] {
       apply: (p: Progress) => ({ ...p, wordBits: chip.bits }),
     } satisfies ShopItem,
   }));
-  const items: ShopItem[] = [...parts, ...chips].sort((a, b) => a.order - b.order).map(({ item }) => item);
+  const items: ShopItem[] = [...parts, ...chips, { order: DEEP_PIPELINE.afterTier + 0.5, item: deepItem(progress) }]
+    .sort((a, b) => a.order - b.order)
+    .map(({ item }) => item);
   items.push(clockItem(progress));
   items.push({
     key: 'overclock',
@@ -420,12 +452,41 @@ export function shopItems(progress: Progress): ShopItem[] {
   return items;
 }
 
+/**
+ * The deep pipeline: on sale once branch guessing and its chip are in; once
+ * bought, Enter switches it on and off. Its line weighs it up on a typical
+ * job with your hardware: faster clock, dearer wrong guesses.
+ */
+function deepItem(progress: Progress): ShopItem {
+  const ready = tierOf(progress).number >= DEEP_PIPELINE.afterTier && progress.wordBits >= DEEP_PIPELINE.bits;
+  const owned = progress.deepPipeline !== 'none';
+  const [off, on] = [{ ...progress, deepPipeline: 'off' as const }, { ...progress, deepPipeline: 'on' as const }].map(typicalSecondsPerInstruction);
+  const tradeoff =
+    `${DEEP_PIPELINE.clockFactor}x the clock, but a wrong guess costs ${DEEP_PIPELINE.wrongGuessCycles} cycles, not 1. ` +
+    `A typical job with your hardware: ${formatDuration(off)} per instruction off, ${formatDuration(on)} on.`;
+  return {
+    key: 'deep',
+    group: 'CPU',
+    name: DEEP_PIPELINE.name,
+    price: DEEP_PIPELINE.price,
+    state: owned ? 'owned' : ready ? 'buy' : 'later',
+    switchedOn: owned ? progress.deepPipeline === 'on' : undefined,
+    lessonId: 'deep',
+    about: !ready
+      ? 'Ten shorter stages instead of five, for a faster clock. Needs branch guessing and the 32-bit chip.'
+      : owned
+        ? `[ENTER] SWITCHES IT ${progress.deepPipeline === 'on' ? 'OFF' : 'ON'}. ${tradeoff}`
+        : `Ten shorter stages instead of five. ${tradeoff} Switch it on or off any time.`,
+    apply: (p) => ({ ...p, deepPipeline: 'on' }),
+  };
+}
+
 /** The next clock step, up to the chip's top step. */
 function clockItem(progress: Progress): ShopItem {
   const level = progress.clockLevel;
   const top = chipOf(progress).maxClock;
   const next = level < top ? level + 1 : undefined;
-  const mhzAt = (l: number) => (isPipelined(progress) ? BASE_MHZ.pipelined : BASE_MHZ.singleCycle) * CLOCK.factors[l];
+  const mhzAt = (l: number) => ratedMhzFor({ ...progress, clockLevel: l }, isPipelined(progress));
   const base = { key: 'clock', group: 'CLOCK', apply: (p: Progress) => ({ ...p, clockLevel: Math.min(top, p.clockLevel + 1) }) } as const;
   if (next !== undefined) {
     return {

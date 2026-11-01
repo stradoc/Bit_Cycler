@@ -10,6 +10,9 @@ const CHARS_PER_SECOND = 60;
 const READ_MS = 300;
 const BUBBLE_W = 330;
 const MAX_BUBBLE_W = 440;
+/** A question's bubble, wide enough for its answers on one line each. */
+const ASK_BUBBLE_W = 520;
+const CHOICE_H = 22;
 const PAD = 12;
 const GAP = 8;
 const MARGIN = 8;
@@ -101,6 +104,8 @@ export class Guide {
     playing;
     /** A held line is up (GuideLine.hold): it waits for Enter. */
     held = false;
+    /** A question is up: its answers, the one chosen so far, and what to do with it. */
+    asking;
     /** When Enter showed the rest of the words at once (performance.now()). */
     skippedAt = 0;
     /** The words being said, each with where it starts and the pitch it's said at; and how many have been voiced. */
@@ -165,6 +170,13 @@ export class Guide {
         }
         if (performance.now() - this.shownAt() < READ_MS)
             return true;
+        const asking = this.asking;
+        if (asking) {
+            cue(this.scene, 'confirm');
+            this.quiet();
+            asking.question.done(asking.selected);
+            return true;
+        }
         const playing = this.playing;
         if (!playing) {
             cue(this.scene, 'move');
@@ -182,6 +194,45 @@ export class Guide {
         cue(this.scene, 'guide-bye');
         playing.done();
         return true;
+    }
+    /**
+     * Asks a question: the words, then its answers in the bubble, chosen with
+     * Up / Down (move) or a click, and Enter (next).
+     */
+    ask(question) {
+        this.say({ say: question.say, hold: true, keys: '[UP/DOWN] CHOOSE   [ENTER] OK', choices: question.choices });
+        const texts = this.bubble.filter((part) => part.getData('choice') !== undefined);
+        this.asking = { question, selected: 0, texts };
+        texts.forEach((text, i) => text.setInteractive({ useHandCursor: true }).on('pointerdown', () => {
+            this.choose(i);
+            this.next();
+        }));
+        this.showChoice();
+    }
+    /** Up / Down while a question is up: the next answer. Returns whether the guide took the key. */
+    move(delta) {
+        const asking = this.asking;
+        if (!asking)
+            return false;
+        this.choose((asking.selected + delta + asking.texts.length) % asking.texts.length);
+        cue(this.scene, 'move');
+        return true;
+    }
+    choose(index) {
+        if (!this.asking)
+            return;
+        this.asking.selected = index;
+        this.showChoice();
+    }
+    /** The chosen answer stands out: a pointer, the accent color. */
+    showChoice() {
+        const asking = this.asking;
+        if (!asking)
+            return;
+        asking.texts.forEach((text, i) => {
+            const chosen = i === asking.selected;
+            text.setText(`${chosen ? '>' : ' '} ${asking.question.choices[i]}`).setColor(cssColor(chosen ? this.era.accent : this.era.fg)).setAlpha(chosen ? 1 : 0.75);
+        });
     }
     /** When all the words were showing: typed out, or shown at once by Enter. */
     shownAt() {
@@ -218,13 +269,16 @@ export class Guide {
         // The bubble: the guide's name, the words (wrapped now, so they don't jump lines as they type), and the keys.
         const name = eraText(scene, era, PAD, PAD, `${GUIDE_NAME}:`, TEXT.small).setColor(cssColor(era.accent)).setAlpha(0.9);
         const words = eraText(scene, era, PAD, PAD + 20, line.say, TEXT.body).setLineSpacing(4);
-        // Words already broken into lines (practice's tips) keep them, in a bubble as wide as they need.
-        const bubbleW = line.say.includes('\n') ? Math.min(MAX_BUBBLE_W, Math.max(BUBBLE_W * 0.7, words.width + 2 * PAD)) : BUBBLE_W;
+        // Words already broken into lines (practice's tips) keep them, in a bubble as wide as they need; a question is wider.
+        const bubbleW = line.choices ? ASK_BUBBLE_W : line.say.includes('\n') ? Math.min(MAX_BUBBLE_W, Math.max(BUBBLE_W * 0.7, words.width + 2 * PAD)) : BUBBLE_W;
         words.setWordWrapWidth(bubbleW - 2 * PAD);
         this.full = words.getWrappedText(line.say).join('\n');
         const hint = line.keys ? eraText(scene, era, bubbleW - PAD, 0, line.keys, TEXT.hint - 1).setOrigin(1, 0).setAlpha(ALPHA.hint) : undefined;
         const textH = words.height;
-        const bubbleH = PAD + 20 + textH + (hint ? 26 : 8) + PAD / 2;
+        // A question's answers, under the words (showChoice writes them).
+        const choices = (line.choices ?? []).map((_, i) => eraText(scene, era, PAD, PAD + 20 + textH + 10 + i * CHOICE_H, '', TEXT.small).setData('choice', i));
+        const choicesH = choices.length > 0 ? choices.length * CHOICE_H + 10 : 0;
+        const bubbleH = PAD + 20 + textH + choicesH + (hint ? 26 : 8) + PAD / 2;
         hint?.setY(bubbleH - PAD - 14);
         words.setText('');
         this.syllables = [...this.full.matchAll(/\S+/g)].map((word) => ({ at: word.index, pitch: pitchOf(word[0]) }));
@@ -235,7 +289,7 @@ export class Guide {
         const left = robotW + GAP;
         const w = left + bubbleW;
         const h = Math.max(this.body.height, bubbleH);
-        const parts = [...box.parts, name, words, ...(hint ? [hint] : [])];
+        const parts = [...box.parts, name, words, ...choices, ...(hint ? [hint] : [])];
         for (const part of parts)
             part.x += left;
         const tail = scene.add.triangle(0, 0, left + 1, 18, left + 1, 34, left - GAP, 26, era.bg).setOrigin(0).setStrokeStyle(1, era.fg, 1);
@@ -318,6 +372,7 @@ export class Guide {
         this.bubble = [];
         this.card = [];
         this.words = undefined;
+        this.asking = undefined;
         this.point = undefined;
         this.shade.clear();
         this.frame.setVisible(false);

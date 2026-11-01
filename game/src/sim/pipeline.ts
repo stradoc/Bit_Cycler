@@ -48,6 +48,14 @@ export type PipelineOptions = {
   /** The L1 data cache: loads that hit don't wait for RAM. */
   readonly cache?: boolean;
   /**
+   * Cycles a wrong guess costs (1 without: the 5-stage pipeline decides a
+   * branch in ID, so only the one instruction fetched behind it is thrown
+   * away). The deep pipeline decides it further from fetch: after the flush,
+   * the front of the pipeline takes the extra cycles to refill, and nothing
+   * new reaches ID meanwhile.
+   */
+  readonly wrongGuessCycles?: number;
+  /**
    * The clock (MHz), which sets how many cycles a trip to RAM takes. Without
    * one, memory keeps up with any clock. A song changes it as the dial turns.
    */
@@ -141,6 +149,10 @@ export class Pipeline {
   memoryWait = 0;
   /** Cycles spent frozen waiting for memory so far. */
   memoryCycles = 0;
+  /** Cycles left refilling the deep pipeline's front after a wrong guess (nothing reaches ID). */
+  refillWait = 0;
+  /** Cycles spent refilling so far. */
+  refillCycles = 0;
   /** The last access to reach memory, and the instruction making it. */
   lastAccess: { readonly slot: Slot; readonly access: Access } | undefined;
   /** Branches decided, and how many of them were guessed wrong. */
@@ -183,7 +195,12 @@ export class Pipeline {
 
   get done(): boolean {
     const { IF, ID, EX, MEM } = this.stages;
-    return this.fetchPc >= this.cpu.program.instructions.length && !IF && !ID && !EX && !MEM && this.memoryWait === 0;
+    return this.fetchPc >= this.cpu.program.instructions.length && !IF && !ID && !EX && !MEM && this.waitLeft === 0;
+  }
+
+  /** Cycles left with nothing able to move on: waiting for memory, then refilling after a wrong guess. */
+  get waitLeft(): number {
+    return this.memoryWait + this.refillWait;
   }
 
   /** Average cycles per instruction so far, counting the cycles to fill the pipeline. */
@@ -315,19 +332,28 @@ export class Pipeline {
     return this.hazard() ? 'stall' : 'issue';
   }
 
-  /** Spends up to `cycles` of the current memory wait, the whole pipeline frozen. Returns how many it spent. */
-  wait(cycles = this.memoryWait): number {
-    const spent = Math.max(0, Math.min(cycles, this.memoryWait));
-    this.cycle += spent;
-    this.memoryCycles += spent;
-    this.memoryWait -= spent;
-    return spent;
+  /**
+   * Spends up to `cycles` of the current wait (memory first, then a refill),
+   * nothing able to move on. Returns how many it spent. A refill holds the
+   * whole pipeline too: what's ahead of the refetched instruction is only the
+   * bubble and the branch, which writes no register, so holding it changes no
+   * later hazard and costs the same cycles as bubbles drifting through.
+   */
+  wait(cycles = this.waitLeft): number {
+    const memory = Math.max(0, Math.min(cycles, this.memoryWait));
+    const refill = Math.max(0, Math.min(cycles - memory, this.refillWait));
+    this.cycle += memory + refill;
+    this.memoryCycles += memory;
+    this.memoryWait -= memory;
+    this.refillCycles += refill;
+    this.refillWait -= refill;
+    return memory + refill;
   }
 
   /** Advances one clock cycle. `action` is the player's choice for the instruction in ID. */
   step(action: 'issue' | 'stall'): CycleResult {
     if (this.done) throw new Error('pipeline is done');
-    if (this.memoryWait > 0) throw new Error('pipeline is frozen, waiting for memory');
+    if (this.waitLeft > 0) throw new Error('pipeline is frozen, waiting for memory or refilling');
     if (this.options.singleCycle) return this.stepSingleCycle(action);
     const { IF, ID, EX, MEM } = this.stages;
     const flushed: Slot[] = [];
@@ -409,6 +435,8 @@ export class Pipeline {
     this.cycle++;
     // The instruction now entering MEM reaches memory next cycle; if that takes longer, everything waits.
     const access = this.reachMemory(EX);
+    // A deep pipeline's wrong guess: its front refills (during a memory wait, the refill overlaps it).
+    if (mispredicted) this.refillWait = Math.max(0, (this.options.wrongGuessCycles ?? 1) - 1 - this.memoryWait);
     return { event, flushed, committed, mispredicted, predicted, access };
   }
 
@@ -507,7 +535,7 @@ export class Pipeline {
 export function perfectRun(cpu: Cpu, options: PipelineOptions, guesses: 'hardware' | 'perfect' = 'hardware'): Pipeline {
   const pipeline = new Pipeline(cpu.clone(), options);
   while (!pipeline.done) {
-    if (pipeline.memoryWait > 0) {
+    if (pipeline.waitLeft > 0) {
       pipeline.wait();
       continue;
     }

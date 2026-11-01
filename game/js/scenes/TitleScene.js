@@ -1,7 +1,7 @@
 import { powerOff, stopHum } from '../audio/sound.js';
 import { programListing } from '../data/boot.js';
 import { LESSONS } from '../data/lessons.js';
-import { BOARD_TOUR_ID, WELCOME_TOUR } from '../data/tours.js';
+import { BOARD_TOUR_ID, WELCOME_AFTER, WELCOME_QUESTION } from '../data/tours.js';
 import { openLesson } from '../flow.js';
 import { banner, commandLine, CREDITS, listCommand, listingFooter, listingLine, readCommand, README } from '../data/menuFiles.js';
 import { formatMoney } from '../format.js';
@@ -111,7 +111,16 @@ export class TitleScene extends Screen {
         this.welcomeDue = false;
         if (this.folder !== 'root' || this.reading)
             this.openFolder('root');
-        this.guide.tour(WELCOME_TOUR, (target) => this.where(target), () => updateSettings({ welcomed: true }));
+        // First: how much to teach. Then the welcome that goes with the answer.
+        this.guide.ask({
+            say: WELCOME_QUESTION.say,
+            choices: WELCOME_QUESTION.choices.map((choice) => choice.answer),
+            done: (i) => {
+                const { level } = WELCOME_QUESTION.choices[i];
+                updateSettings({ tutorial: level });
+                this.guide.tour(WELCOME_AFTER[level], (target) => this.where(target), () => updateSettings({ welcomed: true }));
+            },
+        });
     }
     /** Where the main menu's entries are, for TICK to point at (the rows from the first entry named to the last). */
     where(target) {
@@ -257,6 +266,8 @@ export class TitleScene extends Screen {
         if (this.guide.waiting) {
             if (key === 'Enter' && !event.repeat)
                 this.guide.next();
+            else if (key === 'ArrowUp' || key === 'ArrowDown')
+                this.guide.move(key === 'ArrowUp' ? -1 : 1);
             return key !== 'M';
         }
         if (this.reading) {

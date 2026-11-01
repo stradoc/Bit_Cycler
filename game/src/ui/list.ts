@@ -30,6 +30,8 @@ export type ListOptions = {
   readonly middle?: number;
   /** Drawn at this depth (a menu over the screen, like the pause menu); the modern era's bar just under it. */
   readonly depth?: number;
+  /** Room above a group's first row for its heading (layout pixels; 0.7 of a row unless given). */
+  readonly heading?: number;
 };
 
 /** The 90s desktop's selected button stays pressed in this long (ms) before it acts, like a real button on release. */
@@ -58,6 +60,7 @@ export class ListMenu {
   private readonly size: number;
   private readonly middle: number;
   private readonly depth: number | undefined;
+  private readonly heading: number;
   private rows: readonly MenuRow[] = [];
   /** Each row's middle, worked out from the groups. */
   private ys: number[] = [];
@@ -79,6 +82,7 @@ export class ListMenu {
     this.size = options.size ?? 18;
     this.middle = options.middle ?? 70;
     this.depth = options.depth;
+    this.heading = options.heading ?? this.rowHeight * GROUP_HEADING;
   }
 
   /** Shows these rows, keeping the selection (or moving it to `selected`). */
@@ -87,7 +91,7 @@ export class ListMenu {
     this.selected = Phaser.Math.Clamp(selected, 0, Math.max(0, rows.length - 1));
     let y = this.top;
     this.ys = rows.map((row, i) => {
-      if (row.group !== undefined) y += this.rowHeight * GROUP_HEADING + (i > 0 ? GROUP_GAP : 0);
+      if (row.group !== undefined) y += this.heading + (i > 0 ? GROUP_GAP : 0);
       const at = y;
       y += this.rowHeight;
       return at;
@@ -136,7 +140,7 @@ export class ListMenu {
     this.button = undefined;
     this.rows.forEach((row, i) => {
       if (i >= this.shown) return;
-      if (row.group !== undefined) this.drawHeading(row.group, this.rowY(i) - this.rowHeight * GROUP_HEADING);
+      if (row.group !== undefined) this.drawHeading(row.group, this.rowY(i) - this.heading);
       this.drawRow(row, i === this.selected, this.rowY(i));
     });
     // The modern era's bar outlives redraws: hide it while its row isn't shown.

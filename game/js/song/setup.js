@@ -1,5 +1,6 @@
+import { DEEP_PIPELINE } from '../data/economy.js';
 import { programByName } from '../data/programs.js';
-import { hasCache, ratedMhzFor } from '../sim/progress.js';
+import { deepActive, hasCache, ratedMhzFor } from '../sim/progress.js';
 import { THERMAL } from '../sim/thermal.js';
 import { ROWS, SINGLE_CYCLE_ROWS } from './layout.js';
 /**
@@ -16,6 +17,9 @@ export function songSetup(start, progress, params) {
     const contract = start.contract ?? progress.board.find((c) => c.section === params.get('contract'));
     const program = start.program ?? contract?.program ?? (predictor ? 'SUM GRID' : 'SUM ARRAY');
     const { replay } = start;
+    const guessing = start.guessing ?? params.has('guessing');
+    // ?deep fits the deep pipeline (on a pipelined CPU); from the save, only where branches are guessed.
+    const deep = !singleCycle && (start.deep ?? ((guessing && deepActive(progress)) || params.has('deep')));
     // ?clock=150 starts the song overclocked, and allows it without the upgrade. Practice always runs at the rated clock.
     const clock = Number(params.get('clock')) / 100;
     return {
@@ -23,11 +27,12 @@ export function songSetup(start, progress, params) {
         spec: programByName(program),
         singleCycle,
         forwarding: start.forwarding ?? params.has('forwarding'),
-        guessing: start.guessing ?? params.has('guessing'),
+        guessing,
         predictor,
         // ?cache fits the L1 cache.
         l1: start.l1 ?? (hasCache(progress) || params.has('cache')),
-        ratedMhz: ratedMhzFor(progress, !singleCycle),
+        deep,
+        ratedMhz: ratedMhzFor(progress, !singleCycle, deep),
         // Wear is the chip's own, and a replay plays on the chip its run started on.
         // Practice always runs on a new chip, so it never overheats.
         maxDial: replay?.maxDial ?? (practice ? THERMAL.maxDial : progress.chipMaxDial),
@@ -46,8 +51,8 @@ export function songSetup(start, progress, params) {
 }
 /** The hardware the simulator runs for this song, at a clock (MHz). */
 export function pipelineOptions(setup, mhz) {
-    const { forwarding, predictor, singleCycle, l1 } = setup;
-    return { forwarding, predictor, singleCycle, cache: l1, mhz };
+    const { forwarding, predictor, singleCycle, l1, deep } = setup;
+    return { forwarding, predictor, singleCycle, cache: l1, mhz, wrongGuessCycles: deep ? DEEP_PIPELINE.wrongGuessCycles : 1 };
 }
 // Starting the song again passes its whole setup on. songSetup reads only what
 // SongStart names and works out the rest again, so the chip's wear is the save's

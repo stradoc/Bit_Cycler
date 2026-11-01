@@ -1,5 +1,6 @@
 import { LESSONS } from './data/lessons.js';
 import { getProgress } from './save.js';
+import { teaching } from './settings.js';
 import { pastMemoryWall, tierOf } from './sim/progress.js';
 /**
  * Plays a contract on the CPU the player owns. A CPU they haven't learned yet
@@ -10,7 +11,11 @@ export function playContract(scene, contract) {
     const progress = getProgress();
     const tier = tierOf(progress);
     const data = { ...tier.options, program: contract.program, contract };
-    if (!progress.seenLessons.includes(tier.lessonId)) {
+    // With the tutorial skipped, straight to the song (every lesson waits in BRIEFS).
+    if (!teaching().tours) {
+        scene.scene.start(tier.scene, data);
+    }
+    else if (!progress.seenLessons.includes(tier.lessonId)) {
         scene.scene.start(tier.scene, { ...data, practice: true, tour: [tier.lessonId] });
     }
     else if (pastMemoryWall(progress) && !progress.seenLessons.includes('memwall')) {
@@ -30,7 +35,7 @@ export function playContract(scene, contract) {
 export function teachAfterPurchase(scene, lessonId) {
     const tier = tierOf(getProgress());
     const lesson = LESSONS[lessonId];
-    if (!lesson) {
+    if (!lesson || !teaching().tours) {
         scene.scene.start('shop');
         return;
     }

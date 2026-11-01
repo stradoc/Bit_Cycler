@@ -163,3 +163,25 @@ test('routing a branch with a guess: right costs nothing, wrong flushes, and rep
   assert.equal(replay.pipeline.cycle, run.pipeline.cycle);
   assert.equal(replay.pipeline.mispredicted, 1);
 });
+
+test('a deep pipeline refilling after a wrong guess: presses are ignored, and its cycles take a few frozen beats', () => {
+  const source = 'addi x1, x0, 0\naddi x2, x0, 3\nloop: addi x1, x1, 1\nbne x1, x2, loop';
+  const run = new PipelineRun(new Cpu(assemble(source), 8, []), { forwarding: true, wrongGuessCycles: 4 }, 3, SPB, NORMAL_WINDOWS);
+  let refills = 0;
+  while (!run.done) {
+    if (run.frozen) {
+      assert.ok(run.refilling);
+      refills++;
+      const before = run.waitBeats;
+      endCycle(run);
+      assert.equal(run.waitBeats, before + 1);
+      continue;
+    }
+    const action = best(run);
+    if (action) run.press(action, run.dueBeat);
+    endCycle(run);
+  }
+  assert.equal(run.pipeline.refillCycles, 6, 'two wrong guesses (not taken, by default), 3 cycles each');
+  assert.equal(refills, run.waitBeats);
+  assert.equal(run.waitBeats, 4, 'each refill of 3 cycles is drawn over 2 beats');
+});

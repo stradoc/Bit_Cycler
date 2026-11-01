@@ -1,7 +1,7 @@
 import { powerOff, stopHum } from '../audio/sound.ts';
 import { programListing } from '../data/boot.ts';
 import { LESSONS } from '../data/lessons.ts';
-import { BOARD_TOUR_ID, WELCOME_TOUR, type MenuTarget } from '../data/tours.ts';
+import { BOARD_TOUR_ID, WELCOME_AFTER, WELCOME_QUESTION, type MenuTarget } from '../data/tours.ts';
 import { openLesson } from '../flow.ts';
 import { banner, commandLine, CREDITS, listCommand, listingFooter, listingLine, readCommand, README, type TextFile } from '../data/menuFiles.ts';
 import { formatMoney } from '../format.ts';
@@ -135,7 +135,16 @@ export class TitleScene extends Screen {
     if (!this.welcomeDue) return;
     this.welcomeDue = false;
     if (this.folder !== 'root' || this.reading) this.openFolder('root');
-    this.guide.tour(WELCOME_TOUR, (target) => this.where(target), () => updateSettings({ welcomed: true }));
+    // First: how much to teach. Then the welcome that goes with the answer.
+    this.guide.ask({
+      say: WELCOME_QUESTION.say,
+      choices: WELCOME_QUESTION.choices.map((choice) => choice.answer),
+      done: (i) => {
+        const { level } = WELCOME_QUESTION.choices[i];
+        updateSettings({ tutorial: level });
+        this.guide.tour(WELCOME_AFTER[level], (target) => this.where(target), () => updateSettings({ welcomed: true }));
+      },
+    });
   }
 
   /** Where the main menu's entries are, for TICK to point at (the rows from the first entry named to the last). */
@@ -289,6 +298,7 @@ export class TitleScene extends Screen {
     // TICK's welcome: Enter shows the rest of the words, then goes on.
     if (this.guide.waiting) {
       if (key === 'Enter' && !event.repeat) this.guide.next();
+      else if (key === 'ArrowUp' || key === 'ArrowDown') this.guide.move(key === 'ArrowUp' ? -1 : 1);
       return key !== 'M';
     }
     if (this.reading) {

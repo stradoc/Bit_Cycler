@@ -47,6 +47,7 @@ Add these to the URL, e.g. `http://localhost:8000/?scene=play&autoplay`. Any `?s
 | `&practice` | Practice mode |
 | `&cache` | The L1 cache |
 | `&clock=150` | Start with the clock dial at 50–150% |
+| `&deep` | The deep pipeline (on a pipelined tier): a 1.5x clock, 4 cycles per wrong guess |
 | `&contract=standard` | Play the board's first contract in that section (`starter` / `standard` / `advanced`), with pay and results |
 | `&autoplay` | Every note played perfectly (demos, checking results) |
 | `?scene=pipeline&single&practice&tour=tier1` | Play a lesson's tour of the song screen, then its practice (any lesson id in `data/lessons.ts`; `tour=memwall,cache` plays two in a row). The developer screen's OPEN LESSON and the main menu's BRIEFS do the same with the right hardware |
@@ -70,7 +71,8 @@ Or type them in the browser's console (F12, then Console) while the game runs; `
 | `cheat.cooling(2)` | Cooler: 0 stock, 1 heatsink, 2 fan |
 | `cheat.cache()` / `cheat.cache(false)` | Own / remove the L1 cache |
 | `cheat.overclock()` / `cheat.overclock(false)` | Own / remove the overclocking upgrade |
-| `cheat.wear(1.2)` | The chip's max clock after overheating (1.0–1.5) |
+| `cheat.deep('on')` | The deep pipeline: `'on'`, `'off'` (owned) or `'none'` |
+| `cheat.wear(1.2)` | The chip's max clock after overheating (1.0–1.5; the developer screen's row went on 2026-10-31) |
 | `cheat.unlockAll()` | Every part, max clock, fan, overclocking, the L1 cache, $100,000 |
 | `cheat.board()` | New random contracts (also clears a new game's tutorial job) |
 | `cheat.lessons()` / `cheat.lessons(false)` | Mark every lesson and tour (the board's too) seen / unseen, in this save |

@@ -1,4 +1,5 @@
 import { parseSave, saveText } from './saveFile.js';
+import { teaching } from './settings.js';
 import { fillBoard, NEW_GAME, newCampaign } from './sim/progress.js';
 export const CAMPAIGN_SLOTS = ['1', '2', '3'];
 const slotKey = (slot) => `bit-cycler-save-${slot}`;
@@ -108,7 +109,8 @@ export function updateProgress(change) {
 /** A new game in `slot` (erasing what was there), which becomes the active slot. */
 export function newGame(slot = activeSlot()) {
     switchSlot(slot);
-    return setProgress(newCampaign());
+    // The tutorial job is part of TICK's teaching: skipped with the tutorial.
+    return setProgress(teaching().tips ? newCampaign() : fillBoard(NEW_GAME, Math.random));
 }
 export function deleteSlot(slot) {
     write(slotKey(slot), null);

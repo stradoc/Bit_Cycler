@@ -1,7 +1,7 @@
 import { teachAfterPurchase } from '../flow.ts';
 import { formatMhz, formatMoney } from '../format.ts';
 import { getProgress, setProgress } from '../save.ts';
-import { bitsName, buy, cpuLine, ratedMhz, shopItems, type ShopItem } from '../sim/progress.ts';
+import { bitsName, buy, cpuLine, ratedMhz, shopItems, toggleDeep, type ShopItem } from '../sim/progress.ts';
 import { ListMenu, type MenuRow } from '../ui/list.ts';
 import type { PauseItem } from '../ui/pauseMenu.ts';
 import { Screen } from '../ui/screen.ts';
@@ -91,6 +91,14 @@ export class ShopScene extends Screen {
     const progress = getProgress();
     const item = shopItems(progress)[this.menu.selected];
     if (!item) return;
+    // An owned part with a switch (the deep pipeline): Enter switches it on or off.
+    if (item.state === 'owned' && item.switchedOn !== undefined) {
+      const switched = setProgress(toggleDeep(progress));
+      this.cue('confirm');
+      this.refresh();
+      this.message.setText(`${item.name} ${item.switchedOn ? 'OFF' : 'ON'}: YOUR CPU RUNS AT ${formatMhz(ratedMhz(switched))}.`);
+      return;
+    }
     const bought = buy(progress, item.key);
     if (!bought) {
       this.cue('error');
@@ -148,13 +156,15 @@ export class ShopScene extends Screen {
   /** An item's row: its name, its price, and whether you can buy it. */
   private row(item: ShopItem, money: number): MenuRow {
     const affordable = item.state === 'buy' && money >= item.price;
+    const switched = item.switchedOn === undefined ? undefined : item.switchedOn ? 'ON' : 'OFF';
     const status =
-      item.state === 'owned' ? 'OWNED' : item.state === 'later' ? 'LATER' : item.state === 'max' ? '' : affordable ? 'BUY' : 'NEED $';
+      switched ?? (item.state === 'owned' ? 'OWNED' : item.state === 'later' ? 'LATER' : item.state === 'max' ? '' : affordable ? 'BUY' : 'NEED $');
     return {
       label: item.name,
       middle: item.state !== 'max' && item.state !== 'owned' ? formatMoney(item.price) : undefined,
       value: status,
-      alpha: item.state === 'buy' ? (affordable ? 1 : 0.6) : 0.4,
+      // A switch stays bright: it's still something to choose.
+      alpha: item.state === 'buy' ? (affordable ? 1 : 0.6) : switched ? 0.9 : 0.4,
     };
   }
 }

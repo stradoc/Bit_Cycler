@@ -32,8 +32,38 @@ export type BoardTarget = 'list' | 'job' | 'loop' | 'notes' | 'memory' | 'time';
 /** The song screen's parts the guide can point at (scenes/PipelineScene.ts); `x3` is one register's row. */
 export type SongTarget = 'lanes' | 'line' | 'rows' | 'gauge' | 'listing' | 'registers' | 'memory' | 'cache' | 'stats' | `x${number}`;
 
+/**
+ * How much TICK teaches, chosen when he first says hello (and in the
+ * settings): everything; the new parts of the CPU but not every instruction
+ * up close; or nothing unasked. BRIEFS plays any lesson whatever the choice.
+ */
+export type TutorialLevel = 'full' | 'short' | 'skip';
+
+export const TUTORIAL: Readonly<Record<TutorialLevel, {
+  /** The board's tour, and each lesson's tour (and practice) when its idea first comes up. */
+  readonly tours: boolean;
+  /** Lesson 1's practice goes through each kind of instruction up close. */
+  readonly closeLooks: boolean;
+  /** Practice's tips, and a new game's tutorial job. */
+  readonly tips: boolean;
+}>> = {
+  full: { tours: true, closeLooks: true, tips: true },
+  short: { tours: true, closeLooks: false, tips: true },
+  skip: { tours: false, closeLooks: false, tips: false },
+};
+
+/** TICK's first words on the main menu: hello, and how much to teach. */
+export const WELCOME_QUESTION: { readonly say: string; readonly choices: readonly { readonly answer: string; readonly level: TutorialLevel }[] } = {
+  say: `Hi! I'm ${GUIDE_NAME}, and I live inside this computer. Welcome to Bit Cycler! Before we start: have you played before?`,
+  choices: [
+    { answer: "I'm new. (FULL TUTORIAL)", level: 'full' },
+    { answer: 'I already know most of this stuff. (SHORT TUTORIAL)', level: 'short' },
+    { answer: "I've already been through this. (SKIP TUTORIAL)", level: 'skip' },
+  ],
+};
+
+/** The whole welcome, after a new player's answer. */
 export const WELCOME_TOUR: readonly TourStep<MenuTarget>[] = [
-  { say: `Hi! I'm ${GUIDE_NAME}, and I live inside this computer. Welcome to Bit Cycler!` },
   { say: 'Every computer has a CPU: the chip that does all its work. This game shows you how a CPU works, from the inside.', picture: 'cpu' },
   { say: 'A CPU runs on a clock that ticks very fast. Here, every beat of the music is one tick, and you play the part that gives the orders.', picture: 'clock' },
   { say: 'Companies pay you to run their programs. With the money you buy parts that make your CPU faster, the way real CPUs got faster.' },
@@ -43,6 +73,17 @@ export const WELCOME_TOUR: readonly TourStep<MenuTarget>[] = [
   { say: 'While you play, press ESC for the pause menu. After a song, click anything in its replay to learn what it is.' },
   { say: "Don't try to remember it all: I'll explain each thing the first time you need it. Let's go!", point: 'new' },
 ];
+
+/** What TICK says after the answer: the whole welcome, a short one, or just where to find him. */
+export const WELCOME_AFTER: Readonly<Record<TutorialLevel, readonly TourStep<MenuTarget>[]>> = {
+  full: WELCOME_TOUR,
+  short: [
+    { say: "Alright, the short version. I'll still show you each new part of the CPU as you get it, but I won't go through every instruction." },
+    { say: 'Every lesson I give is kept in BRIEFS, if you want one again.', point: 'briefs' },
+    { say: 'Press ESC for the pause menu while you play, and change how much I explain in SETTINGS. Let\'s go!', point: 'settings' },
+  ],
+  skip: [{ say: "Got it! I'll stay out of your way. Every lesson is in BRIEFS, and SETTINGS can bring me back.", point: 'briefs' }],
+};
 
 export const BOARD_TOUR: readonly TourStep<BoardTarget>[] = [
   { say: "This is the contract board. Companies send in jobs for your CPU, and you get paid when it finishes them.", point: 'list' },
@@ -145,6 +186,16 @@ export const SONG_TOURS: Readonly<Record<string, readonly TourStep<SongTarget>[]
     { say: 'Watch the cache here as you play. Stores go out through a WRITE BUFFER, so they never wait.', point: 'cache' },
     { say: 'Fewer trips to RAM means a lower CPI, and faster clocks start paying off again.', picture: 'cachescore' },
     { say: "Let's practice with the cache.", point: 'line' },
+  ],
+  deep: [
+    { say: 'Your DEEP PIPELINE splits each instruction into 10 smaller stages instead of 5. Smaller stages are quicker, so the clock ticks 1.5x faster.', picture: 'deep' },
+    { say: 'Here is your clock: the same job, more beats a second. The screen still draws 5 rows; the extra stages are squeezed in between.', point: 'gauge' },
+    { say: "The catch: a branch is now decided further from where instructions are fetched. A wrong guess throws away 4 instructions' work, not 1.", picture: 'deep' },
+    { say: 'When you guess wrong, the notes freeze while the front of the pipeline refills: 4 cycles lost instead of 1.', point: 'rows' },
+    { say: "So it's a trade. Guess badly and it's slower than before. Guess well, or have a good predictor, and the faster clock wins.", picture: 'deeptrade' },
+    { say: "At the very top clock there's no faster tick left to gain, only the dearer wrong guesses. Real chips hit that wall too." },
+    { say: 'You can switch it ON or OFF in the shop whenever you like. The shop shows a typical job both ways.', point: 'stats' },
+    { say: "Let's practice with it on. Read the registers and guess right!", point: 'line' },
   ],
 };
 

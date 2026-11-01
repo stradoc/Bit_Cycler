@@ -72,8 +72,11 @@ export function resultLines(f) {
         lines.push(`L1 CACHE: ${memory.hits} OF ${memory.loads} LOADS HIT (${Math.round((memory.hits / memory.loads) * 100)}%)` + (kinds.length > 0 ? `, MISSES: ${kinds.join(', ')}` : ''));
     }
     // Where the cycles went: every cycle either finished an instruction or was lost.
-    const fill = Math.max(0, p.cycles - p.instructions - p.stalls - p.flushed - p.memoryCycles);
-    const waited = p.memoryCycles > 0 ? [[`WAITING ON RAM (${memory.ramTrips} TRIP${memory.ramTrips === 1 ? '' : 'S'})`, p.memoryCycles]] : [];
+    const fill = Math.max(0, p.cycles - p.instructions - p.stalls - p.flushed - p.memoryCycles - p.refillCycles);
+    const waited = [
+        ...(p.memoryCycles > 0 ? [[`WAITING ON RAM (${memory.ramTrips} TRIP${memory.ramTrips === 1 ? '' : 'S'})`, p.memoryCycles]] : []),
+        ...(p.refillCycles > 0 ? [['REFILLING (DEEP PIPELINE)', p.refillCycles]] : []),
+    ];
     const rows = setup.singleCycle
         ? [['FINISHED AN INSTRUCTION', p.instructions], ['LOST (MISSED OR WRONG KEY)', p.stalls], ...waited]
         : [

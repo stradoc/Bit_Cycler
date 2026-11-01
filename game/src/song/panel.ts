@@ -238,7 +238,7 @@ export class Panel extends Part {
 
     const filled = Math.round(run.throughput * 8);
     this.throughputText.setText(`THROUGHPUT [${'#'.repeat(filled)}${'.'.repeat(8 - filled)}] ${run.throughput.toFixed(2)}`);
-    const waited = pipeline.memoryCycles > 0 ? `  WAITING ON RAM ${pipeline.memoryCycles}` : '';
+    const waited = (pipeline.memoryCycles > 0 ? `  WAITING ON RAM ${pipeline.memoryCycles}` : '') + (pipeline.refillCycles > 0 ? `  REFILLS ${pipeline.refillCycles}` : '');
     this.statsText.setText(
       `CYCLE ${pipeline.cycle}  DONE ${pipeline.instructions}  CPI ${pipeline.cpi.toFixed(2)}  STREAK ${run.streak}\n` +
         `STALLS ${pipeline.stalls}  FLUSHED ${pipeline.flushed}${waited}`,

@@ -154,6 +154,6 @@ test('in a song, a long memory wait freezes for 5 beats, ignores presses, and co
   assert.equal(chip.cycles, run.pipeline.cycle - 1);
   while (!run.done) play();
   assert.equal(run.pipeline.cycles, 1230);
-  assert.equal(run.memoryBeats, 25);
+  assert.equal(run.waitBeats, 25);
   assert.equal(run.pipeline.cpu.memory[8], 17);
 });

@@ -94,6 +94,9 @@ export type FreezeView = {
   readonly access: Access;
 };
 
+/** A deep pipeline refilling after a wrong guess: when it started, the beats it's drawn over, the frozen beats before it, and its cycles. */
+export type RefillView = { readonly start: number; readonly beats: number; readonly base: number; readonly total: number };
+
 // ---- helpers ----
 export const noteKey = (slot: Slot) => `${slot.seq}:${slot.pc}`;
 export const laneCenter = (unit: Unit) => LANE_X0 + LANE_W * (UNITS.indexOf(unit) + 0.5);

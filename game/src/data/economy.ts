@@ -87,6 +87,26 @@ export const CPU_PARTS = [
 
 export type PartId = (typeof CPU_PARTS)[number]['id'];
 
+/**
+ * The deep pipeline: an optional part, switched on or off in the shop. Ten
+ * shorter stages instead of five, so the clock runs faster, but a branch is
+ * decided further from fetch, so a wrong guess throws away more work.
+ * Stylized: real deep pipelines (the 1990s-2000s desktops, up to about 20
+ * stages) gained less than 2x from twice the stages (the latches between
+ * stages take their own time), and paid 10-20 cycles per wrong guess.
+ */
+export const DEEP_PIPELINE = {
+  name: 'DEEP PIPELINE (10 STAGES)',
+  price: 800,
+  /** It needs branch guessing (tier 4: guesses are what it's about) and the 32-bit chip. */
+  afterTier: 4,
+  bits: 32,
+  /** How much faster the rated clock runs with it on. */
+  clockFactor: 1.5,
+  /** Cycles a wrong guess costs with it on (the 5-stage pipeline: 1). */
+  wrongGuessCycles: 4,
+} as const;
+
 /** Rated clock before any clock upgrades: a single-cycle CPU's long cycle vs a pipeline's short stage. */
 export const BASE_MHZ = { singleCycle: 1, pipelined: 4 } as const;
 

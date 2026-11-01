@@ -178,7 +178,7 @@ export class Highway extends Part {
     const { pipeline } = run;
     const { ID, IF } = pipeline.stages;
     const beat = chartBeat - frozen;
-    const due = run.dueBeat - run.memoryBeats;
+    const due = run.dueBeat - run.waitBeats;
     const wanted: { slot: Slot; k: number }[] = [];
     if (ID) wanted.push({ slot: ID, k: 0 });
     if (IF) wanted.push({ slot: IF, k: 1 });

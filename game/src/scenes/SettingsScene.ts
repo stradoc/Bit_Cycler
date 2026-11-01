@@ -1,6 +1,7 @@
 import { Conductor } from '../audio/conductor.ts';
 import { audioOf, setVolume, startHum, stopHum, toggleHum } from '../audio/sound.ts';
 import { filePath } from '../data/menuFiles.ts';
+import type { TutorialLevel } from '../data/tours.ts';
 import { getSettings, updateSettings } from '../settings.ts';
 import { baseEra } from '../ui/eras.ts';
 import { ListMenu } from '../ui/list.ts';
@@ -11,11 +12,15 @@ import { WIDTH } from '../visual/display.ts';
 const CALIBRATION_BPM = 120;
 const OFFSET_STEP_MS = 5;
 
-type Row = 'relaxed' | 'calibrate' | 'volume' | 'hum' | 'crt' | 'dark' | 'back';
-const ROWS: readonly Row[] = ['relaxed', 'calibrate', 'volume', 'hum', 'crt', 'dark', 'back'];
+type Row = 'relaxed' | 'tutorial' | 'calibrate' | 'volume' | 'hum' | 'crt' | 'dark' | 'back';
+const ROWS: readonly Row[] = ['relaxed', 'tutorial', 'calibrate', 'volume', 'hum', 'crt', 'dark', 'back'];
+/** The tutorial choices, in the order left / right steps through them, and how each is shown. */
+const TUTORIALS: readonly TutorialLevel[] = ['full', 'short', 'skip'];
+const TUTORIAL_NAMES: Readonly<Record<TutorialLevel, string>> = { full: 'FULL', short: 'SHORT', skip: 'OFF' };
 
 const ABOUT: Readonly<Record<Row, string>> = {
   relaxed: 'WIDER TIMING WINDOWS AND THE BEAT AT 80%: FOR LEARNING, OR WHEN THE BEAT IS TOO FAST.',
+  tutorial: "HOW MUCH TICK TEACHES: FULL (EVERY INSTRUCTION UP CLOSE), SHORT (EACH NEW PART) OR OFF. BRIEFS HAS EVERY LESSON EITHER WAY.",
   calibrate: 'LINE THE LIGHT UP WITH THE CLICK, SO NOTES ARE JUDGED BY WHAT YOU HEAR.',
   volume: 'EVERY SOUND IN THE GAME.',
   hum: "THE OLD COMPUTER'S HUM IN THE MENUS: FAN, MAINS HUM, HARD DRIVE.",
@@ -84,6 +89,7 @@ export class SettingsScene extends Screen {
     const hasDark = Boolean(baseEra().dark);
     const values: Record<Row, [string, string | undefined]> = {
       relaxed: ['RELAXED MODE', onOff(s.relaxed)],
+      tutorial: ['TUTORIAL (TICK)', TUTORIAL_NAMES[s.tutorial] ?? 'FULL'],
       calibrate: ['CALIBRATE AUDIO', `${offsetMs > 0 ? '+' : ''}${offsetMs} MS`],
       volume: ['VOLUME', percent(s.volume)],
       hum: ['COMPUTER HUM', onOff(s.music)],
@@ -138,6 +144,9 @@ export class SettingsScene extends Screen {
     switch (row) {
       case 'relaxed':
         updateSettings({ relaxed: !s.relaxed });
+        break;
+      case 'tutorial':
+        updateSettings({ tutorial: TUTORIALS[(TUTORIALS.indexOf(s.tutorial) + step + TUTORIALS.length) % TUTORIALS.length] });
         break;
       case 'volume':
         setVolume(audioOf(this), Phaser.Math.Clamp(Math.round(s.volume * 10 + step) / 10, 0, 1));

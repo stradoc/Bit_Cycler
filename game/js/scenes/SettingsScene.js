@@ -9,9 +9,13 @@ import { ALPHA, LAYOUT, TEXT } from '../ui/theme.js';
 import { WIDTH } from '../visual/display.js';
 const CALIBRATION_BPM = 120;
 const OFFSET_STEP_MS = 5;
-const ROWS = ['relaxed', 'calibrate', 'volume', 'hum', 'crt', 'dark', 'back'];
+const ROWS = ['relaxed', 'tutorial', 'calibrate', 'volume', 'hum', 'crt', 'dark', 'back'];
+/** The tutorial choices, in the order left / right steps through them, and how each is shown. */
+const TUTORIALS = ['full', 'short', 'skip'];
+const TUTORIAL_NAMES = { full: 'FULL', short: 'SHORT', skip: 'OFF' };
 const ABOUT = {
     relaxed: 'WIDER TIMING WINDOWS AND THE BEAT AT 80%: FOR LEARNING, OR WHEN THE BEAT IS TOO FAST.',
+    tutorial: "HOW MUCH TICK TEACHES: FULL (EVERY INSTRUCTION UP CLOSE), SHORT (EACH NEW PART) OR OFF. BRIEFS HAS EVERY LESSON EITHER WAY.",
     calibrate: 'LINE THE LIGHT UP WITH THE CLICK, SO NOTES ARE JUDGED BY WHAT YOU HEAR.',
     volume: 'EVERY SOUND IN THE GAME.',
     hum: "THE OLD COMPUTER'S HUM IN THE MENUS: FAN, MAINS HUM, HARD DRIVE.",
@@ -75,6 +79,7 @@ export class SettingsScene extends Screen {
         const hasDark = Boolean(baseEra().dark);
         const values = {
             relaxed: ['RELAXED MODE', onOff(s.relaxed)],
+            tutorial: ['TUTORIAL (TICK)', TUTORIAL_NAMES[s.tutorial] ?? 'FULL'],
             calibrate: ['CALIBRATE AUDIO', `${offsetMs > 0 ? '+' : ''}${offsetMs} MS`],
             volume: ['VOLUME', percent(s.volume)],
             hum: ['COMPUTER HUM', onOff(s.music)],
@@ -132,6 +137,9 @@ export class SettingsScene extends Screen {
         switch (row) {
             case 'relaxed':
                 updateSettings({ relaxed: !s.relaxed });
+                break;
+            case 'tutorial':
+                updateSettings({ tutorial: TUTORIALS[(TUTORIALS.indexOf(s.tutorial) + step + TUTORIALS.length) % TUTORIALS.length] });
                 break;
             case 'volume':
                 setVolume(audioOf(this), Phaser.Math.Clamp(Math.round(s.volume * 10 + step) / 10, 0, 1));

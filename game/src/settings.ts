@@ -1,3 +1,5 @@
+import { TUTORIAL, type TutorialLevel } from './data/tours.ts';
+
 export type Settings = {
   /** Audio calibration offset in seconds. */
   readonly offset: number;
@@ -14,10 +16,12 @@ export type Settings = {
   readonly bootSeen: boolean;
   /** TICK's welcome on the main menu has played (once per computer; BRIEFS plays it again). */
   readonly welcomed: boolean;
+  /** How much TICK teaches (data/tours.ts TUTORIAL), chosen at his welcome. */
+  readonly tutorial: TutorialLevel;
 };
 
 const STORAGE_KEY = 'bit-cycler-settings';
-const DEFAULTS: Settings = { offset: 0, relaxed: false, music: true, dark: false, volume: 1, crt: 1, bootSeen: false, welcomed: false };
+const DEFAULTS: Settings = { offset: 0, relaxed: false, music: true, dark: false, volume: 1, crt: 1, bootSeen: false, welcomed: false, tutorial: 'full' };
 
 let current: Settings | undefined;
 
@@ -40,4 +44,9 @@ export function updateSettings(patch: Partial<Settings>): Settings {
     // Not saved, but still applies for this session.
   }
   return current;
+}
+
+/** What TICK teaches with the tutorial chosen: tours, lesson 1's close looks, practice's tips. */
+export function teaching(): (typeof TUTORIAL)[TutorialLevel] {
+  return TUTORIAL[getSettings().tutorial] ?? TUTORIAL.full;
 }

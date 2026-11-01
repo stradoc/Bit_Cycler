@@ -1,3 +1,4 @@
+import { DEEP_PIPELINE } from '../data/economy.js';
 import { GLOSSARY } from '../data/glossary.js';
 import { formatDuration, formatMhz } from '../format.js';
 import { addressOf } from '../sim/cpu.js';
@@ -117,6 +118,10 @@ export class SongWords {
         const ns = MEMORY_TIMING.ramNs + (this.setup.l1 ? MEMORY_TIMING.l1Ns : 0);
         return `${why}\n${counted} / ${view.total} CYCLES FROZEN\n${ns} ns = ${access.cycles} AT ${formatMhz(this.run.chip.mhz)}`;
     }
+    /** The deep pipeline refilling after a wrong guess, `counted` of its cycles gone by. */
+    refilling(total, counted) {
+        return `WRONG GUESS: THE DEEP PIPELINE\nREFILLS ${counted} / ${total} CYCLES\nNO NEW NOTE UNTIL IT'S FULL`;
+    }
     /** The tag over a note waiting on memory. */
     waitingTag(access) {
         return this.setup.l1 ? 'MISS -> RAM' : access.kind === 'store' ? 'WRITING TO RAM' : 'WAITING ON RAM';
@@ -167,7 +172,11 @@ export class SongWords {
                 tip: { id: 'branch', message: 'BRANCH TAKEN: the CPU had already fetched\nthe wrong next instruction, so it was\nthrown out (FLUSHED). 1 cycle, not your fault.' },
             };
         }
-        const feedback = mispredicted ? 'WRONG GUESS:\nNEXT INSTRUCTION FLUSHED' : `GOOD GUESS: ${taken ? 'TAKEN' : 'NOT TAKEN'}\nNO CYCLE LOST`;
+        const lost = this.setup.deep ? DEEP_PIPELINE.wrongGuessCycles : 1;
+        const feedback = mispredicted ? `WRONG GUESS: ${lost} CYCLE${lost === 1 ? '' : 'S'} LOST\nNEXT INSTRUCTION FLUSHED` : `GOOD GUESS: ${taken ? 'TAKEN' : 'NOT TAKEN'}\nNO CYCLE LOST`;
+        if (mispredicted && this.setup.deep) {
+            return { feedback, tip: { id: 'wrong-guess', point: 'rows', message: `WRONG GUESS: the work started behind\nthe branch is thrown out (FLUSHED), and\nthe deep pipeline's ${DEEP_PIPELINE.wrongGuessCycles - 1} extra front stages\nrefill: ${lost} cycles lost, not 1.` } };
+        }
         if (mispredicted)
             return { feedback, tip: { id: 'wrong-guess', message: 'WRONG GUESS: the CPU fetched the wrong\nnext instruction, so it was thrown out\n(FLUSHED). It cost 1 cycle.' } };
         if (taken)

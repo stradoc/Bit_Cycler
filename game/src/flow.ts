@@ -1,5 +1,6 @@
 import { LESSONS } from './data/lessons.ts';
 import { getProgress } from './save.ts';
+import { teaching } from './settings.ts';
 import { pastMemoryWall, tierOf, type Contract } from './sim/progress.ts';
 import type { SongStart } from './song/setup.ts';
 
@@ -20,7 +21,10 @@ export function playContract(scene: Phaser.Scene, contract: Contract): void {
   const progress = getProgress();
   const tier = tierOf(progress);
   const data = { ...tier.options, program: contract.program, contract } satisfies SongStart;
-  if (!progress.seenLessons.includes(tier.lessonId)) {
+  // With the tutorial skipped, straight to the song (every lesson waits in BRIEFS).
+  if (!teaching().tours) {
+    scene.scene.start(tier.scene, data);
+  } else if (!progress.seenLessons.includes(tier.lessonId)) {
     scene.scene.start(tier.scene, { ...data, practice: true, tour: [tier.lessonId] } satisfies SongStart);
   } else if (pastMemoryWall(progress) && !progress.seenLessons.includes('memwall')) {
     // The clock outran RAM without a clock purchase (buying the pipeline can do it): TICK explains the wall, then the song.
@@ -39,7 +43,7 @@ export function playContract(scene: Phaser.Scene, contract: Contract): void {
 export function teachAfterPurchase(scene: Phaser.Scene, lessonId: string): void {
   const tier = tierOf(getProgress());
   const lesson = LESSONS[lessonId];
-  if (!lesson) {
+  if (!lesson || !teaching().tours) {
     scene.scene.start('shop');
     return;
   }

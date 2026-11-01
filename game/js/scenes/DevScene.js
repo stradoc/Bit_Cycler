@@ -6,15 +6,14 @@ import { TAUGHT_IDS } from '../data/tours.js';
 import { openLesson } from '../flow.js';
 import { formatMhz, formatMoney } from '../format.js';
 import { activeSlot, campaignSlot, getProgress, hasSave, newGame, slotName, switchSlot, updateProgress } from '../save.js';
-import { bitsName, chipOf, fillBoard, fitChip, ratedMhz, tierOf, withEverything, withTier, withWordBits } from '../sim/progress.js';
-import { THERMAL } from '../sim/thermal.js';
+import { bitsName, chipOf, deepActive, fillBoard, fitChip, ratedMhz, tierOf, withEverything, withTier, withWordBits } from '../sim/progress.js';
 import { ListMenu } from '../ui/list.js';
 import { Screen } from '../ui/screen.js';
+import { LAYOUT } from '../ui/theme.js';
 /** The rows in their groups, each with the line shown about it. */
 const GROUPS = [
-    { name: "THE DEVELOPER SAVE'S CPU AND MONEY", rows: ['chip', 'tier', 'clock', 'cooling', 'cache', 'overclock', 'wear', 'money', 'board', 'everything'] },
-    { name: 'LESSONS', rows: ['lesson', 'seen'] },
-    { name: 'PLAY', rows: ['play', 'practice', 'autoplay'] },
+    { name: "THE DEVELOPER SAVE'S CPU AND MONEY", rows: ['chip', 'tier', 'clock', 'deep', 'cooling', 'cache', 'overclock', 'money', 'board', 'everything'] },
+    { name: 'LESSONS AND PLAY', rows: ['lesson', 'seen', 'play', 'practice', 'autoplay'] },
     { name: 'START OVER, OR LEAVE', rows: ['reset', 'campaign'] },
 ];
 const ROWS = GROUPS.flatMap((group) => group.rows);
@@ -25,7 +24,7 @@ const ABOUT = {
     cooling: 'HOW WELL THE CHIP SHEDS HEAT WHEN OVERCLOCKED.',
     cache: "THE L1 CACHE: LOADS IT ALREADY HOLDS DON'T WAIT FOR RAM.",
     overclock: 'LETS G / H TURN THE CLOCK DOWN AND UP DURING A SONG.',
-    wear: 'HOW WORN THE CHIP IS FROM OVERHEATING: THE HIGHEST CLOCK IT CAN STILL REACH.',
+    deep: 'NOT BOUGHT, OFF OR ON: A FASTER CLOCK, BUT A WRONG GUESS COSTS MORE. IN USE FROM TIER 4, ON THE 32-BIT CHIP.',
     money: 'MONEY TO SPEND IN THE SHOP.',
     board: "THROWS AWAY THE BOARD'S JOBS AND DEALS NEW ONES.",
     everything: 'THE WIDEST CHIP, THE LAST TIER AND EVERY UPGRADE.',
@@ -38,7 +37,6 @@ const ABOUT = {
     campaign: '',
 };
 /** Rows changed with left / right (the toggles flip either way). */
-const STEPPED = new Set(['chip', 'tier', 'clock', 'cooling', 'wear', 'money', 'lesson', 'cache', 'overclock', 'seen', 'autoplay']);
 const MONEY_STEPS = [0, 100, 500, 1_000, 5_000, 10_000, 100_000];
 const LESSON_IDS = Object.keys(LESSONS);
 /** What a save's CPU is, field by field: compared before and after a change, to say what else it changed. */
@@ -49,10 +47,11 @@ function hardware(p) {
         CLOCK: `LEVEL ${p.clockLevel}`,
         'L1 CACHE': p.cacheLevels > 0 ? 'ON' : 'OFF',
         OVERCLOCKING: p.overclocking ? 'ON' : 'OFF',
+        'DEEP PIPELINE': deepActive(p) ? 'IN USE' : p.deepPipeline === 'none' ? 'NOT BOUGHT' : 'IDLE',
     };
 }
 /** The field a row itself changes (not worth repeating as a knock-on). */
-const OWN = { chip: 'CHIP', tier: 'TIER', clock: 'CLOCK', cache: 'L1 CACHE', overclock: 'OVERCLOCKING' };
+const OWN = { chip: 'CHIP', tier: 'TIER', clock: 'CLOCK', cache: 'L1 CACHE', overclock: 'OVERCLOCKING', deep: 'DEEP PIPELINE' };
 /**
  * The developer screen (the backquote key on the main menu): the console
  * cheats (cheats.ts) on a screen, plus any lesson, practice and the board.
@@ -80,10 +79,11 @@ export class DevScene extends Screen {
             newGame('dev');
         this.setUp();
         this.header(`DEVELOPER MODE: ${folderPath(this.era, ['DEV'])}`, `YOU PLAY THE DEVELOPER SAVE UNTIL YOU GO BACK TO ${slotName(campaignSlot())}. CAMPAIGNS AREN'T TOUCHED.`);
-        this.menu = new ListMenu(this, this.era, { x: 190, top: 100, width: 580, rowHeight: 18, size: 14 });
+        this.menu = new ListMenu(this, this.era, { x: 190, top: 96, width: 580, rowHeight: 18, size: 14, heading: 16 });
         this.menu.setRows(this.rows(), data?.selected ?? 0);
-        this.about = this.aboutLine();
-        this.message = this.messageLine().setText(data?.message ?? '');
+        // A long list: the lines about it sit a little lower than on other screens.
+        this.about = this.aboutLine().setY(LAYOUT.about + 11);
+        this.message = this.messageLine().setText(data?.message ?? '').setY(LAYOUT.message + 5);
         this.hints('[UP/DOWN] CHOOSE', '[LEFT/RIGHT] CHANGE', '[ENTER] DO IT', '[Q] MAIN MENU');
         this.showAbout();
     }
@@ -98,7 +98,7 @@ export class DevScene extends Screen {
             cooling: ['COOLER', COOLING[p.cooling].name],
             cache: ['L1 CACHE', onOff(p.cacheLevels > 0)],
             overclock: ['OVERCLOCKING UPGRADE', onOff(p.overclocking)],
-            wear: ['CHIP WEAR', `MAX CLOCK ${Math.round(p.chipMaxDial * 100)}%`],
+            deep: ['DEEP PIPELINE', p.deepPipeline === 'none' ? 'NOT BOUGHT' : `${p.deepPipeline.toUpperCase()}${p.deepPipeline === 'on' && !deepActive(p) ? ' (IDLE BELOW TIER 4)' : ''}`],
             money: ['MONEY', formatMoney(p.money)],
             board: ['DEAL NEW CONTRACTS'],
             everything: ['UNLOCK EVERYTHING'],
@@ -116,7 +116,7 @@ export class DevScene extends Screen {
     showAbout() {
         const row = ROWS[this.menu.selected];
         const about = row === 'campaign' ? `STOP PLAYING THE DEVELOPER SAVE: THE MAIN MENU, WITH ${slotName(campaignSlot())} AND ITS ERA.` : ABOUT[row];
-        this.about.setText(STEPPED.has(row) && row !== 'lesson' && row !== 'seen' ? `${about}  [LEFT/RIGHT]` : about);
+        this.about.setText(about);
     }
     refresh() {
         this.menu.setRows(this.rows());
@@ -184,8 +184,10 @@ export class DevScene extends Screen {
                 });
             case 'cooling':
                 return this.edit(row, (p) => ({ ...p, cooling: clampInt(p.cooling + delta, COOLING.length - 1) }));
-            case 'wear':
-                return this.edit(row, (p) => ({ ...p, chipMaxDial: Phaser.Math.Clamp(Math.round((p.chipMaxDial + delta * THERMAL.damagePerOverheat) * 100) / 100, 1, THERMAL.maxDial) }));
+            case 'deep': {
+                const states = ['none', 'off', 'on'];
+                return this.edit(row, (p) => ({ ...p, deepPipeline: states[clampInt(states.indexOf(p.deepPipeline) + delta, states.length - 1)] }));
+            }
             case 'lesson':
                 this.lesson = Phaser.Math.Wrap(this.lesson + delta, 0, LESSON_IDS.length);
                 this.cue('move');

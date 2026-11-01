@@ -1,5 +1,6 @@
+import { TUTORIAL } from './data/tours.js';
 const STORAGE_KEY = 'bit-cycler-settings';
-const DEFAULTS = { offset: 0, relaxed: false, music: true, dark: false, volume: 1, crt: 1, bootSeen: false, welcomed: false };
+const DEFAULTS = { offset: 0, relaxed: false, music: true, dark: false, volume: 1, crt: 1, bootSeen: false, welcomed: false, tutorial: 'full' };
 let current;
 export function getSettings() {
     if (!current) {
@@ -21,5 +22,9 @@ export function updateSettings(patch) {
         // Not saved, but still applies for this session.
     }
     return current;
+}
+/** What TICK teaches with the tutorial chosen: tours, lesson 1's close looks, practice's tips. */
+export function teaching() {
+    return TUTORIAL[getSettings().tutorial] ?? TUTORIAL.full;
 }
 //# sourceMappingURL=settings.js.map

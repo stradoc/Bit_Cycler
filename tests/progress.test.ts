@@ -86,7 +86,7 @@ test('chips follow history: each goes on sale after its tier, in order, and the 
   assert.equal(state({ ...withTier(rich, 5), wordBits: 32 }, 'chip64'), 'later'); // after tier 6
   assert.equal(state({ ...withTier(rich, 6), wordBits: 32 }, 'chip64'), 'buy');
   const cpu = shopItems(rich).filter((item) => item.group === 'CPU').map((item) => item.key);
-  assert.deepEqual(cpu, ['chip16', 'pipeline', 'chip32', 'forwarding', 'guessing', 'predictor1', 'predictor2', 'chip64']);
+  assert.deepEqual(cpu, ['chip16', 'pipeline', 'chip32', 'forwarding', 'guessing', 'deep', 'predictor1', 'predictor2', 'chip64']);
 });
 
 test('each chip has a top clock: 4 MHz at 8-bit, 16 MHz at 16-bit with the pipeline, 2 GHz at 32-bit, 4 GHz at 64-bit', () => {
