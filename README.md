@@ -57,7 +57,7 @@ Add these to the URL, e.g. `http://localhost:8000/?scene=play&autoplay`. Any `?s
 
 ## Testing cheats
 
-The **developer screen** (backquote, `` ` ``, on the main menu) has them all, on its own save: testing never touches a campaign slot, and its BACK returns to the slot you came from.
+The **developer screen** (backquote, `` ` ``, on the main menu) has them all, on its own save: testing never touches a campaign slot. You keep playing the developer save (its era, its money) after leaving the screen, until BACK TO YOUR CAMPAIGN (its last row) or loading a slot; the main menu shows DEVELOPER SAVE meanwhile, and the pause menu has a DEVELOPER MODE row.
 
 Or type them in the browser's console (F12, then Console) while the game runs; `cheat.help()` lists them. Each changes the active save and redraws the screen:
 

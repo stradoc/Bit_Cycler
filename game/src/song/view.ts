@@ -43,6 +43,8 @@ export type SongView = {
   readonly words: SongWords;
   readonly clickable: Clickable;
   readonly fades: Fades;
+  /** Opens the pause menu (its hint can be clicked). */
+  readonly openMenu: () => void;
 };
 
 /** A part of the song screen. */

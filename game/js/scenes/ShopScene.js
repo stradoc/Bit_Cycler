@@ -49,7 +49,7 @@ export class ShopScene extends Screen {
         this.menu = new ListMenu(this, this.era, { x: LIST_X, top: LIST_TOP, width: LIST_RIGHT - LIST_X, rowHeight: ROW_H, size: 15 });
         this.about = this.aboutLine();
         this.message = this.messageLine();
-        this.hints('[UP/DOWN] CHOOSE', '[ENTER] BUY', '[B] CONTRACT BOARD', '[M] HUM', '[Q] MAIN MENU');
+        this.hints('[UP/DOWN] CHOOSE', '[ENTER] BUY', '[B] CONTRACT BOARD', '[M] HUM', '[ESC] MENU');
         this.refresh(data?.selected ?? Math.max(0, shopItems(getProgress()).findIndex((item) => item.state === 'buy')));
         if (data?.message)
             this.message.setText(data.message);
@@ -68,11 +68,12 @@ export class ShopScene extends Screen {
             this.cue('confirm');
             this.scene.start('board');
         }
-        else if (key === 'Escape' || key === 'Q')
-            this.back();
         else
             return false;
         return true;
+    }
+    pauseItems() {
+        return this.places();
     }
     update(time, delta) {
         super.update();

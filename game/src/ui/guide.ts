@@ -192,13 +192,20 @@ export class Guide {
       cue(this.scene, 'move');
       this.say(playing.lines[playing.index]);
     } else {
-      this.playing = undefined;
-      this.catcher.disableInteractive();
-      this.quiet();
-      cue(this.scene, 'guide-bye');
-      playing.done();
+      this.skip();
     }
     return true;
+  }
+
+  /** Ends the tour now (its last step, or the pause menu's SKIP THE TOUR): what comes after it starts. */
+  skip(): void {
+    const playing = this.playing;
+    if (!playing) return;
+    this.playing = undefined;
+    this.catcher.disableInteractive();
+    this.quiet();
+    cue(this.scene, 'guide-bye');
+    playing.done();
   }
 
   /** Says a line: the robot walks over beside what it points at, and the words type out. */

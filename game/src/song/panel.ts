@@ -105,14 +105,14 @@ export class Panel extends Part {
       }
     }
     if (setup.watching) {
-      // The program listing as one click target; the replay's controls go where QUIT is.
+      // The program listing as one click target; the replay's controls go where the menu's hint is.
       clickable(this.scene.add.zone(PANEL_X, LISTING_TOP, 400, LISTING_ROWS * LISTING_LINE).setOrigin(0), () => GLOSSARY.PROGRAM);
       return;
     }
-    this.text(PANEL_X, 512, '[Q] QUIT', 16)
+    this.text(PANEL_X, 512, '[ESC] MENU', 16)
       .setAlpha(0.5)
       .setInteractive({ useHandCursor: true })
-      .on('pointerdown', () => this.scene.scene.start('title'));
+      .on('pointerdown', () => view.openMenu());
   }
 
   /** The feedback line: how the last press went, the clock, a memory wait. */

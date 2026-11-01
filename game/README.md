@@ -17,11 +17,11 @@ The game opens on a dark screen: press any key to switch the computer on. It boo
 | `Space` | Stall for a cycle, when the instruction needs a value still being computed (pipelined CPUs) |
 | `J` / `K` | Branch prediction (tier 4 and up): guess the branch not taken / taken |
 | `G` / `H` | Clock down / up 10% (above 100% needs the overclocking upgrade, and heats the chip) |
-| `Q` or `Esc` | Quit |
+| `Esc` or `Q` | Pause menu: resume, restart, or go to the board, the shop, the settings or the main menu |
 
 Each song opens with a short count-in naming the loop's key registers (`NEXT`, `END`). After every song you watch its replay (`←` / `→` speed, `Space` pause, click anything to learn what it is), then the results: where the cycles went, CPI, and the time the whole contract takes at your pace.
 
-**Menus.** Arrows choose, `Enter` opens, `Esc` or `Q` goes back, `M` turns the computer's hum on or off. On the main menu: CONTINUE, NEWGAME, PRACTICE (your CPU, with notes that wait for you), SAVES (three slots, export and import), BRIEFS (reread lessons), SETTINGS, README.TXT and CREDITS.TXT, SHUTDOWN. On the board: `S` opens the shop. In the shop: `Enter` buys, `B` goes back to the board.
+**Menus.** Arrows choose, `Enter` opens, `Esc` or `Q` goes back (on the board, in the shop and in a briefing it opens the pause menu), `M` turns the computer's hum on or off. On the main menu: CONTINUE, NEWGAME, PRACTICE (your CPU, with notes that wait for you), SAVES (three slots, export and import), BRIEFS (reread lessons), SETTINGS, README.TXT and CREDITS.TXT, SHUTDOWN. On the board: `S` opens the shop. In the shop: `Enter` buys, `B` goes back to the board.
 
 **Settings.** Relaxed mode (wider timing and a slower beat), audio calibration (line the light up with the click), volume, the hum, CRT effects and dark mode for the 90s desktop.
 

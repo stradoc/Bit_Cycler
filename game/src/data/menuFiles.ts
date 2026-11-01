@@ -111,7 +111,7 @@ export const README: TextFile = {
       '  [SPACE]  STALL: WAIT FOR A VALUE',
       "           THAT ISN'T READY YET",
       '  [G] [H]  CLOCK DOWN / UP',
-      '  [Q]      QUIT THE SONG',
+      '  [ESC]    PAUSE MENU (OR [Q])',
     ],
     [
       'THE SCORE',

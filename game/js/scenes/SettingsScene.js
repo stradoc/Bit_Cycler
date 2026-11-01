@@ -30,6 +30,8 @@ export class SettingsScene extends Screen {
     ledLight;
     calibration;
     lastBeat = -1;
+    /** Where BACK goes: the board or the shop when opened from the pause menu, the main menu otherwise. */
+    returnTo;
     constructor() {
         super('settings');
     }
@@ -38,6 +40,7 @@ export class SettingsScene extends Screen {
         this.lastBeat = -1;
     }
     create(data) {
+        this.returnTo = data?.returnTo;
         this.setUp();
         const { era } = this;
         this.header(filePath(era, [], 'SETTINGS', 'CFG'), 'HOW THE GAME PLAYS, SOUNDS AND LOOKS.');
@@ -86,7 +89,9 @@ export class SettingsScene extends Screen {
         this.showAbout();
     }
     showAbout() {
-        this.about.setText(ABOUT[ROWS[this.menu.selected]]);
+        const row = ROWS[this.menu.selected];
+        const back = this.returnTo === 'shop' ? 'BACK TO THE SHOP.' : this.returnTo ? 'BACK TO THE CONTRACT BOARD.' : ABOUT.back;
+        this.about.setText(row === 'back' ? back : ABOUT[row]);
     }
     onKey(key) {
         if (this.menu.busy)
@@ -109,10 +114,10 @@ export class SettingsScene extends Screen {
         else if (key === 'Enter' || key === ' ') {
             const row = ROWS[this.menu.selected];
             this.cue('confirm');
-            this.menu.press(() => (row === 'back' ? this.scene.start('title', { selected: 'settings' }) : row === 'calibrate' ? this.toggleCalibration() : this.change(row, 1)));
+            this.menu.press(() => (row === 'back' ? this.leave() : row === 'calibrate' ? this.toggleCalibration() : this.change(row, 1)));
         }
         else if (key === 'Escape' || key === 'Q') {
-            this.back('title', { selected: 'settings' });
+            this.leave();
         }
         else
             return false;
@@ -151,7 +156,7 @@ export class SettingsScene extends Screen {
     /** The screen's look changed: rebuilt, so every text and effect picks it up. */
     rebuild() {
         this.cue('move');
-        this.scene.restart({ selected: this.menu.selected });
+        this.scene.restart({ selected: this.menu.selected, returnTo: this.returnTo });
     }
     toggleCalibration() {
         if (this.calibration) {
@@ -190,6 +195,13 @@ export class SettingsScene extends Screen {
         const latencyMs = Math.round((this.calibration.ctx.currentTime - this.calibration.heardTime()) * 1000);
         const offsetMs = Math.round(getSettings().offset * 1000);
         this.readout.setText(`LATENCY ${latencyMs} MS   OFFSET ${offsetMs > 0 ? '+' : ''}${offsetMs} MS   [LEFT/RIGHT] MATCH LIGHT TO CLICK   [ENTER] DONE`);
+    }
+    /** Back to where the settings were opened from. */
+    leave() {
+        if (this.returnTo)
+            this.back(this.returnTo);
+        else
+            this.back('title', { selected: 'settings' });
     }
 }
 //# sourceMappingURL=SettingsScene.js.map

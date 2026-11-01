@@ -21,7 +21,7 @@ export function practiceLines(run, returnTo) {
         '',
         "NOW PLAY FOR REAL: NOTES WON'T WAIT.",
         '',
-        returnTo ? '[ENTER] CONTRACT BOARD' : '[ENTER] PLAY    [Q] TITLE',
+        returnTo ? '[ENTER] CONTRACT BOARD' : '[ENTER] PLAY    [ESC] MENU',
     ];
 }
 /**
@@ -115,7 +115,7 @@ export function resultLines(f) {
         if (paid)
             lines.push(`  MONEY NOW ${formatMoney(f.money)}`);
     }
-    lines.push('', contract && paid ? '[ENTER] CONTRACT BOARD    [W] WATCH AGAIN    [Q] TITLE' : '[ENTER] PLAY AGAIN    [W] WATCH AGAIN    [Q] TITLE');
+    lines.push('', contract && paid ? '[ENTER] CONTRACT BOARD    [W] WATCH AGAIN    [ESC] MENU' : '[ENTER] PLAY AGAIN    [W] WATCH AGAIN    [ESC] MENU');
     return lines;
 }
 //# sourceMappingURL=results.js.map

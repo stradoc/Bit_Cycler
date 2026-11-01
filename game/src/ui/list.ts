@@ -28,6 +28,8 @@ export type ListOptions = {
   readonly size?: number;
   /** How far left of the right edge the middle column's right edge is. */
   readonly middle?: number;
+  /** Drawn at this depth (a menu over the screen, like the pause menu); the modern era's bar just under it. */
+  readonly depth?: number;
 };
 
 /** The 90s desktop's selected button stays pressed in this long (ms) before it acts, like a real button on release. */
@@ -55,6 +57,7 @@ export class ListMenu {
   private readonly rowHeight: number;
   private readonly size: number;
   private readonly middle: number;
+  private readonly depth: number | undefined;
   private rows: readonly MenuRow[] = [];
   /** Each row's middle, worked out from the groups. */
   private ys: number[] = [];
@@ -75,6 +78,7 @@ export class ListMenu {
     this.rowHeight = options.rowHeight ?? 28;
     this.size = options.size ?? 18;
     this.middle = options.middle ?? 70;
+    this.depth = options.depth;
   }
 
   /** Shows these rows, keeping the selection (or moving it to `selected`). */
@@ -137,6 +141,15 @@ export class ListMenu {
     });
     // The modern era's bar outlives redraws: hide it while its row isn't shown.
     this.bar?.setVisible(this.selected < this.shown);
+    if (this.depth !== undefined) for (const part of this.parts) (part as Phaser.GameObjects.Text).setDepth(this.depth);
+  }
+
+  /** Removes the list from the screen. */
+  destroy(): void {
+    for (const part of this.parts) part.destroy();
+    this.parts = [];
+    this.bar?.destroy();
+    this.bar = undefined;
   }
 
   private drawHeading(name: string, y: number): void {
@@ -149,7 +162,7 @@ export class ListMenu {
     const [left, w, h] = [this.x - 8, this.width + 16, this.rowHeight - 4];
     if (selected && isSmooth()) {
       if (!this.bar) {
-        this.bar = this.scene.add.rectangle(left + w / 2, y, w, h, era.accent, 0.1).setStrokeStyle(1, era.accent, 0.8).setDepth(-1);
+        this.bar = this.scene.add.rectangle(left + w / 2, y, w, h, era.accent, 0.1).setStrokeStyle(1, era.accent, 0.8).setDepth((this.depth ?? 0) - 1);
       }
       this.scene.tweens.killTweensOf(this.bar);
       this.scene.tweens.add({ targets: this.bar, y, duration: 160, ease: 'Cubic.Out' });

@@ -11,6 +11,8 @@ export const CAMPAIGN_SLOTS: readonly SlotId[] = ['1', '2', '3'];
 
 const slotKey = (slot: SlotId) => `bit-cycler-save-${slot}`;
 const ACTIVE_KEY = 'bit-cycler-slot';
+/** The campaign slot played last: where the developer screen's BACK TO YOUR CAMPAIGN goes. */
+const CAMPAIGN_KEY = 'bit-cycler-campaign-slot';
 /** Where the only save lived before slots; moved to slot 1. */
 const OLD_KEY = 'bit-cycler-save';
 const SETTINGS_KEY = 'bit-cycler-settings';
@@ -75,6 +77,15 @@ export function switchSlot(slot: SlotId): void {
   active = slot;
   current = undefined;
   write(ACTIVE_KEY, slot);
+  if (slot !== 'dev') write(CAMPAIGN_KEY, slot);
+}
+
+/** The campaign slot played last (slot 1 if none yet), even while the developer save is being played. */
+export function campaignSlot(): SlotId {
+  const slot = activeSlot();
+  if (slot !== 'dev') return slot;
+  const stored = read(CAMPAIGN_KEY);
+  return isSlot(stored) && stored !== 'dev' ? stored : '1';
 }
 
 /** What a slot holds, or null if it's empty. */

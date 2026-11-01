@@ -132,7 +132,7 @@ export class TitleScene extends Screen {
       { action: 'practice', name: 'PRACTICE', ext: 'EXE', note: `TIER ${tier.number}: ${tier.name}`, about: 'PRACTICE YOUR CPU: NOTES WAIT FOR YOU.' },
       { action: 'saves', name: 'SAVES', ext: '', note: `${used} OF ${CAMPAIGN_SLOTS.length} SLOTS USED`, about: 'LOAD A SAVE, OR EXPORT, IMPORT AND DELETE SAVES.' },
       { action: 'briefings', name: 'BRIEFS', ext: '', note: `${read} OF ${Object.keys(LESSONS).length} READ`, about: 'REREAD A BRIEFING YOU HAVE FINISHED.' },
-      { action: 'settings', name: 'SETTINGS', ext: 'CFG', note: 'RELAXED MODE, SOUND, SCREEN', about: 'RELAXED MODE, AUDIO CALIBRATION, VOLUME, SCREEN EFFECTS AND THE ERA.' },
+      { action: 'settings', name: 'SETTINGS', ext: 'CFG', note: 'RELAXED MODE, SOUND, SCREEN', about: 'RELAXED MODE, AUDIO CALIBRATION, VOLUME, SCREEN EFFECTS AND DARK MODE.' },
       { action: 'readme', name: 'README', ext: 'TXT', note: 'HOW TO PLAY', about: 'HOW TO PLAY, A PAGE AT A TIME.' },
       { action: 'credits', name: 'CREDITS', ext: 'TXT', note: 'MADE BY, FONTS, LICENSES', about: 'WHO MADE WHAT.' },
       { action: 'shutdown', name: 'SHUTDOWN', ext: 'EXE', note: 'POWER OFF', about: 'TURN THE COMPUTER OFF.' },

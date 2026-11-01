@@ -78,7 +78,7 @@ export class BoardScene extends Screen {
         this.sheet = this.add.container(0, 0);
         this.textAt(LIST_X, this.menu.rowY(rows.length - 1) + ROW_H + 8, 'FINISH LATE (A SLOPPY RUN): HALF PAY', TEXT.small - 1).setAlpha(ALPHA.subtitle);
         this.message = this.messageLine();
-        this.hints('[UP/DOWN] CHOOSE', '[ENTER] TAKE CONTRACT', '[S] SHOP', '[M] HUM', '[Q] MAIN MENU');
+        this.hints('[UP/DOWN] CHOOSE', '[ENTER] TAKE CONTRACT', '[S] SHOP', '[M] HUM', '[ESC] MENU');
         this.drawSheet();
         // The first visit: the guide shows the board around.
         this.guide = new Guide(this, this.era);
@@ -89,6 +89,9 @@ export class BoardScene extends Screen {
     update() {
         super.update();
         this.guide.update(performance.now());
+    }
+    pauseItems() {
+        return this.places();
     }
     /** Where the parts of the board are, for the guide to point at. */
     where(target) {
@@ -179,8 +182,6 @@ export class BoardScene extends Screen {
         if (this.guide.touring) {
             if (key === 'Enter' || key === ' ' || key === 'ArrowRight')
                 this.guide.next();
-            else if (key === 'Escape' || key === 'Q')
-                this.back();
             return true;
         }
         if (this.menu.busy)
@@ -195,8 +196,6 @@ export class BoardScene extends Screen {
             this.cue('confirm');
             this.scene.start('shop');
         }
-        else if (key === 'Escape' || key === 'Q')
-            this.back();
         else
             return false;
         return true;

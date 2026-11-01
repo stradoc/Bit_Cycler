@@ -26,7 +26,7 @@ Dev URL parameters and console cheats are listed in `README.md`.
 | --- | --- |
 | `main.ts` | Starts Phaser with the scene list; reads `?era=` and `?scene=` |
 | `scenes/` | One scene per screen: boot, title (the main menu), settings, saves, dev, board, shop, briefing, pipeline (the song). Every one extends `ui/screen.ts` |
-| `ui/` | The screen kit: `eras.ts` (everything about each era), `theme.ts` (sizes, positions, color roles), `widgets.ts` (text, panels, `Box`, `PressButton`, `glideIn`), `list.ts` (`ListMenu`), `screen.ts` (`Screen`), `guide.ts` (`Guide`: the robot who teaches, its speech bubble and voice, and the spotlight that dims all but what it points at) |
+| `ui/` | The screen kit: `eras.ts` (everything about each era), `theme.ts` (sizes, positions, color roles), `widgets.ts` (text, panels, `Box`, `PressButton`, `glideIn`), `list.ts` (`ListMenu`), `screen.ts` (`Screen`), `pauseMenu.ts` (`PauseMenu`, opened by `Screen`), `guide.ts` (`Guide`: the robot who teaches, its speech bubble and voice, and the spotlight that dims all but what it points at) |
 | `visual/` | Rendering underneath the kit: `display.ts` (canvas size, fonts, the CRT overlay), `terminal.ts` (`TerminalLook`: window or DOS bars, glow, LCD grid), `chip3d.ts` (the shop's 3D chip), `heat.ts` (fire), `diagrams.ts` (lesson pictures), `codeLine.ts`, `branchHint.ts`, `asciiChart.ts` |
 | `audio/` | `sound.ts` (what screens import), `cues.ts` (every short sound by name), `hum.ts`, `machine.ts` (power, chime), `samples.ts` (recordings), `synth.ts` (building blocks), `mix.ts` (buses and `LEVELS`), `output.ts` (volume), `music.ts` (the song's music), `conductor.ts` (the beat clock), `render.ts` + `wav.ts` (the export) |
 | `song/` | The song screen's parts: `highway.ts` (lanes, notes, rows, hazard links), `panel.ts` (listing, registers, memory, cache, stats, feedback), `bus.ts`, `gauge.ts`, `replay.ts` (replay controls, click-to-learn), `results.ts`, `words.ts` (everything the screen says), `setup.ts` (how a song is set up: program, hardware, practice or replay; what retries and replays pass on), `layout.ts` (positions, shared types), `view.ts` (what the parts share) |
@@ -44,7 +44,7 @@ Dev URL parameters and console cheats are listed in `README.md`.
 **A screen.**
 1. Make `scenes/NameScene.ts` extending `Screen` (`super('name')`). In `create()`, call `this.setUp()` first (options: `hum: false` for screens with their own music, `glow: 'menu'` for dark screens, `windowed: false` before the program "starts").
 2. Build it from the kit: `this.header(title, subtitle)`, `this.corner(money)`, `this.aboutLine()`, `this.messageLine()`, `this.hints('[ENTER] ...', '[Q] BACK')`, `this.text()` / `this.textAt()`, `new ListMenu(this, this.era, {...})`, `new Box(...)`, `panel(...)`, `PressButton.create(...)`.
-3. Handle keys in `protected onKey(key)`: return `true` when handled (`M` toggles the hum otherwise). Use `this.cue(...)` for sounds and `this.back(scene, data)` to leave.
+3. Handle keys in `protected onKey(key)`: return `true` when handled (`M` toggles the hum otherwise). Use `this.cue(...)` for sounds and `this.back(scene, data)` to leave. A screen in the game (not one of the main menu's) gives Esc / Q a pause menu instead: return its rows from `pauseItems()` (`this.places()` gives the board, shop, settings and main menu; `this.go(...)` makes another), say `[ESC] MENU` in the hints, and stop anything that runs on its own in `onPause(open)`.
 4. Register it in `main.ts`'s scene list, and give it its window title, terminal path and DOS menu item in `TITLES`, `PATHS` and `DOS_ITEM` (`visual/terminal.ts`).
 5. Reach it from somewhere: the main menu's disk (`TitleScene.rootEntries`, named the era's way by `data/menuFiles.ts`), the board, or `flow.ts`.
 6. Screenshot it in all four eras.
@@ -107,6 +107,7 @@ Dev URL parameters and console cheats are listed in `README.md`.
 - **Glow:** Phaser's bloom averages the picture with its blur (halving the letters), so `addGlow` runs it at half strength and doubles the result. The CRT overlay blends as soft light so bright text keeps its brightness.
 - **Tweening a rectangle's height** doesn't re-anchor it; scale instead.
 - **Floating-point beat times:** compare with tolerances or windows, never `===`.
+- **Pausing a song** pauses the `Conductor` (the beat holds, then carries on from where it stopped), not the audio: suspending the `AudioContext` let the beat run on while paused (its output timestamp kept extrapolating), and the song jumped ahead on resuming.
 - **JetBrains Mono's ligatures** draw `<-` and `->` as arrows (on purpose in the 64-bit era).
 
 ## Where the docs go

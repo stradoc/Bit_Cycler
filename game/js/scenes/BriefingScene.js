@@ -29,19 +29,24 @@ export class BriefingScene extends Screen {
         this.layer = this.add.container(0, 0);
         this.render();
         this.slideIn(0);
-        this.input.on('pointerdown', () => this.next());
+        // A click turns the page (unless it was on the pause menu).
+        this.input.on('pointerdown', (_pointer, over) => {
+            if (over.length === 0 && !this.pausing)
+                this.next();
+        });
     }
     onKey(key) {
         if (key === 'Enter' || key === ' ' || key === 'ArrowRight')
             this.next();
         else if (key === 'ArrowLeft')
             this.turn(-1);
-        // Q too: Vimium-style extensions swallow Escape while a text field has focus.
-        else if ((key === 'Escape' || key === 'Q') && !this.mandatory)
-            this.back();
         else
             return false;
         return true;
+    }
+    /** A briefing you must read (after buying a part) offers only the main menu; the others, the usual places. */
+    pauseItems() {
+        return this.mandatory ? [this.go('MAIN MENU', 'title', 'YOUR PROGRESS IS SAVED. EVERY BRIEFING CAN BE READ AGAIN FROM THE MAIN MENU.')] : this.places();
     }
     next() {
         if (this.page < this.lesson.pages.length - 1) {
@@ -95,7 +100,7 @@ export class BriefingScene extends Screen {
         this.layer.add(drawDiagram(this, page.diagram, cx, 205, this.era));
         page.lines.forEach((line, i) => text(cx, 340 + i * 32, line, 20));
         text(cx, 450, page.analogy, 18, 0.75);
-        const keys = last ? ['[<-] BACK', `[ENTER] ${this.finishLabel()}`] : ['[<-] BACK', '[ENTER] NEXT', ...(this.mandatory ? [] : ['[Q] SKIP'])];
+        const keys = last ? ['[<-] BACK', `[ENTER] ${this.finishLabel()}`] : ['[<-] BACK', '[ENTER] NEXT', '[ESC] MENU'];
         this.layer.add(this.hints(...keys).setAlpha(ALPHA.subtitle));
     }
 }

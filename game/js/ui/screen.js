@@ -4,7 +4,9 @@ import { loadSounds } from '../audio/samples.js';
 import { keyOf, onKeyDown } from '../input/keys.js';
 import { WIDTH } from '../visual/display.js';
 import { TerminalLook } from '../visual/terminal.js';
+import { activeSlot } from '../save.js';
 import { cssColor, currentEra } from './eras.js';
+import { PauseMenu } from './pauseMenu.js';
 import { ALPHA, colorsOf, LAYOUT, TEXT } from './theme.js';
 import { eraText } from './widgets.js';
 /**
@@ -13,12 +15,15 @@ import { eraText } from './widgets.js';
  * every screen (ui/theme.ts): a title and the line under it at the top, a
  * line about the chosen item, a message line for warnings and results, and
  * the key hints at the bottom. A screen extends this, calls setUp() first in
- * create(), and handles its keys in onKey(); M (the hum) works everywhere.
+ * create(), and handles its keys in onKey(); M (the hum) works everywhere. A
+ * screen in the game (not the main menu's own screens) offers a pause menu on
+ * Esc / Q by returning its places from pauseItems().
  */
 export class Screen extends Phaser.Scene {
     look;
     /** The menus' hum, and the M key that turns it on and off. */
     humming = true;
+    pauseMenu;
     /** The era this screen is drawn in. */
     get era() {
         return this.look.era;
@@ -44,8 +49,16 @@ export class Screen extends Phaser.Scene {
         if (this.humming)
             startHum(this);
         loadSounds(this);
+        this.pauseMenu = undefined;
         onKeyDown(this, (event) => {
             const key = keyOf(event);
+            if (this.pauseMenu?.isOpen) {
+                event.preventDefault();
+                this.pauseMenu.key(key);
+                return;
+            }
+            if ((key === 'Escape' || key === 'Q') && this.openPauseMenu())
+                return;
             if (this.onKey(key, event))
                 return;
             if (key === 'M' && this.humming) {
@@ -61,6 +74,47 @@ export class Screen extends Phaser.Scene {
     onKey(_key, _event) { }
     /** After M toggled the hum: a screen that shows the setting redraws it. */
     humToggled() { }
+    /** What this screen's pause menu offers after RESUME (Screen.go makes the usual places); none: Esc / Q go to onKey. */
+    pauseItems() {
+        return undefined;
+    }
+    /** The pause menu opened (true) or closed (false): a song stops and starts its clock. */
+    onPause(_open) { }
+    /** The pause menu is open: the screen waits. */
+    get pausing() {
+        return this.pauseMenu?.isOpen ?? false;
+    }
+    /** Opens the pause menu, if this screen has one (Esc / Q, or a click on its hint). Returns whether it did. */
+    openPauseMenu() {
+        const items = this.pauseItems();
+        if (!items || this.pausing)
+            return false;
+        this.pauseMenu ??= new PauseMenu(this, this.era);
+        this.pauseMenu.open(items, () => this.onPause(false));
+        this.onPause(true);
+        return true;
+    }
+    /** A pause menu item that goes to another screen. */
+    go(label, scene, about, data) {
+        return { label, about, run: () => this.scene.start(scene, data) };
+    }
+    /**
+     * The places the pause menu offers in the game: the board, the shop, the
+     * settings (which come back to the board or the shop) and the main menu,
+     * leaving out the screen you're on, and the developer screen while you play
+     * its save. `note` goes after each one's line (leaving a song: what happens to it).
+     */
+    places(note = '') {
+        const here = this.scene.key;
+        const settingsBack = here === 'shop' ? 'shop' : 'board';
+        return [
+            ...(here === 'board' ? [] : [this.go('CONTRACT BOARD', 'board', `PICK A JOB FOR YOUR CPU.${note}`)]),
+            ...(here === 'shop' ? [] : [this.go('SHOP', 'shop', `BUY PARTS THAT MAKE YOUR CPU FASTER.${note}`)]),
+            this.go('SETTINGS', 'settings', `SOUND, TIMING AND LOOKS.${note}`, { returnTo: settingsBack }),
+            this.go('MAIN MENU', 'title', `YOUR PROGRESS IS SAVED AS YOU GO.${note}`),
+            ...(activeSlot() === 'dev' ? [this.go('DEVELOPER MODE', 'dev', `BACK TO THE DEVELOPER SCREEN.${note}`)] : []),
+        ];
+    }
     update(_time, _delta) {
         this.look.update();
     }

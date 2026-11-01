@@ -15,7 +15,7 @@ export type ReplayActions = {
 
 /**
  * A replay's controls and click-to-learn: the speed and pause line where the
- * song's QUIT is, an outline around whatever the pointer is over, and a box
+ * song's menu hint is, an outline around whatever the pointer is over, and a box
  * explaining what something is when it's clicked (pausing the replay). In a
  * song (not a replay), clickable() leaves things as they are.
  */
@@ -63,7 +63,7 @@ export class ReplayControls {
     this.speedValue = this.text(PANEL_X + 54, 498, '', 15).setOrigin(0.5, 0);
     this.text(PANEL_X + 80, 498, '[>]', 15).setInteractive({ useHandCursor: true }).on('pointerdown', () => this.actions.speed(1));
     this.speedText = this.text(PANEL_X + 124, 498, '', 15);
-    this.text(PANEL_X, 520, 'CLICK ANYTHING TO LEARN WHAT IT IS   [Q] QUIT', 13).setAlpha(0.6);
+    this.text(PANEL_X, 520, 'CLICK ANYTHING TO LEARN WHAT IT IS   [ESC] MENU', 13).setAlpha(0.6);
 
     this.hoverBox = this.scene.add.rectangle(0, 0, 10, 10, fg, 0.12).setStrokeStyle(1.5, fg, 1).setDepth(640).setVisible(false);
     // Positions inside the box are set in explain(), once the text is known.

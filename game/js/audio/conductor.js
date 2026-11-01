@@ -22,6 +22,8 @@ export class Conductor {
     previous;
     nextBeat = 0;
     timer;
+    /** While paused (the pause menu): the beat it stopped on. */
+    pausedBeat;
     constructor(ctx, bpm) {
         this.ctx = ctx;
         this.bpm = bpm;
@@ -38,6 +40,28 @@ export class Conductor {
         if (this.timer !== undefined)
             clearInterval(this.timer);
         this.timer = undefined;
+    }
+    /**
+     * Stops the beat where it is (the pause menu): nothing more is scheduled,
+     * and every reading gives the beat it stopped on until resume(). The audio
+     * keeps running; only the beat waits.
+     */
+    pause() {
+        if (this.pausedBeat !== undefined)
+            return;
+        this.pausedBeat = this.currentBeat();
+        this.stop();
+    }
+    /** Carries on from the beat it stopped on, as of now: no beat is skipped or played twice. */
+    resume() {
+        const beat = this.pausedBeat;
+        if (beat === undefined)
+            return;
+        this.pausedBeat = undefined;
+        this.anchor = { beat, time: this.heardTime() - this.offset };
+        this.previous = undefined;
+        this.schedule();
+        this.timer = setInterval(() => this.schedule(), SCHEDULE_INTERVAL_MS);
     }
     /**
      * Changes the tempo from the next unscheduled beat on, so every beat stays
@@ -61,6 +85,8 @@ export class Conductor {
      * moment it happened, independent of frame rate.
      */
     beatAt(performanceMs) {
+        if (this.pausedBeat !== undefined)
+            return this.pausedBeat;
         const time = this.heardTime(performanceMs) - this.offset;
         const { bpm, anchor } = this.previous && time < this.anchor.time ? this.previous : { bpm: this.bpm, anchor: this.anchor };
         return anchor.beat + beatAtTime(time, anchor.time, bpm);

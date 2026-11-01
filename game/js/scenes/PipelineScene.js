@@ -99,6 +99,8 @@ export class PipelineScene extends Screen {
     replayBeat = 0;
     speedIndex = 1;
     paused = false;
+    /** The pause menu found the replay already paused (so closing it leaves it paused). */
+    replayWasPaused = false;
     /** ?autoplay, or cheat.autoplay() from the console. */
     get autoplay() {
         return this.autoplayParam || cheatFlags.autoplay;
@@ -170,7 +172,7 @@ export class PipelineScene extends Screen {
             playing: () => !this.finished,
         });
         const words = new SongWords(this.run, setup, shown);
-        this.view = { scene: this, era: this.era, run: this.run, setup, shown, words, clickable: this.replayControls.clickable, fades: new Fades() };
+        this.view = { scene: this, era: this.era, run: this.run, setup, shown, words, clickable: this.replayControls.clickable, fades: new Fades(), openMenu: () => this.openPauseMenu() };
         // Back to front, as they overlap.
         this.highway = new Highway(this.view);
         this.heat = new HeatEffects(this, this.era, { x: LANE_X0, y: 0, width: LANES_W, height: setup.rows.WB + ROW_GAP / 2 });
@@ -211,6 +213,8 @@ export class PipelineScene extends Screen {
         super.update();
         const now = performance.now();
         this.guide?.update(now);
+        if (this.pausing)
+            return;
         if (!this.conductor)
             return; // no Web Audio, or the guide's tour is still on
         const elapsed = now - this.lastFrameMs;
@@ -254,8 +258,6 @@ export class PipelineScene extends Screen {
         if (this.guide.touring) {
             if (key === 'Enter' || key === ' ' || key === 'ArrowRight')
                 this.guide.next();
-            else if (key === 'Escape' || key === 'Q')
-                this.scene.start('title');
             return;
         }
         if (setup.watching && !this.finished) {
@@ -281,9 +283,6 @@ export class PipelineScene extends Screen {
         else if ((key === 'G' || key === 'H') && !setup.watching) {
             this.turnDial(key === 'H' ? 1 : -1);
         }
-        else if (key === 'Escape' || key === 'Q') {
-            this.scene.start('title');
-        }
         else if (key === 'Enter' && this.showingResults && setup.practice && setup.returnTo) {
             this.scene.start(setup.returnTo);
         }
@@ -297,6 +296,44 @@ export class PipelineScene extends Screen {
         else if (key === 'W' && this.showingResults && setup.replay) {
             this.scene.restart(watch(setup, setup.replay));
         }
+    }
+    // ---- the pause menu ----
+    pauseItems() {
+        const { setup } = this;
+        const items = [];
+        const replay = setup.replay;
+        if (this.guide.touring) {
+            items.push({ label: 'SKIP THE TOUR', about: 'START THE PRACTICE NOW, WITHOUT THE REST OF THE TOUR.', run: () => this.guide.skip() });
+        }
+        else if (setup.watching && replay) {
+            items.push({ label: 'WATCH FROM THE START', about: 'THE REPLAY AGAIN, FROM ITS FIRST NOTE.', run: () => this.scene.restart(watch(setup, replay)) });
+        }
+        else if (!setup.watching) {
+            const again = setup.practice ? { ...setup, replay: undefined, tour: undefined } : playAgain(setup);
+            items.push({ label: setup.practice ? 'RESTART THE PRACTICE' : 'RESTART THE SONG', about: 'START AGAIN FROM THE FIRST NOTE.', run: () => this.scene.restart(again) });
+        }
+        const playing = !this.finished && !setup.watching && this.conductor !== undefined;
+        const note = playing && setup.contract ? ' (YOU LEAVE THIS SONG; THE JOB STAYS ON THE BOARD.)' : playing ? ' (YOU LEAVE THIS SONG.)' : '';
+        return [...items, ...this.places(note)];
+    }
+    /** The pause menu stops the song: the beat clock (and so the music and the notes), or the replay. */
+    onPause(open) {
+        if (this.setup.watching) {
+            if (open) {
+                this.replayWasPaused = this.paused;
+                this.pause();
+            }
+            else if (!this.replayWasPaused) {
+                this.resume();
+            }
+        }
+        else if (open) {
+            this.conductor?.pause();
+        }
+        else {
+            this.conductor?.resume();
+        }
+        this.lastFrameMs = performance.now();
     }
     /** G / H: one step down or up on the clock dial. The tempo follows from the next beat. */
     turnDial(direction) {

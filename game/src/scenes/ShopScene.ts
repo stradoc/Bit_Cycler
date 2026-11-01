@@ -3,6 +3,7 @@ import { formatMhz, formatMoney } from '../format.ts';
 import { getProgress, setProgress } from '../save.ts';
 import { bitsName, buy, cpuLine, ratedMhz, shopItems, type ShopItem } from '../sim/progress.ts';
 import { ListMenu, type MenuRow } from '../ui/list.ts';
+import type { PauseItem } from '../ui/pauseMenu.ts';
 import { Screen } from '../ui/screen.ts';
 import { chipInfo, ChipView } from '../visual/chip3d.ts';
 
@@ -54,7 +55,7 @@ export class ShopScene extends Screen {
     this.menu = new ListMenu(this, this.era, { x: LIST_X, top: LIST_TOP, width: LIST_RIGHT - LIST_X, rowHeight: ROW_H, size: 15 });
     this.about = this.aboutLine();
     this.message = this.messageLine();
-    this.hints('[UP/DOWN] CHOOSE', '[ENTER] BUY', '[B] CONTRACT BOARD', '[M] HUM', '[Q] MAIN MENU');
+    this.hints('[UP/DOWN] CHOOSE', '[ENTER] BUY', '[B] CONTRACT BOARD', '[M] HUM', '[ESC] MENU');
     this.refresh(data?.selected ?? Math.max(0, shopItems(getProgress()).findIndex((item) => item.state === 'buy')));
     if (data?.message) this.message.setText(data.message);
   }
@@ -69,9 +70,12 @@ export class ShopScene extends Screen {
     else if (key === 'B' || key === 'S') {
       this.cue('confirm');
       this.scene.start('board');
-    } else if (key === 'Escape' || key === 'Q') this.back();
-    else return false;
+    } else return false;
     return true;
+  }
+
+  protected pauseItems(): PauseItem[] {
+    return this.places();
   }
 
   update(time: number, delta: number): void {
