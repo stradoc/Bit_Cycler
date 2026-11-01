@@ -82,7 +82,12 @@ Technology and design decisions, with the reason for each (`RULES.md` rule 3). A
 
 ## 2026-10-31
 
-### TICK's voice, lessons for beginners, and the 32-bit window's top edge (uncommitted)
+### TICK on black, in his own shape (uncommitted)
+- **Why** (team): TICK should have a black background, but not a big square around him.
+- `ui/guide.ts`: behind the robot, one black rounded strip per line of characters, from its first character to its last, so the black follows his outline; the outline stroke from a895e4e is gone. Where the era's text is too dark to show on black (the light 32-bit desktop), his characters are white.
+- Build, both type checks and 127 tests pass. Headless Chrome: lesson 1's tour pointing at the registers in all four eras. No page errors.
+
+### TICK's voice, lessons for beginners, and the 32-bit window's top edge (a895e4e)
 - **Why** (team, after trying the guide): the lessons should be simpler and assume nobody knows what a CPU does; TICK should make sounds; TICK's black box should go; and in the 32-bit era notes showed through the top of the window.
 - **Lessons rewritten** (`data/tours.ts`, `data/lessons.ts`, `song/words.ts`): the board's tour now starts by saying what a CPU and a program are (holding up the CPU picture) before any job talk, and is 10 steps; lesson 1's tour opens by promising to go one piece at a time and is 10 steps. Every briefing card says new words in capitals with a plain meaning (STAGES, STALL, FLUSHED as "thrown out", PREDICTOR, ADDRESS, ns as billionths of a second). Lesson 1's new-instruction tips add what the instruction is for in everyday words ("It copies a number from memory into a register."). Figures unchanged.
 - **TICK's voice** (`audio/cues.ts`, played by `ui/guide.ts`): `guide-talk`, a short soft square-wave syllable per word as it types out, pitched from a pentatonic scale by the word (the same word always sounds the same; ? and ! higher), at most one a frame, none after Enter skips ahead; `guide-hello` (three notes up) as a tour starts and `guide-bye` (two down) as it ends. Exported to `sound-export/guide/` (talk -27 dB, hello and bye -18 dB peak; menu sounds are about -14 dB).
@@ -91,7 +96,7 @@ Technology and design decisions, with the reason for each (`RULES.md` rule 3). A
 - Build, both type checks and 127 tests pass. Headless Chrome: the 32-bit song's top edge as notes come in (before and after), lesson 1's tour in all four eras (the opening, the CPU picture, the listing, the lanes, the registers), the board's tour in 16-bit, the longest briefing cards (overclocking's last two, lesson 4's HOW TO GUESS) in 16 and 64-bit. No page errors.
 - **Not checked:** how the voice sounds and whether it gets tiring (nobody can hear headless audio: listen to `sound-export/guide/` and a tour); the rewritten words with a real beginner.
 
-### The contract board's job sheet, and the guide (uncommitted)
+### The contract board's job sheet, and the guide (a895e4e)
 - **Why** (team): the board looked overwhelming and it was hard to tell what a contract contained; and a guided tutorial, a robot made of characters highlighting and explaining things with pictures ("an ASCII Clippy" that moves up and down and talks), should teach better than the briefing cards. Decided with the team: teach on the real screens, a robot, and rework the board's look only (Decisions table).
 - **The board** (`scenes/BoardScene.ts`): a list like the shop's, grouped STARTER / STANDARD / ADVANCED, each row a client, its pay and OK / TIGHT / SLOW; beside it the chosen contract's job sheet: the job in the client's words and whether your CPU makes it, the loop the song plays and how many times it runs, the notes per lane, which of addresses 0-31 it reads and writes, and its time worked out ("46 THOUSAND INSTRUCTIONS x CPI 1.00 x 1 µs = 46 MS") against the deadline as a bar. Rows can be clicked (click the chosen one to take it). TIGHT and SLOW are in the warning color in every era (the danger red was hard to read on DOS blue).
 - **`sim/jobSheet.ts`** (new, pure): what's in a contract, by running its program: the main loop (the backward branch reaching furthest back, so a grid's outer loop), how often it runs, the notes per lane and the memory read and written.

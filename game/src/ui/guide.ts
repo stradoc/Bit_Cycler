@@ -48,6 +48,30 @@ function robot(look: -1 | 0 | 1, blink: boolean, mouth: string): string {
   return ['  .-^-.  ', ` [${eyes}] `, `  | ${mouth} |  `, ' /|___|\\ ', '   | |   '].join('\n');
 }
 
+/**
+ * Black behind the robot, in its own shape rather than a box: one rounded
+ * strip per line, from its first character to its last, so the screen
+ * underneath doesn't show through its lines.
+ */
+function silhouette(scene: Phaser.Scene, face: string, body: Phaser.GameObjects.Text): Phaser.GameObjects.Graphics {
+  const lines = face.split('\n');
+  const charW = body.width / lines[0].length;
+  const lineH = body.height / lines.length;
+  const shape = scene.add.graphics().fillStyle(0x000000, 1);
+  lines.forEach((line, row) => {
+    const first = line.search(/\S/);
+    const last = line.trimEnd().length;
+    shape.fillRoundedRect(first * charW - 4, row * lineH - 1, (last - first) * charW + 8, lineH + 2, 5);
+  });
+  return shape;
+}
+
+/** The robot's color on its black: the era's text color, or white where that is too dark to show (the light 90s desktop). */
+function inkOn(era: Era): number {
+  const [r, g, b] = [era.fg >> 16, (era.fg >> 8) & 0xff, era.fg & 0xff];
+  return 0.3 * r + 0.59 * g + 0.11 * b > 100 ? era.fg : 0xffffff;
+}
+
 /** Mouth shapes while talking, one every MOUTH_MS. */
 const MOUTHS = ['o', '-', 'O', '='];
 const MOUTH_MS = 90;
@@ -119,9 +143,9 @@ export class Guide {
     this.home = home;
     this.shade = scene.add.graphics().setDepth(DEPTH);
     this.frame = scene.add.rectangle(0, 0, 10, 10).setOrigin(0).setStrokeStyle(2, era.accent, 1).setDepth(DEPTH + 1).setVisible(false);
-    // No box behind it: an outline in the background's color keeps its lines clear of the text underneath.
-    this.body = eraText(scene, era, 0, 0, robot(0, false, '-'), TEXT.body + 3).setStroke(cssColor(era.bg), 5);
-    this.unit = scene.add.container(0, 0, [this.body]).setDepth(DEPTH + 10);
+    const face = robot(0, false, '-');
+    this.body = eraText(scene, era, 0, 0, face, TEXT.body + 3).setColor(cssColor(inkOn(era)));
+    this.unit = scene.add.container(0, 0, [silhouette(scene, face, this.body), this.body]).setDepth(DEPTH + 10);
     this.catcher = scene.add.zone(0, 0, WIDTH, HEIGHT).setOrigin(0).setDepth(DEPTH - 1);
     this.catcher.on('pointerdown', () => this.next());
     const start = home ?? { x: WIDTH - 120, y: HEIGHT };
