@@ -4,6 +4,10 @@ A tycoon + rhythm game where every beat is one CPU clock cycle. CSC 3501 (Comput
 
 This README is for the team: setup, commands and testing tools. How to play is in `game/README.md` (it ships with the game), how the code is organized and how to add features in `CLAUDE.md`, the rules in `RULES.md`, the plan in `ROADMAP.md`, and history and decisions in `CHANGELOG.md`.
 
+## Just playing (Windows)
+
+Download the repo (**Code > Download ZIP** on GitHub, then unzip it) and double-click **`Play Bit Cycler.bat`**. It serves the game with Windows' own PowerShell (nothing to install) and opens it in your browser; close the window that opens to stop. Windows may warn that the file came from the internet the first time: choose **More info > Run anyway**. On another computer, follow Setup below and `npm run serve`. (The game can't be played by opening `game/index.html` directly: browsers only run its modules from a web address.)
+
 ## Setup
 
 Requires Node 22.18 or newer and Python 3.
