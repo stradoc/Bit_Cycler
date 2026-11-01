@@ -127,6 +127,17 @@ export function newGame(slot: SlotId = activeSlot()): Progress {
   return setProgress(teaching().tips ? newCampaign() : fillBoard(NEW_GAME, Math.random));
 }
 
+/**
+ * Every save erased (the three slots and the developer save), as before the
+ * game was first played; slot 1 is the one played next. Settings are the
+ * caller's to reset (SettingsScene's START OVER keeps the player's sound and screen).
+ */
+export function eraseEverything(): void {
+  for (const slot of [...CAMPAIGN_SLOTS, 'dev'] as const) write(slotKey(slot), null);
+  write(OLD_KEY, null);
+  switchSlot('1');
+}
+
 export function deleteSlot(slot: SlotId): void {
   write(slotKey(slot), null);
   if (slot === activeSlot()) current = undefined;

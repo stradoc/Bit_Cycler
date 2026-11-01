@@ -112,6 +112,17 @@ export function newGame(slot = activeSlot()) {
     // The tutorial job is part of TICK's teaching: skipped with the tutorial.
     return setProgress(teaching().tips ? newCampaign() : fillBoard(NEW_GAME, Math.random));
 }
+/**
+ * Every save erased (the three slots and the developer save), as before the
+ * game was first played; slot 1 is the one played next. Settings are the
+ * caller's to reset (SettingsScene's START OVER keeps the player's sound and screen).
+ */
+export function eraseEverything() {
+    for (const slot of [...CAMPAIGN_SLOTS, 'dev'])
+        write(slotKey(slot), null);
+    write(OLD_KEY, null);
+    switchSlot('1');
+}
 export function deleteSlot(slot) {
     write(slotKey(slot), null);
     if (slot === activeSlot())

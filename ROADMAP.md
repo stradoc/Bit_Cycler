@@ -83,7 +83,7 @@ Headless testing can't judge these:
 
 Details are in `CHANGELOG.md`.
 
-- **The player chooses how much TICK teaches:** full, short (no instruction-by-instruction close looks) or skip, asked at his first hello and in the settings
+- **The player chooses how much TICK teaches:** full, short (no instruction-by-instruction close looks) or skip, asked at his first hello and in the settings; START OVER in the settings erases every save and brings his first tutorial back
 - **A deep pipeline the player chooses:** a shop part with an ON / OFF switch, a faster clock for dearer wrong guesses, with TICK's lesson
 - **Getting around:** a pause menu (Esc / Q) on the board, in the shop and in songs (the beat holds while it's open); the developer screen in groups, explaining each row, its save staying loaded until you go back to your campaign
 - **Foundations:** the technology decisions (Decisions table); the beat clock on the audio clock, timing windows and calibration; the note highway; the single-cycle CPU, assembler and register panel; relaxed mode (wider windows, slower beat)

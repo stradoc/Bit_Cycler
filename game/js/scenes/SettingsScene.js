@@ -1,15 +1,16 @@
 import { Conductor } from '../audio/conductor.js';
 import { audioOf, setVolume, startHum, stopHum, toggleHum } from '../audio/sound.js';
 import { filePath } from '../data/menuFiles.js';
+import { eraseEverything } from '../save.js';
 import { getSettings, updateSettings } from '../settings.js';
-import { baseEra } from '../ui/eras.js';
+import { baseEra, cssColor } from '../ui/eras.js';
 import { ListMenu } from '../ui/list.js';
 import { Screen } from '../ui/screen.js';
 import { ALPHA, LAYOUT, TEXT } from '../ui/theme.js';
 import { WIDTH } from '../visual/display.js';
 const CALIBRATION_BPM = 120;
 const OFFSET_STEP_MS = 5;
-const ROWS = ['relaxed', 'tutorial', 'calibrate', 'volume', 'hum', 'crt', 'dark', 'back'];
+const ROWS = ['relaxed', 'tutorial', 'calibrate', 'volume', 'hum', 'crt', 'dark', 'restart', 'back'];
 /** The tutorial choices, in the order left / right steps through them, and how each is shown. */
 const TUTORIALS = ['full', 'short', 'skip'];
 const TUTORIAL_NAMES = { full: 'FULL', short: 'SHORT', skip: 'OFF' };
@@ -21,6 +22,7 @@ const ABOUT = {
     hum: "THE OLD COMPUTER'S HUM IN THE MENUS: FAN, MAINS HUM, HARD DRIVE.",
     crt: 'SCANLINES, GLOW, CURVE AND FLICKER ON THE CRT SCREENS. TURN THEM DOWN IF THEY TIRE YOUR EYES.',
     dark: 'DARK WINDOWS FOR THE 90s DESKTOP.',
+    restart: "ERASES EVERY SAVE (ALL 3 SLOTS AND THE DEVELOPER SAVE) AND STARTS OVER WITH TICK'S TUTORIAL. SOUND AND SCREEN SETTINGS STAY. TO KEEP A SAVE, EXPORT IT FIRST (SAVES).",
     back: 'BACK TO THE MAIN MENU.',
 };
 const onOff = (on) => (on ? 'ON' : 'OFF');
@@ -33,6 +35,8 @@ export class SettingsScene extends Screen {
     ledBase;
     ledLight;
     calibration;
+    /** START OVER was pressed once: the next Enter on it erases everything. */
+    confirmRestart = false;
     lastBeat = -1;
     /** Where BACK goes: the board or the shop when opened from the pause menu, the main menu otherwise. */
     returnTo;
@@ -41,6 +45,7 @@ export class SettingsScene extends Screen {
     }
     init() {
         this.calibration = undefined;
+        this.confirmRestart = false;
         this.lastBeat = -1;
     }
     create(data) {
@@ -85,6 +90,7 @@ export class SettingsScene extends Screen {
             hum: ['COMPUTER HUM', onOff(s.music)],
             crt: ['CRT EFFECTS', percent(s.crt)],
             dark: ['DARK MODE', hasDark ? onOff(s.dark) : '32-BIT ONLY'],
+            restart: [this.confirmRestart ? 'START OVER: PRESS ENTER AGAIN' : 'START OVER (ERASE EVERYTHING)', undefined],
             back: ['BACK', undefined],
         };
         return ROWS.map((row) => ({ label: values[row][0], value: values[row][1], dim: row === 'dark' && !hasDark }));
@@ -110,6 +116,7 @@ export class SettingsScene extends Screen {
             return true;
         }
         if (key === 'ArrowUp' || key === 'ArrowDown') {
+            this.cancelRestart();
             this.menu.move(key === 'ArrowUp' ? -1 : 1);
             this.showAbout();
         }
@@ -118,6 +125,10 @@ export class SettingsScene extends Screen {
         }
         else if (key === 'Enter' || key === ' ') {
             const row = ROWS[this.menu.selected];
+            if (row === 'restart') {
+                this.restart();
+                return true;
+            }
             this.cue('confirm');
             this.menu.press(() => (row === 'back' ? this.leave() : row === 'calibrate' ? this.toggleCalibration() : this.change(row, 1)));
         }
@@ -210,6 +221,29 @@ export class SettingsScene extends Screen {
             this.back(this.returnTo);
         else
             this.back('title', { selected: 'settings' });
+    }
+    /**
+     * START OVER: the first Enter asks again, the second erases every save and
+     * TICK's memory of welcoming you, and the main menu opens to his hello.
+     */
+    restart() {
+        if (!this.confirmRestart) {
+            this.confirmRestart = true;
+            this.cue('error');
+            this.readout.setText('THIS ERASES EVERY SAVE. PRESS ENTER AGAIN TO START OVER, OR MOVE AWAY TO KEEP THEM.').setColor(cssColor(this.colors.warn));
+            this.refresh();
+            return;
+        }
+        eraseEverything();
+        updateSettings({ welcomed: false, tutorial: 'full' });
+        this.back('title');
+    }
+    cancelRestart() {
+        if (!this.confirmRestart)
+            return;
+        this.confirmRestart = false;
+        this.readout.setText('').setColor(cssColor(this.era.fg));
+        this.refresh();
     }
 }
 //# sourceMappingURL=SettingsScene.js.map

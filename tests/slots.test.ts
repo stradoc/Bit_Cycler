@@ -12,7 +12,7 @@ Object.assign(globalThis, {
     removeItem: (key: string) => void stored.delete(key),
   },
 });
-const { activeSlot, campaignSlot, switchSlot } = await import('../game/src/save.ts');
+const { activeSlot, campaignSlot, eraseEverything, hasSave, newGame, switchSlot } = await import('../game/src/save.ts');
 
 test('with no campaign played yet, the developer save goes back to slot 1', () => {
   switchSlot('dev');
@@ -26,4 +26,14 @@ test('the developer save goes back to the campaign played last, and stays active
   assert.equal(activeSlot(), 'dev');
   assert.equal(campaignSlot(), '2');
   assert.equal(stored.get('bit-cycler-campaign-slot'), '2', 'kept across a reload');
+});
+
+test('starting over erases every save, the developer save too, and plays slot 1 next', () => {
+  stored.set('bit-cycler-settings', JSON.stringify({ tutorial: 'full' }));
+  for (const slot of ['1', '3', 'dev'] as const) newGame(slot);
+  switchSlot('3');
+  eraseEverything();
+  for (const slot of ['1', '2', '3', 'dev'] as const) assert.equal(hasSave(slot), false, `slot ${slot}`);
+  assert.equal(activeSlot(), '1');
+  assert.equal(campaignSlot(), '1');
 });

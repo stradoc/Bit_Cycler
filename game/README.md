@@ -23,7 +23,7 @@ Each song opens with a short count-in naming the loop's key registers (`NEXT`, `
 
 **Menus.** Arrows choose, `Enter` opens, `Esc` or `Q` goes back (on the board and in the shop it opens the pause menu), `M` turns the computer's hum on or off. On the main menu: CONTINUE, NEWGAME, PRACTICE (your CPU, with notes that wait for you), SAVES (three slots, export and import), BRIEFS (every lesson TICK gives, to play again, and TICK's welcome), SETTINGS, README.TXT and CREDITS.TXT, SHUTDOWN. On the board: `S` opens the shop. In the shop: `Enter` buys, `B` goes back to the board.
 
-**Settings.** Relaxed mode (wider timing and a slower beat), the tutorial (how much TICK explains: full, short or off), audio calibration (line the light up with the click), volume, the hum, CRT effects and dark mode for the 90s desktop.
+**Settings.** Relaxed mode (wider timing and a slower beat), the tutorial (how much TICK explains: full, short or off), START OVER (erases every save and brings back TICK's first tutorial), audio calibration (line the light up with the click), volume, the hum, CRT effects and dark mode for the 90s desktop.
 
 **A deep pipeline, if you want it.** Once you can guess branches on the 32-bit chip, the shop sells a deep pipeline: ten shorter stages, so the clock runs 1.5x faster, but a wrong guess throws away 4 cycles of work instead of 1. Switch it on or off in the shop whenever you like: it pays off if you (or your predictor) guess well. At the very top clock it gains nothing, as real chips found. (Stylized: real deep pipelines lost 10-20 cycles per wrong guess.)
 
