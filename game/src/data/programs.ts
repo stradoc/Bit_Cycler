@@ -1,4 +1,4 @@
-import { generateProgram, seedOf } from '../sim/generator.ts';
+import { generateProgram, kindOf, seedOf } from '../sim/generator.ts';
 
 export type ProgramSpec = {
   readonly name: string;
@@ -139,7 +139,7 @@ export function programByName(name: string): ProgramSpec {
   let spec = generated.get(name);
   if (!spec) {
     try {
-      spec = generateProgram(seed);
+      spec = generateProgram(seed, kindOf(name));
     } catch {
       spec = PROGRAMS[0]; // never expected (tests check thousands of seeds), but a song must never hang
     }

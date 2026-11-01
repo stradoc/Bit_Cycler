@@ -46,6 +46,10 @@ export class SongWords {
     remember(slot, access) {
         this.accesses.set(slot.seq, access);
     }
+    /** The count-in's line naming the song's music. */
+    music() {
+        return `MUSIC: ${this.setup.song.name}`;
+    }
     tierTitle() {
         const { singleCycle, predictor, guessing, forwarding } = this.setup;
         if (singleCycle)

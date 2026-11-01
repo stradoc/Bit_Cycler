@@ -23,6 +23,10 @@ type Extras = {
   readonly waiting: { readonly length: number; readonly ticks: number };
   /** One word the guide says: the note it's said on (Hz). */
   readonly 'guide-talk': { readonly pitch: number };
+  /** An instruction issued: the note it plays (Hz), a note of the song's chord (audio/music.ts hitPitch); without one, the unit's own. */
+  readonly 'hit-alu': { readonly pitch?: number };
+  readonly 'hit-mem': { readonly pitch?: number };
+  readonly 'hit-branch': { readonly pitch?: number };
 };
 
 /** A cue's own options after the time and volume: `cue(scene, 'waiting', { at, length, ticks })`, `cue(scene, 'move')`. */
@@ -171,17 +175,16 @@ const CUES = {
   /** The metronome: a click on each beat, higher on the first of the bar. */
   beat: (ctx, at, scale) => blip(ctx, 880, at, 0.05, 'square', 0.15 * scale, song(ctx)),
   downbeat: (ctx, at, scale) => blip(ctx, 1760, at, 0.05, 'square', 0.15 * scale, song(ctx)),
-  /** An instruction issued, pitched by the unit it goes to. */
-  'hit-alu': (ctx, at, scale) => blip(ctx, 660, at, 0.06, 'square', 0.1 * scale, song(ctx)),
-  'hit-mem': (ctx, at, scale) => blip(ctx, 523, at, 0.06, 'square', 0.1 * scale, song(ctx)),
-  'hit-branch': (ctx, at, scale) => blip(ctx, 784, at, 0.06, 'square', 0.1 * scale, song(ctx)),
+  /** An instruction issued: a note of the song's chord, by the unit it goes to (MEM low, ALU middle, BRANCH high). */
+  'hit-alu': (ctx, at, scale, { pitch }: Extras['hit-alu']) => blip(ctx, pitch ?? 660, at, 0.06, 'square', 0.1 * scale, song(ctx)),
+  'hit-mem': (ctx, at, scale, { pitch }: Extras['hit-mem']) => blip(ctx, pitch ?? 523, at, 0.06, 'square', 0.1 * scale, song(ctx)),
+  'hit-branch': (ctx, at, scale, { pitch }: Extras['hit-branch']) => blip(ctx, pitch ?? 784, at, 0.06, 'square', 0.1 * scale, song(ctx)),
   /** A stall held for a hazard. */
   stall: (ctx, at, scale) => blip(ctx, 330, at, 0.08, 'triangle', 0.08 * scale, song(ctx)),
   /** A mistake: a low rasp. */
   mistake: (ctx, at, scale) => blip(ctx, 110, at, 0.15, 'sawtooth', 0.08 * scale, song(ctx)),
-  /** One beat of waiting for memory: a low drone through it, and fast ticks for the cycles going by. */
+  /** One beat of waiting for memory: fast ticks for the cycles going by (the music hangs on a drone under them: audio/music.ts drone). */
   waiting: (ctx, at, scale, { length, ticks }: Extras['waiting']) => {
-    blip(ctx, 55, at, length * 0.95, 'sawtooth', 0.05 * scale, song(ctx));
     for (let i = 0; i < ticks; i++) blip(ctx, 2400, at + (i * length) / ticks, 0.015, 'square', 0.03 * scale, song(ctx));
   },
   /** The data arrived: a bright double click. */

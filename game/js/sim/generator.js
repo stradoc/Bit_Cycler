@@ -278,16 +278,165 @@ function grid(r) {
         answer: [{ address: out, value: total }],
     };
 }
+/** Reverses n bytes where they are: one address walks up from the start, another down from the end, and each pair is swapped. */
+function reverse(r) {
+    const n = 2 * r.int(4, 7);
+    const [p, end, q, a, b] = r.registers(5);
+    const data = bytes(r, n, 1, 99);
+    return {
+        kind: 'REVERSE',
+        source: [
+            `      addi ${x(p)}, x0, 0`,
+            `      addi ${x(end)}, x0, ${n / 2}`,
+            `      addi ${x(q)}, x0, ${n - 1}`,
+            `loop: lb   ${x(a)}, 0(${x(p)})`,
+            `      lb   ${x(b)}, 0(${x(q)})`,
+            `      sb   ${x(b)}, 0(${x(p)})`,
+            `      sb   ${x(a)}, 0(${x(q)})`,
+            `      addi ${x(p)}, ${x(p)}, 1`,
+            `      addi ${x(q)}, ${x(q)}, -1`,
+            `      bne  ${x(p)}, ${x(end)}, loop`,
+        ].join('\n'),
+        memory: data,
+        elements: n,
+        verb: 'REVERSE',
+        unit: 'BYTES',
+        roles: {
+            [p]: 'the address at the front, counting up',
+            [end]: `the middle (${n / 2}): the loop stops when the front reaches it`,
+            [q]: 'the address at the back, counting down',
+            [a]: 'the byte from the front',
+            [b]: 'the byte from the back',
+        },
+        keys: [...loopKeys(p, end, n / 2, 'FRONT ADDRESS'), { reg: q, tag: 'BACK', about: `BACK ADDRESS, FROM ${n - 1} DOWN` }],
+        memoryNote: `Addresses 0-${n - 1} hold the data; the first and last swap, then the second and second-last, up to the middle.`,
+        answer: [...data].reverse().map((value, address) => ({ address, value })),
+    };
+}
+/** Keeps a running total and stores it after every byte (a bank statement's balance column). */
+function runningTotal(r) {
+    const n = r.int(6, 12);
+    const [p, end, acc, v] = r.registers(4);
+    const data = bytes(r, n, 1, 20);
+    // Half the time the address moves on before the store, which then reaches one byte less far.
+    const early = r.chance(0.5);
+    const body = early
+        ? [`add  ${x(acc)}, ${x(acc)}, ${x(v)}`, `addi ${x(p)}, ${x(p)}, 1`, `sb   ${x(acc)}, 15(${x(p)})`]
+        : [`add  ${x(acc)}, ${x(acc)}, ${x(v)}`, `sb   ${x(acc)}, 16(${x(p)})`, `addi ${x(p)}, ${x(p)}, 1`];
+    const totals = data.map((_, i) => wrap(data.slice(0, i + 1).reduce((a, b) => a + b, 0)));
+    return {
+        kind: 'RUNNING TOTAL',
+        source: [
+            `      addi ${x(p)}, x0, 0`,
+            `      addi ${x(end)}, x0, ${n}`,
+            `      addi ${x(acc)}, x0, 0`,
+            `loop: lb   ${x(v)}, 0(${x(p)})`,
+            ...body.map((line) => `      ${line}`),
+            `      bne  ${x(p)}, ${x(end)}, loop`,
+        ].join('\n'),
+        memory: data,
+        elements: n,
+        verb: 'RUNNING TOTALS OF',
+        unit: 'BYTES',
+        roles: { [p]: 'the address of the next byte', [end]: `the end address (${n})`, [acc]: 'the total so far', [v]: 'the byte just loaded' },
+        keys: loopKeys(p, end, n),
+        memoryNote: `Addresses 0-${n - 1} hold the data. The total after each byte goes to addresses 16-${15 + n}.`,
+        answer: totals.map((value, i) => ({ address: 16 + i, value })),
+    };
+}
+/** The change from each byte to the next (readings that rise and fall): a subtraction that needs the byte before. */
+function changes(r) {
+    const n = r.int(7, 13);
+    const [p, end, prev, v, d] = r.registers(5);
+    // Readings that drift: each one a little above or below the last.
+    const data = [r.int(20, 40)];
+    for (let i = 1; i < n; i++)
+        data.push(Math.max(1, Math.min(99, data[i - 1] + r.int(-6, 9))));
+    return {
+        kind: 'CHANGES',
+        source: [
+            `      addi ${x(p)}, x0, 1`,
+            `      addi ${x(end)}, x0, ${n}`,
+            `      lb   ${x(prev)}, 0(x0)`,
+            `loop: lb   ${x(v)}, 0(${x(p)})`,
+            `      sub  ${x(d)}, ${x(v)}, ${x(prev)}`,
+            `      sb   ${x(d)}, 15(${x(p)})`,
+            `      addi ${x(prev)}, ${x(v)}, 0`,
+            `      addi ${x(p)}, ${x(p)}, 1`,
+            `      bne  ${x(p)}, ${x(end)}, loop`,
+        ].join('\n'),
+        memory: data,
+        elements: n - 1,
+        verb: 'CHANGES BETWEEN',
+        unit: 'BYTES',
+        roles: {
+            [p]: 'the address of the next byte',
+            [end]: `the end address (${n})`,
+            [prev]: 'the byte before it',
+            [v]: 'the byte just loaded',
+            [d]: 'how much it changed (a fall wraps around: 1 less than 0 is 255)',
+        },
+        keys: loopKeys(p, end, n, "NEXT BYTE'S ADDRESS", 1),
+        memoryNote: `Addresses 0-${n - 1} hold readings. Each change from one to the next goes to addresses 16-${14 + n} (a fall shows as 256 minus it).`,
+        answer: data.slice(1).map((value, i) => ({ address: 16 + i, value: wrap(value - data[i]) })),
+    };
+}
+/** Replaces every byte equal to one value with another: a branch skips the store when it doesn't match. */
+function replace(r) {
+    const n = r.int(8, 14);
+    const [p, end, from, to, v] = r.registers(5);
+    const target = r.int(0, 3);
+    const value = r.int(5, 9);
+    const data = bytes(r, n, 0, 3);
+    return {
+        kind: 'REPLACE',
+        source: [
+            `      addi ${x(p)}, x0, 0`,
+            `      addi ${x(end)}, x0, ${n}`,
+            `      addi ${x(from)}, x0, ${target}`,
+            `      addi ${x(to)}, x0, ${value}`,
+            `loop: lb   ${x(v)}, 0(${x(p)})`,
+            `      bne  ${x(v)}, ${x(from)}, skip`,
+            `      sb   ${x(to)}, 0(${x(p)})`,
+            `skip: addi ${x(p)}, ${x(p)}, 1`,
+            `      bne  ${x(p)}, ${x(end)}, loop`,
+        ].join('\n'),
+        memory: data,
+        elements: n,
+        verb: `REPLACE ${target}s WITH ${value}s IN`,
+        unit: 'BYTES',
+        roles: {
+            [p]: 'the address of the next byte',
+            [end]: `the end address (${n})`,
+            [from]: `the value to replace (${target})`,
+            [to]: `what replaces it (${value})`,
+            [v]: 'the byte just loaded',
+        },
+        keys: loopKeys(p, end, n),
+        memoryNote: `Addresses 0-${n - 1} hold the data; every ${target} becomes ${value} where it is.`,
+        answer: data.map((d, address) => ({ address, value: d === target ? value : d })),
+    };
+}
+/**
+ * Every kind of program, by the name its programs carry. A contract stores
+ * only its program's name ("SUM #4821"), and the program is rebuilt from it,
+ * so a kind's place here can change but its name can't: the rebuild finds the
+ * kind by name (a list that grows would otherwise turn old jobs into new kinds).
+ */
 const KERNELS = [
-    (r) => reduce(r, 'add'),
-    (r) => reduce(r, 'xor'),
-    count,
-    (r) => copy(r, false),
-    (r) => copy(r, true),
-    addArrays,
-    find,
-    fill,
-    grid,
+    { kind: 'SUM', build: (r) => reduce(r, 'add') },
+    { kind: 'CHECKSUM', build: (r) => reduce(r, 'xor') },
+    { kind: 'COUNT', build: count },
+    { kind: 'COPY', build: (r) => copy(r, false) },
+    { kind: 'DOUBLE', build: (r) => copy(r, true) },
+    { kind: 'ADD ARRAYS', build: addArrays },
+    { kind: 'FIND', build: find },
+    { kind: 'FILL', build: fill },
+    { kind: 'GRID SUM', build: grid },
+    { kind: 'REVERSE', build: reverse },
+    { kind: 'RUNNING TOTAL', build: runningTotal },
+    { kind: 'CHANGES', build: changes },
+    { kind: 'REPLACE', build: replace },
 ];
 const CLIENTS = {
     SUM: [
@@ -329,16 +478,42 @@ const CLIENTS = {
         { name: 'CROPWATCH SURVEY', verb: (v) => v.replace('GRIDS', 'FIELDS'), unit: 'CELLS' },
         { name: 'MAPLE CITY TRANSIT', verb: (v) => v.replace('GRIDS', 'MAPS'), unit: 'CELLS' },
     ],
+    REVERSE: [
+        { name: 'MIRROR LAKE PHOTO', verb: 'MIRROR', unit: 'PIXELS' },
+        { name: 'BACKSPIN RECORDS', verb: 'PLAY BACKWARDS:', unit: 'AUDIO SAMPLES' },
+    ],
+    'RUNNING TOTAL': [
+        { name: 'NORTHGATE CREDIT', verb: 'RUNNING BALANCES FOR', unit: 'PAYMENTS' },
+        { name: 'STRIDE FITNESS', verb: 'RUNNING TOTALS OF', unit: 'STEP COUNTS' },
+    ],
+    CHANGES: [
+        { name: 'TREMOR WATCH', verb: 'CHANGES BETWEEN', unit: 'QUAKE READINGS' },
+        { name: 'TIDEWATER PORT', verb: 'RISE AND FALL OF', unit: 'TIDE LEVELS' },
+    ],
+    REPLACE: [
+        { name: 'BLACKLINE LEGAL', unit: 'DOCUMENT BYTES' },
+        { name: 'PIXEL MEDICS', unit: 'SCREEN PIXELS' },
+    ],
 };
-export function generateProgram(seed) {
+/**
+ * The program for `seed`, named "<KIND> #<seed>". Always assembles and finishes (checked).
+ * `kind` rebuilds a stored program (from its name) as the kind it was made as.
+ */
+export function generateProgram(seed, kind) {
     const r = randomTools(seeded(seed));
-    const { kind, ...kernel } = r.pick(KERNELS)(r);
-    const client = r.pick(CLIENTS[kind]);
+    // One draw picks the kind, whichever kind is used, so the rest of the seed's choices stay the same as when the program was first made.
+    const drawn = r.pick(KERNELS);
+    const { kind: built, ...kernel } = (KERNELS.find((k) => k.kind === kind) ?? drawn).build(r);
+    const client = r.pick(CLIENTS[built]);
     const verb = typeof client.verb === 'function' ? client.verb(kernel.verb) : (client.verb ?? kernel.verb);
-    const program = { ...kernel, verb, unit: client.unit, client: client.name, name: `${kind} #${seed}` };
+    const program = { ...kernel, verb, unit: client.unit, client: client.name, name: `${built} #${seed}` };
     // A program that didn't finish would hang a song: trace() throws if it runs too long (the tests make sure it never does).
     trace(new Cpu(assemble(program.source, 8), 8, program.memory), 400);
     return program;
+}
+/** The kind in a generated program's name ("GRID SUM #4821" -> "GRID SUM"). */
+export function kindOf(name) {
+    return name.replace(/ #\d+$/, '');
 }
 /** The seed in a generated program's name ("CHECKSUM #4821" -> 4821), if it is one. */
 export function seedOf(name) {

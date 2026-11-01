@@ -1,3 +1,4 @@
+import { SONGS } from '../data/songs.js';
 import { tempoForClock } from '../rhythm/tempo.js';
 import { ERAS } from '../ui/eras.js';
 import { CUE_NAMES, playCue } from './cues.js';
@@ -16,8 +17,10 @@ import { encodeWav, mergeIfMono, peak, trimSilence } from './wav.js';
 const RATE = 44_100;
 /** The song's sounds and music at the first pipelined CPU's tempo (4 MHz, about 87 BPM). */
 const BEAT = 60 / tempoForClock(4);
-/** One pass through the music's chords: four bars. */
-const MUSIC_BEATS = 16;
+/** Beats in one pass through a song (four to a bar). */
+const songBeats = (song) => song.chords.length * 4;
+/** What each of the music's layers adds (audio/music.ts), for the files' names. */
+const LAYER_NAMES = ['bass', 'melody', 'hats', 'drums', 'arpeggio'];
 const HUM_SECONDS = 15;
 /** The green CRT's computer (a CRT and a drive: the 8-, 16- and 32-bit eras all hum like it) and the modern one (an LCD and an SSD). */
 const [CRT, LCD] = [ERAS[0], ERAS[3]];
@@ -59,13 +62,58 @@ const SOUNDS = [
     { file: 'hum/crt.wav', seconds: HUM_SECONDS, keep: true, make: (ctx) => hum(ctx, CRT, false) },
     { file: 'hum/lcd.wav', seconds: HUM_SECONDS, keep: true, make: (ctx) => hum(ctx, LCD, false) },
     { file: 'hum/spin-up.wav', seconds: 8, keep: true, make: (ctx) => hum(ctx, CRT, true) },
-    // The music as the pipeline fills: one layer per occupied stage.
-    ...[1, 2, 3, 4, 5].map((layers) => ({
-        file: `music/${layers}-${layers === 1 ? 'layer' : 'layers'}.wav`,
-        seconds: MUSIC_BEATS * BEAT + 1,
+    // Every song once through, with the pipeline full (all five layers).
+    ...SONGS.map((song, i) => ({
+        file: `music/${String(i + 1).padStart(2, '0')}-${song.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.wav`,
+        seconds: songBeats(song) * BEAT + 1,
         make: (ctx) => {
-            const music = new LayeredMusic(ctx);
-            for (let beat = 0; beat < MUSIC_BEATS; beat++)
+            const music = new LayeredMusic(ctx, song);
+            for (let beat = 0; beat < songBeats(song); beat++)
+                music.playBeat(beat, beat * BEAT, BEAT, 5);
+        },
+    })),
+    // How the music reacts to the run (song/groove.ts), on the first song: two beats, then the reaction, then the song going on.
+    ...['hold', 'skip', 'flush'].map((mode) => ({
+        file: `music/reactions/${mode}.wav`,
+        seconds: 5 * BEAT + 1,
+        make: (ctx) => {
+            const music = new LayeredMusic(ctx, SONGS[0]);
+            music.playBeat(0, 0, BEAT, 5);
+            music.playBeat(1, BEAT, BEAT, 5);
+            music.playBeat(1, 2 * BEAT, BEAT, 5, mode);
+            music.playBeat(2, 3 * BEAT, BEAT, 5);
+            music.playBeat(3, 4 * BEAT, BEAT, 5);
+        },
+    })),
+    {
+        file: 'music/reactions/memory-wait.wav',
+        seconds: 6 * BEAT + 1,
+        make: (ctx) => {
+            const music = new LayeredMusic(ctx, SONGS[0]);
+            music.playBeat(0, 0, BEAT, 5);
+            for (let beat = 1; beat <= 3; beat++)
+                music.drone(0, beat * BEAT, BEAT);
+            music.playBeat(1, 4 * BEAT, BEAT, 5);
+            music.playBeat(2, 5 * BEAT, BEAT, 5);
+        },
+    },
+    {
+        file: 'music/reactions/ending.wav',
+        seconds: 4 * BEAT + 3,
+        make: (ctx) => {
+            const music = new LayeredMusic(ctx, SONGS[0]);
+            for (let beat = 0; beat < 4; beat++)
+                music.playBeat(28 + beat, beat * BEAT, BEAT, 5);
+            music.ending(4 * BEAT, BEAT);
+        },
+    },
+    // The first song as the pipeline fills: one layer per occupied stage.
+    ...[1, 2, 3, 4, 5].map((layers) => ({
+        file: `music/layers/${layers}-${LAYER_NAMES.slice(0, layers).join('-')}.wav`,
+        seconds: songBeats(SONGS[0]) * BEAT + 1,
+        make: (ctx) => {
+            const music = new LayeredMusic(ctx, SONGS[0]);
+            for (let beat = 0; beat < songBeats(SONGS[0]); beat++)
                 music.playBeat(beat, beat * BEAT, BEAT, layers);
         },
     })),

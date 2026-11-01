@@ -1,4 +1,4 @@
-import { generateProgram, seedOf } from '../sim/generator.js';
+import { generateProgram, kindOf, seedOf } from '../sim/generator.js';
 export const PROGRAMS = [
     {
         name: 'SUM ARRAY',
@@ -114,7 +114,7 @@ export function programByName(name) {
     let spec = generated.get(name);
     if (!spec) {
         try {
-            spec = generateProgram(seed);
+            spec = generateProgram(seed, kindOf(name));
         }
         catch {
             spec = PROGRAMS[0]; // never expected (tests check thousands of seeds), but a song must never hang

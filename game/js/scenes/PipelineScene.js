@@ -16,6 +16,7 @@ import { thermalConfig, withSeen } from '../sim/progress.js';
 import { finishJob } from '../sim/workday.js';
 import { Chip, THERMAL } from '../sim/thermal.js';
 import { Bus } from '../song/bus.js';
+import { groove } from '../song/groove.js';
 import { Gauge } from '../song/gauge.js';
 import { Highway } from '../song/highway.js';
 import { GAUGE_BOTTOM, HIT_Y, LANE_X0, LANES_W, REGISTER_COUNT, REPLAY_SPEEDS, ROW_GAP } from '../song/layout.js';
@@ -89,6 +90,10 @@ export class PipelineScene extends Screen {
     autoplayParam = new URLSearchParams(location.search).has('autoplay');
     /** This run's decisions, cycle by cycle, for the replay. */
     recording = [];
+    /** The song's music follows the run (song/groove.ts): the beat of the song to play next, whether any has played, and the cycles since the last beat. */
+    musicBeat = 0;
+    musicStarted = false;
+    musicCycles = [];
     /** The clock was stopped (overheated) at the last check, to say when it starts again. */
     wasHalted = false;
     /** The clock dial on each cycle of this run (G / H change it), for the replay. */
@@ -134,6 +139,9 @@ export class PipelineScene extends Screen {
         this.dialRecording = [];
         this.overheatsShown = 0;
         this.recording = [];
+        this.musicBeat = 0;
+        this.musicStarted = false;
+        this.musicCycles = [];
         this.conductor = undefined;
         this.freezeView = undefined;
         this.refillView = undefined;
@@ -198,7 +206,7 @@ export class PipelineScene extends Screen {
         this.guide = new Guide(this, this.era, setup.practice ? GUIDE_HOME : undefined);
         if (setup.watching)
             this.replayControls.draw(this.speedIndex, this.paused);
-        this.music = new LayeredMusic(this.ctx);
+        this.music = new LayeredMusic(this.ctx, setup.song);
         this.events.once('shutdown', () => this.conductor?.stop());
         this.panel.refresh();
         // A lesson's tour of the screen comes first (two in a row: the memory wall, then the cache);
@@ -484,8 +492,11 @@ export class PipelineScene extends Screen {
     }
     // ---- what happened ----
     showDecision(d) {
-        if (d.outcome === 'issued')
-            this.cue(HIT_CUE[unitOf(d.slot.instr)]);
+        if (d.outcome === 'issued') {
+            // The press plays a note of the chord sounding now, so it joins the music.
+            const unit = unitOf(d.slot.instr);
+            this.cue(HIT_CUE[unit], { pitch: this.music?.hitPitch(this.musicBeat - 1, unit) });
+        }
         else if (d.outcome === 'stalled')
             this.cue('stall');
         else if (d.outcome !== 'missed')
@@ -503,6 +514,7 @@ export class PipelineScene extends Screen {
             this.tip(this.words.forwarded(forwarded.reg, forwarded.producer));
     }
     onCycle(report) {
+        this.musicCycles.push(report);
         if (!this.setup.watching) {
             const d = report.decision;
             this.recording.push(d ? { action: d.action, outcome: d.outcome, judgment: d.judgment } : null);
@@ -712,6 +724,10 @@ export class PipelineScene extends Screen {
                 const view = this.freezeView ?? this.refillView;
                 const ticks = Math.min(8, Math.ceil((view?.total ?? 1) / (view?.beats ?? 1)));
                 this.cue('waiting', { at: time, length: spb, ticks });
+                // The music hangs on its chord until the data arrives; the cycles going by are the wait's, not the song's.
+                if (this.musicStarted)
+                    this.music.drone(this.musicBeat - 1, time, spb);
+                this.musicCycles = [];
                 wasFrozen = true;
                 return;
             }
@@ -720,8 +736,15 @@ export class PipelineScene extends Screen {
                 this.cue('arrived', { at: time });
                 wasFrozen = false;
             }
+            // One layer of music for each stage at work; a single-cycle CPU uses all of itself for every instruction, so it plays the whole song.
+            const layers = this.setup.singleCycle ? 5 : this.run.pipeline.occupancy;
+            // The song moves on for each cycle that did work since the last beat; a lost one holds it, skips it or stops it like tape.
+            const { advance, mode } = groove(this.musicCycles, this.musicStarted, this.setup.guessing);
+            this.musicCycles = [];
             if (!this.run.chip.halted)
-                this.music.playBeat(beat - this.firstBeat - 1, time, spb, this.run.pipeline.occupancy);
+                this.music.playBeat(mode === 'play' ? this.musicBeat : this.musicBeat - 1, time, spb, layers, mode);
+            this.musicBeat += advance;
+            this.musicStarted = true;
         };
         conductor.start();
         this.conductor = conductor;
@@ -765,6 +788,9 @@ export class PipelineScene extends Screen {
     }
     finish() {
         this.finished = true;
+        // The song resolves on its home chord, unless the chip stopped to cool.
+        if (this.music && this.ctx && !this.run.chip.halted)
+            this.music.ending(this.ctx.currentTime + 0.05, 60 / (this.conductor?.bpm ?? this.baseBpm));
         this.conductor?.stop();
         this.heat.stop();
         this.highway.hideHazard();

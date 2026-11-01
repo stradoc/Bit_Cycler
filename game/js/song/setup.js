@@ -1,5 +1,6 @@
 import { DEEP_PIPELINE } from '../data/economy.js';
 import { programByName } from '../data/programs.js';
+import { songFor } from '../data/songs.js';
 import { DEFAULT_DIFFICULTY, DIFFICULTIES, isDifficulty } from '../rhythm/tempo.js';
 import { deepActive, hasCache, ratedMhzFor } from '../sim/progress.js';
 import { THERMAL } from '../sim/thermal.js';
@@ -28,6 +29,7 @@ export function songSetup(start, progress, params) {
     return {
         program,
         spec: programByName(program),
+        song: songFor(program),
         singleCycle,
         forwarding: start.forwarding ?? params.has('forwarding'),
         guessing,

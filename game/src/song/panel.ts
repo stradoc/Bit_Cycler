@@ -154,7 +154,7 @@ export class Panel extends Part {
 
   private countInText(beatsLeft: number): string {
     const keys = (this.view.setup.spec.keys ?? []).map((key) => `x${key.reg} = ${key.tag}: ${key.about}`);
-    return [`GET READY: ${beatsLeft}`, ...keys].join('\n');
+    return [`GET READY: ${beatsLeft}   ${this.view.words.music()}`, ...keys].join('\n');
   }
 
   /** Counts the beats down, then hands the panel over to the song. */

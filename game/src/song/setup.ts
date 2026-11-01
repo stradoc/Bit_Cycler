@@ -1,5 +1,6 @@
 import { DEEP_PIPELINE } from '../data/economy.ts';
 import { programByName, type ProgramSpec } from '../data/programs.ts';
+import { songFor, type Song } from '../data/songs.ts';
 import type { TierOptions } from '../data/tiers.ts';
 import type { Judgment } from '../rhythm/judge.ts';
 import type { Action, Outcome } from '../rhythm/pipelineRun.ts';
@@ -61,6 +62,8 @@ export type SongStart = TierOptions & {
 export type SongSetup = {
   readonly program: string;
   readonly spec: ProgramSpec;
+  /** The music: the program's own song (data/songs.ts), so a job always sounds the same. */
+  readonly song: Song;
   /** Tier 1: every instruction does all five steps in one long beat. */
   readonly singleCycle: boolean;
   /** Tier 3: results go straight to the next instruction. */
@@ -121,6 +124,7 @@ export function songSetup(start: SongStart, progress: Progress, params: URLSearc
   return {
     program,
     spec: programByName(program),
+    song: songFor(program),
     singleCycle,
     forwarding: start.forwarding ?? params.has('forwarding'),
     guessing,

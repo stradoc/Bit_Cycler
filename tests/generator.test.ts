@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { programByName } from '../game/src/data/programs.ts';
 import { assemble } from '../game/src/sim/assembler.ts';
 import { Cpu, trace } from '../game/src/sim/cpu.ts';
-import { generateProgram, seedOf } from '../game/src/sim/generator.ts';
+import { generateProgram, kindOf, seedOf } from '../game/src/sim/generator.ts';
 import { SHOWN_BYTES } from '../game/src/sim/memory.ts';
 import { perfectRun } from '../game/src/sim/pipeline.ts';
 
@@ -29,7 +29,7 @@ test('every generated program finishes, leaves the right answer, and stays in th
 });
 
 test('ADD ARRAYS sometimes puts its arrays a cache-full apart: then every load is a conflict miss', () => {
-  const runs = SEEDS.map(generateProgram)
+  const runs = SEEDS.map((seed) => generateProgram(seed))
     .filter((spec) => spec.name.startsWith('ADD ARRAYS'))
     .map((spec) => perfectRun(new Cpu(assemble(spec.source, 8), 8, spec.memory), { forwarding: true, cache: true }).memory);
   const colliding = runs.filter((m) => m.missKinds.conflict > 0);
@@ -52,7 +52,7 @@ test('every generated program has a client whose name fits a board card, and a j
 });
 
 test('every program tags its NEXT (always x1) and END (always x2) registers: the pair its loop branch compares', () => {
-  const specs = [...SEEDS.map(generateProgram), programByName('SUM ARRAY'), programByName('SUM GRID')];
+  const specs = [...SEEDS.map((seed) => generateProgram(seed)), programByName('SUM ARRAY'), programByName('SUM GRID')];
   for (const spec of specs) {
     const keys = spec.keys ?? [];
     const next = keys.find((key) => key.tag === 'NEXT');
@@ -88,9 +88,21 @@ test('generated programs give the same answers on every CPU: single-cycle, pipel
 test('a seed always gives the same program, every kind of program turns up, and names lead back to seeds', () => {
   assert.equal(generateProgram(4821).source, generateProgram(4821).source);
   const kinds = new Set(SEEDS.slice(0, 500).map((seed) => generateProgram(seed).name.replace(/ #\d+$/, '')));
-  assert.deepEqual([...kinds].sort(), ['ADD ARRAYS', 'CHECKSUM', 'COPY', 'COUNT', 'DOUBLE', 'FILL', 'FIND', 'GRID SUM', 'SUM']);
+  assert.deepEqual([...kinds].sort(), ['ADD ARRAYS', 'CHANGES', 'CHECKSUM', 'COPY', 'COUNT', 'DOUBLE', 'FILL', 'FIND', 'GRID SUM', 'REPLACE', 'REVERSE', 'RUNNING TOTAL', 'SUM']);
   const spec = generateProgram(123);
   assert.equal(seedOf(spec.name), 123);
   assert.equal(programByName(spec.name).source, spec.source); // contracts store only the name
   assert.equal(programByName('SUM ARRAY').name, 'SUM ARRAY');
+});
+
+test("a stored program is rebuilt as the kind its name says, whatever kind its seed would pick now", () => {
+  // Contracts keep only the name; a growing list of kinds must not turn an old job into a new kind.
+  for (const seed of SEEDS.slice(0, 500)) {
+    const spec = generateProgram(seed);
+    assert.equal(programByName(spec.name).source, spec.source, spec.name);
+    const other = generateProgram(seed, 'FILL');
+    assert.equal(kindOf(other.name), 'FILL');
+    assert.equal(seedOf(other.name), seed);
+  }
+  assert.equal(kindOf('GRID SUM #4821'), 'GRID SUM');
 });
