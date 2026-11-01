@@ -53,11 +53,14 @@ const DEPTH = 900;
 /** Where a picture is held up, and how big its card is. */
 const CARD = { x: WIDTH / 2, y: 196, w: 880, h: 280 };
 
-/** The robot, its eyes looking left, ahead or right, its mouth open or shut. */
+/** Room under the robot's last line, so fonts that draw _ on their lowest pixel row don't lose its feet. */
+const FEET_PAD = 4;
+
+/** The robot, its eyes looking left, ahead or right, its mouth open or shut, standing on two little feet. */
 function robot(look: -1 | 0 | 1, blink: boolean, mouth: string): string {
   const eye = blink ? '-' : 'o';
   const eyes = look < 0 ? `${eye} ${eye}  ` : look > 0 ? `  ${eye} ${eye}` : ` ${eye} ${eye} `;
-  return ['  .-^-.  ', ` [${eyes}] `, `  | ${mouth} |  `, ' /|___|\\ ', '   | |   '].join('\n');
+  return ['  .-^-.  ', ` [${eyes}] `, `  | ${mouth} |  `, ' /|___|\\ ', '  _| |_  '].join('\n');
 }
 
 /**
@@ -68,12 +71,14 @@ function robot(look: -1 | 0 | 1, blink: boolean, mouth: string): string {
 function silhouette(scene: Phaser.Scene, face: string, body: Phaser.GameObjects.Text): Phaser.GameObjects.Graphics {
   const lines = face.split('\n');
   const charW = body.width / lines[0].length;
-  const lineH = body.height / lines.length;
+  const lineH = (body.height - FEET_PAD) / lines.length;
   const shape = scene.add.graphics().fillStyle(0x000000, 1);
   lines.forEach((line, row) => {
     const first = line.search(/\S/);
     const last = line.trimEnd().length;
-    shape.fillRoundedRect(first * charW - 4, row * lineH - 1, (last - first) * charW + 8, lineH + 2, 5);
+    // The last line reaches down over the padding, under the feet.
+    const extra = row === lines.length - 1 ? FEET_PAD : 0;
+    shape.fillRoundedRect(first * charW - 4, row * lineH - 1, (last - first) * charW + 8, lineH + 2 + extra, 5);
   });
   return shape;
 }
@@ -162,7 +167,7 @@ export class Guide {
     this.shade = scene.add.graphics().setDepth(DEPTH);
     this.frame = scene.add.rectangle(0, 0, 10, 10).setOrigin(0).setStrokeStyle(2, era.accent, 1).setDepth(DEPTH + 1).setVisible(false);
     const face = robot(0, false, '-');
-    this.body = eraText(scene, era, 0, 0, face, TEXT.body + 3).setColor(cssColor(inkOn(era)));
+    this.body = eraText(scene, era, 0, 0, face, TEXT.body + 3).setColor(cssColor(inkOn(era))).setPadding(0, 0, 0, FEET_PAD);
     this.unit = scene.add.container(0, 0, [silhouette(scene, face, this.body), this.body]).setDepth(DEPTH + 10);
     this.catcher = scene.add.zone(0, 0, WIDTH, HEIGHT).setOrigin(0).setDepth(DEPTH - 1);
     this.catcher.on('pointerdown', () => this.next());

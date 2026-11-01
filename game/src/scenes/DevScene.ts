@@ -4,22 +4,23 @@ import { LESSONS } from '../data/lessons.ts';
 import { folderPath } from '../data/menuFiles.ts';
 import { TAUGHT_IDS } from '../data/tours.ts';
 import { openLesson } from '../flow.ts';
-import { formatMhz, formatMoney } from '../format.ts';
-import { activeSlot, campaignSlot, getProgress, hasSave, newGame, slotName, switchSlot, updateProgress } from '../save.ts';
+import { formatHours, formatMhz, formatMoney } from '../format.ts';
+import { activeSlot, getProgress, hasSave, newGame, slotName, updateProgress } from '../save.ts';
 import { bitsName, chipOf, deepActive, fillBoard, fitChip, ratedMhz, tierOf, withEverything, withTier, withWordBits, type Progress } from '../sim/progress.ts';
+import { dateLine, DAY_SECONDS, endDay } from '../sim/workday.ts';
 import { ListMenu, type MenuRow } from '../ui/list.ts';
 import { Screen } from '../ui/screen.ts';
 import { LAYOUT } from '../ui/theme.ts';
 
 type Row =
-  | 'chip' | 'tier' | 'clock' | 'deep' | 'cooling' | 'cache' | 'overclock' | 'money' | 'board' | 'everything'
-  | 'lesson' | 'seen' | 'play' | 'practice' | 'autoplay' | 'reset' | 'campaign';
+  | 'chip' | 'tier' | 'clock' | 'deep' | 'cooling' | 'cache' | 'overclock' | 'money' | 'time' | 'endday' | 'board' | 'everything'
+  | 'lesson' | 'seen' | 'play' | 'practice' | 'autoplay' | 'reset';
 
-/** The rows in their groups, each with the line shown about it. */
-const GROUPS: readonly { readonly name: string; readonly rows: readonly Row[] }[] = [
-  { name: "THE DEVELOPER SAVE'S CPU AND MONEY", rows: ['chip', 'tier', 'clock', 'deep', 'cooling', 'cache', 'overclock', 'money', 'board', 'everything'] },
-  { name: 'LESSONS AND PLAY', rows: ['lesson', 'seen', 'play', 'practice', 'autoplay'] },
-  { name: 'START OVER, OR LEAVE', rows: ['reset', 'campaign'] },
+/** The rows in their groups (the first named after the save being changed), each with the line shown about it. */
+const GROUPS: readonly { readonly name: (slot: string) => string; readonly rows: readonly Row[] }[] = [
+  { name: (slot) => `YOUR SAVE (${slot}): CPU, MONEY AND DAY`, rows: ['chip', 'tier', 'clock', 'deep', 'cooling', 'cache', 'overclock', 'money', 'time', 'endday', 'board', 'everything'] },
+  { name: () => 'LESSONS AND PLAY', rows: ['lesson', 'seen', 'play', 'practice', 'autoplay'] },
+  { name: () => 'START OVER', rows: ['reset'] },
 ];
 const ROWS: readonly Row[] = GROUPS.flatMap((group) => group.rows);
 
@@ -32,15 +33,16 @@ const ABOUT: Readonly<Record<Row, string>> = {
   overclock: 'LETS G / H TURN THE CLOCK DOWN AND UP DURING A SONG.',
   deep: 'NOT BOUGHT, OFF OR ON: A FASTER CLOCK, BUT A WRONG GUESS COSTS MORE. IN USE FROM TIER 4, ON THE 32-BIT CHIP.',
   money: 'MONEY TO SPEND IN THE SHOP.',
+  time: 'HOURS OF TODAY ALREADY WORKED (THE DAY ENDS AT 8). JOBS THAT NO LONGER FIT TODAY SAY LATER.',
+  endday: "LOGS OFF: TODAY'S TIMECARD IS KEPT, AND THE NEXT MORNING DEALS NEW OFFERS.",
   board: "THROWS AWAY THE BOARD'S JOBS AND DEALS NEW ONES.",
   everything: 'THE WIDEST CHIP, THE LAST TIER AND EVERY UPGRADE.',
   lesson: "[LEFT/RIGHT] PICKS A LESSON, [ENTER] PLAYS IT: TICK'S TOUR, THEN ITS PRACTICE IF IT HAS ONE.",
   seen: "LESSONS AND TOURS MARKED SEEN DON'T PLAY BY THEMSELVES. [ENTER] MARKS ALL SEEN OR NONE.",
-  play: 'THE CONTRACT BOARD, PLAYING THE DEVELOPER SAVE.',
+  play: 'THE CONTRACT BOARD, WITH YOUR SAVE AS IT IS NOW.',
   practice: 'A PRACTICE SONG ON THIS TIER: NOTES WAIT FOR YOU.',
   autoplay: 'SONGS PLAY THEMSELVES, UNTIL THE PAGE IS RELOADED.',
-  reset: 'ERASES THE DEVELOPER SAVE AND STARTS IT OVER: A NEW GAME.',
-  campaign: '',
+  reset: 'ERASES THIS SAVE AND STARTS IT OVER AS A NEW GAME. TO KEEP IT, EXPORT IT FIRST (SAVES, ON THE MAIN MENU).',
 };
 
 /** Rows changed with left / right (the toggles flip either way). */
@@ -65,9 +67,8 @@ const OWN: Partial<Record<Row, string>> = { chip: 'CHIP', tier: 'TIER', clock: '
 /**
  * The developer screen (the backquote key on the main menu): the console
  * cheats (cheats.ts) on a screen, plus any lesson, practice and the board.
- * Opening it switches to the developer save, so testing never touches a
- * campaign, and you keep playing that save (its era, its money) until you
- * go back to your campaign from here or load a slot.
+ * It changes the save being played (the active slot), as the cheats do: to
+ * test without touching a campaign, export it first or play another slot.
  */
 export class DevScene extends Screen {
   private menu!: ListMenu;
@@ -85,11 +86,12 @@ export class DevScene extends Screen {
   }
 
   create(data?: { selected?: number; message?: string }): void {
-    if (activeSlot() !== 'dev') switchSlot('dev');
-    // Saved at once, so the main menu has a save to CONTINUE.
-    if (!hasSave('dev')) newGame('dev');
     this.setUp();
-    this.header(`DEVELOPER MODE: ${folderPath(this.era, ['DEV'])}`, `YOU PLAY THE DEVELOPER SAVE UNTIL YOU GO BACK TO ${slotName(campaignSlot())}. CAMPAIGNS AREN'T TOUCHED.`);
+    const slot = slotName(activeSlot());
+    this.header(
+      `DEVELOPER MODE: ${folderPath(this.era, ['DEV'])}`,
+      hasSave() ? `CHANGES GO STRAIGHT INTO ${slot}, THE SAVE YOU'RE PLAYING.` : `${slot} IS EMPTY: A CHANGE STARTS A NEW GAME IN IT.`,
+    );
     this.menu = new ListMenu(this, this.era, { x: 190, top: 96, width: 580, rowHeight: 18, size: 14, heading: 16 });
     this.menu.setRows(this.rows(), data?.selected ?? 0);
     // A long list: the lines about it sit a little lower than on other screens.
@@ -112,6 +114,8 @@ export class DevScene extends Screen {
       overclock: ['OVERCLOCKING UPGRADE', onOff(p.overclocking)],
       deep: ['DEEP PIPELINE', p.deepPipeline === 'none' ? 'NOT BOUGHT' : `${p.deepPipeline.toUpperCase()}${p.deepPipeline === 'on' && !deepActive(p) ? ' (IDLE BELOW TIER 4)' : ''}`],
       money: ['MONEY', formatMoney(p.money)],
+      time: ['HOURS WORKED TODAY', p.worked >= DAY_SECONDS ? `${formatHours(p.worked)} (DAY OVER)` : formatHours(p.worked)],
+      endday: ['END THE DAY', dateLine(p)],
       board: ['DEAL NEW CONTRACTS'],
       everything: ['UNLOCK EVERYTHING'],
       lesson: ['OPEN LESSON', LESSONS[LESSON_IDS[this.lesson]].title.slice(0, 40)],
@@ -119,17 +123,14 @@ export class DevScene extends Screen {
       play: ['PLAY: CONTRACT BOARD'],
       practice: ['PRACTICE THIS TIER'],
       autoplay: ['AUTOPLAY SONGS', onOff(cheatFlags.autoplay)],
-      reset: [this.confirmReset ? 'RESET: PRESS ENTER AGAIN' : 'RESET THE DEVELOPER SAVE'],
-      campaign: [`BACK TO YOUR CAMPAIGN (${slotName(campaignSlot())})`],
+      reset: [this.confirmReset ? `ERASE ${slotName(activeSlot())}: PRESS ENTER AGAIN` : 'START THIS SAVE OVER'],
     };
-    const firsts = new Map(GROUPS.map((group) => [group.rows[0], group.name]));
+    const firsts = new Map(GROUPS.map((group) => [group.rows[0], group.name(slotName(activeSlot()))]));
     return ROWS.map((row) => ({ label: values[row][0], value: values[row][1], group: firsts.get(row) }));
   }
 
   private showAbout(): void {
-    const row = ROWS[this.menu.selected];
-    const about = row === 'campaign' ? `STOP PLAYING THE DEVELOPER SAVE: THE MAIN MENU, WITH ${slotName(campaignSlot())} AND ITS ERA.` : ABOUT[row];
-    this.about.setText(about);
+    this.about.setText(ABOUT[ROWS[this.menu.selected]]);
   }
 
   private refresh(): void {
@@ -150,7 +151,6 @@ export class DevScene extends Screen {
       this.cue('confirm');
       this.menu.press(() => this.choose(ROWS[this.menu.selected]));
     } else if (key === 'Escape' || key === 'Q') {
-      // The main menu, still playing the developer save.
       this.back();
     } else return false;
     return true;
@@ -188,6 +188,9 @@ export class DevScene extends Screen {
         return this.edit(row, (p) => withTier(p, Phaser.Math.Clamp(tierOf(p).number + delta, 1, 6)));
       case 'clock':
         return this.edit(row, (p) => fitChip({ ...p, clockLevel: clampInt(p.clockLevel + delta, CLOCK.factors.length - 1) }));
+      case 'time':
+        // A whole hour at a time, from 9:00 to the end of the day.
+        return this.edit(row, (p) => ({ ...p, worked: Math.max(0, Math.min(DAY_SECONDS, Math.round(p.worked / 3600 + delta) * 3600)) }));
       case 'money':
         return this.edit(row, (p) => {
           const next = delta > 0 ? MONEY_STEPS.find((m) => m > p.money) : [...MONEY_STEPS].reverse().find((m) => m < p.money);
@@ -226,6 +229,10 @@ export class DevScene extends Screen {
         this.edit(row, (p) => fillBoard({ ...p, board: [] }, Math.random));
         this.message.setText('NEW CONTRACTS ON THE BOARD.');
         return;
+      case 'endday':
+        this.edit(row, (p) => endDay(p, Math.random).progress);
+        this.message.setText(`A NEW MORNING: ${dateLine(getProgress())}.`);
+        return;
       case 'seen':
         return this.edit(row, (p) => ({ ...p, seenLessons: p.seenLessons.length < TAUGHT_IDS.length ? TAUGHT_IDS : [] }));
       case 'autoplay':
@@ -248,16 +255,8 @@ export class DevScene extends Screen {
           return this.refresh();
         }
         this.confirmReset = false;
-        newGame('dev');
-        if (this.eraChanged()) {
-          this.scene.restart({ selected: this.menu.selected, message: 'THE DEVELOPER SAVE STARTED OVER.' });
-          return;
-        }
-        this.message.setText('THE DEVELOPER SAVE STARTED OVER.');
-        return this.refresh();
-      case 'campaign':
-        switchSlot(campaignSlot());
-        this.back();
+        newGame(activeSlot());
+        this.scene.restart({ selected: this.menu.selected, message: `${slotName(activeSlot())} STARTED OVER: A NEW GAME.` });
         return;
       default:
         return this.step(row, 1);

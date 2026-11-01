@@ -4,7 +4,6 @@ import { loadSounds } from '../audio/samples.ts';
 import { keyOf, onKeyDown } from '../input/keys.ts';
 import { WIDTH } from '../visual/display.ts';
 import { TerminalLook } from '../visual/terminal.ts';
-import { activeSlot } from '../save.ts';
 import { cssColor, currentEra, type Era } from './eras.ts';
 import { PauseMenu, type PauseItem } from './pauseMenu.ts';
 import { ALPHA, colorsOf, LAYOUT, TEXT } from './theme.ts';
@@ -118,8 +117,8 @@ export abstract class Screen extends Phaser.Scene {
   /**
    * The places the pause menu offers in the game: the board, the shop, the
    * settings (which come back to the board or the shop) and the main menu,
-   * leaving out the screen you're on, and the developer screen while you play
-   * its save. `note` goes after each one's line (leaving a song: what happens to it).
+   * leaving out the screen you're on. `note` goes after each one's line
+   * (leaving a song: what happens to it).
    */
   protected places(note = ''): PauseItem[] {
     const here = this.scene.key;
@@ -130,7 +129,6 @@ export abstract class Screen extends Phaser.Scene {
       ...(here === 'shop' ? [] : [this.go('SHOP', 'shop', `BUY PARTS THAT MAKE YOUR CPU FASTER.${note}`)]),
       this.go('SETTINGS', 'settings', `SOUND, TIMING AND LOOKS.${note}`, { returnTo: settingsBack }),
       this.go('MAIN MENU', 'title', `YOUR PROGRESS IS SAVED AS YOU GO.${note}`),
-      ...(activeSlot() === 'dev' ? [this.go('DEVELOPER MODE', 'dev', `BACK TO THE DEVELOPER SCREEN.${note}`)] : []),
     ];
   }
 

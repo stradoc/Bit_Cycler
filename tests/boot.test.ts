@@ -51,7 +51,7 @@ test('a worn chip is reported; no save says so', () => {
 test('every era ends by typing the command that starts the game, and every line fits the screen', () => {
   for (const era of ERAS) {
     for (const progress of [null, fresh, forwarding, { ...maxed, chipMaxDial: 1 }]) {
-      const steps = bootScript(progress, { id: 'dev', name: 'DEVELOPER SAVE' }, era);
+      const steps = bootScript(progress, { id: '3', name: 'SLOT 3' }, era);
       const commands = steps.filter((s) => s.kind === 'type');
       assert.match(commands.at(-1)?.text ?? '', /CYCLER|bit-cycler/, `era ${era.name}`);
       for (const line of screen(steps)) assert.ok(line.length <= 72, `era ${era}: "${line}" is ${line.length} characters`);

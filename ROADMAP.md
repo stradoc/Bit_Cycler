@@ -52,7 +52,7 @@ Upgrades follow microprocessor history and stay with the CPU and its control log
 - [ ] Later: choosing the cache's shape (block size, associativity)
 
 **Windows**
-- [ ] Try `Play Bit Cycler.bat` on a Windows 10 and a Windows 11 computer (nothing here can run it): the game opens, a song plays, closing the window stops it
+- [x] `Play Bit Cycler.bat` works on a Windows machine (the user, 2026-11-01)
 
 **Teaching**
 - [ ] The deep pipeline: balance its price, clock gain and wrong-guess cost by playing; decide whether its loads should wait longer too (deeper pipelines lengthen data hazards as well); draw it on the shop's chip

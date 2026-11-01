@@ -3,17 +3,16 @@ import { teaching } from './settings.ts';
 import { fillBoard, NEW_GAME, newCampaign, type Progress } from './sim/progress.ts';
 
 // Saves the player's progress in the browser, like settings.ts does for
-// preferences. There are three campaign slots and a developer slot (the
-// developer screen's sandbox, so testing never touches a real campaign). One
-// slot is active: everything the game reads and saves goes to it.
+// preferences. There are three slots; one is active: everything the game
+// reads and saves goes to it, the developer screen's changes too.
 
-export type SlotId = '1' | '2' | '3' | 'dev';
+export type SlotId = '1' | '2' | '3';
 export const CAMPAIGN_SLOTS: readonly SlotId[] = ['1', '2', '3'];
 
 const slotKey = (slot: SlotId) => `bit-cycler-save-${slot}`;
 const ACTIVE_KEY = 'bit-cycler-slot';
-/** The campaign slot played last: where the developer screen's BACK TO YOUR CAMPAIGN goes. */
-const CAMPAIGN_KEY = 'bit-cycler-campaign-slot';
+/** The developer screen's own save and the campaign it went back to, before it edited the active save (2026-11-01): cleared when read. */
+const DEV_KEYS = { save: 'bit-cycler-save-dev', campaign: 'bit-cycler-campaign-slot' };
 /** Where the only save lived before slots; moved to slot 1. */
 const OLD_KEY = 'bit-cycler-save';
 const SETTINGS_KEY = 'bit-cycler-settings';
@@ -40,10 +39,10 @@ function write(key: string, value: string | null): void {
 
 /** How a slot is named on screen. */
 export function slotName(slot: SlotId): string {
-  return slot === 'dev' ? 'DEVELOPER SAVE' : `SLOT ${slot}`;
+  return `SLOT ${slot}`;
 }
 
-const isSlot = (value: string | null): value is SlotId => value === 'dev' || CAMPAIGN_SLOTS.includes(value as SlotId);
+const isSlot = (value: string | null): value is SlotId => CAMPAIGN_SLOTS.includes(value as SlotId);
 
 /** The save from before slots goes to slot 1, with the briefings read, which the settings used to keep. */
 function migrate(): void {
@@ -67,8 +66,12 @@ function migrate(): void {
 export function activeSlot(): SlotId {
   if (!active) {
     migrate();
-    const stored = read(ACTIVE_KEY);
+    // Someone left playing the old developer save goes back to the campaign they came from; that save is cleared.
+    const stored = read(ACTIVE_KEY) === 'dev' ? read(DEV_KEYS.campaign) : read(ACTIVE_KEY);
+    write(DEV_KEYS.save, null);
+    write(DEV_KEYS.campaign, null);
     active = isSlot(stored) ? stored : '1';
+    write(ACTIVE_KEY, active);
   }
   return active;
 }
@@ -78,15 +81,6 @@ export function switchSlot(slot: SlotId): void {
   active = slot;
   current = undefined;
   write(ACTIVE_KEY, slot);
-  if (slot !== 'dev') write(CAMPAIGN_KEY, slot);
-}
-
-/** The campaign slot played last (slot 1 if none yet), even while the developer save is being played. */
-export function campaignSlot(): SlotId {
-  const slot = activeSlot();
-  if (slot !== 'dev') return slot;
-  const stored = read(CAMPAIGN_KEY);
-  return isSlot(stored) && stored !== 'dev' ? stored : '1';
 }
 
 /** What a slot holds, or null if it's empty. */
@@ -128,12 +122,12 @@ export function newGame(slot: SlotId = activeSlot()): Progress {
 }
 
 /**
- * Every save erased (the three slots and the developer save), as before the
- * game was first played; slot 1 is the one played next. Settings are the
+ * Every save erased (the three slots), as before the game was first
+ * played; slot 1 is the one played next. Settings are the
  * caller's to reset (SettingsScene's START OVER keeps the player's sound and screen).
  */
 export function eraseEverything(): void {
-  for (const slot of [...CAMPAIGN_SLOTS, 'dev'] as const) write(slotKey(slot), null);
+  for (const slot of CAMPAIGN_SLOTS) write(slotKey(slot), null);
   write(OLD_KEY, null);
   switchSlot('1');
 }

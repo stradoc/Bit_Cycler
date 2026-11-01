@@ -4,8 +4,8 @@ import { fillBoard, NEW_GAME, newCampaign } from './sim/progress.js';
 export const CAMPAIGN_SLOTS = ['1', '2', '3'];
 const slotKey = (slot) => `bit-cycler-save-${slot}`;
 const ACTIVE_KEY = 'bit-cycler-slot';
-/** The campaign slot played last: where the developer screen's BACK TO YOUR CAMPAIGN goes. */
-const CAMPAIGN_KEY = 'bit-cycler-campaign-slot';
+/** The developer screen's own save and the campaign it went back to, before it edited the active save (2026-11-01): cleared when read. */
+const DEV_KEYS = { save: 'bit-cycler-save-dev', campaign: 'bit-cycler-campaign-slot' };
 /** Where the only save lived before slots; moved to slot 1. */
 const OLD_KEY = 'bit-cycler-save';
 const SETTINGS_KEY = 'bit-cycler-settings';
@@ -32,9 +32,9 @@ function write(key, value) {
 }
 /** How a slot is named on screen. */
 export function slotName(slot) {
-    return slot === 'dev' ? 'DEVELOPER SAVE' : `SLOT ${slot}`;
+    return `SLOT ${slot}`;
 }
-const isSlot = (value) => value === 'dev' || CAMPAIGN_SLOTS.includes(value);
+const isSlot = (value) => CAMPAIGN_SLOTS.includes(value);
 /** The save from before slots goes to slot 1, with the briefings read, which the settings used to keep. */
 function migrate() {
     const old = read(OLD_KEY);
@@ -59,8 +59,12 @@ function migrate() {
 export function activeSlot() {
     if (!active) {
         migrate();
-        const stored = read(ACTIVE_KEY);
+        // Someone left playing the old developer save goes back to the campaign they came from; that save is cleared.
+        const stored = read(ACTIVE_KEY) === 'dev' ? read(DEV_KEYS.campaign) : read(ACTIVE_KEY);
+        write(DEV_KEYS.save, null);
+        write(DEV_KEYS.campaign, null);
         active = isSlot(stored) ? stored : '1';
+        write(ACTIVE_KEY, active);
     }
     return active;
 }
@@ -69,16 +73,6 @@ export function switchSlot(slot) {
     active = slot;
     current = undefined;
     write(ACTIVE_KEY, slot);
-    if (slot !== 'dev')
-        write(CAMPAIGN_KEY, slot);
-}
-/** The campaign slot played last (slot 1 if none yet), even while the developer save is being played. */
-export function campaignSlot() {
-    const slot = activeSlot();
-    if (slot !== 'dev')
-        return slot;
-    const stored = read(CAMPAIGN_KEY);
-    return isSlot(stored) && stored !== 'dev' ? stored : '1';
 }
 /** What a slot holds, or null if it's empty. */
 export function loadSlot(slot) {
@@ -113,12 +107,12 @@ export function newGame(slot = activeSlot()) {
     return setProgress(teaching().tips ? newCampaign() : fillBoard(NEW_GAME, Math.random));
 }
 /**
- * Every save erased (the three slots and the developer save), as before the
- * game was first played; slot 1 is the one played next. Settings are the
+ * Every save erased (the three slots), as before the game was first
+ * played; slot 1 is the one played next. Settings are the
  * caller's to reset (SettingsScene's START OVER keeps the player's sound and screen).
  */
 export function eraseEverything() {
-    for (const slot of [...CAMPAIGN_SLOTS, 'dev'])
+    for (const slot of CAMPAIGN_SLOTS)
         write(slotKey(slot), null);
     write(OLD_KEY, null);
     switchSlot('1');
