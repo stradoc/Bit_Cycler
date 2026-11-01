@@ -1,8 +1,8 @@
-import { formatCount, formatDuration, formatMhz, formatMoney } from '../format.js';
+import { banner } from '../data/menuFiles.js';
+import { formatHours, formatMoney } from '../format.js';
 import { perfectCycles } from '../sim/pipeline.js';
 import { payFor } from '../sim/progress.js';
-import { bar, deadlineBar } from '../visual/asciiChart.js';
-import { MISS_WORDS } from './layout.js';
+import { deadlineBar, frame, spread, stackedBar } from '../visual/asciiChart.js';
 import { pipelineOptions } from './setup.js';
 /** The whole contract's time at this run's pace: its CPI and the clocks it actually ran at. */
 export function jobSeconds(run, contract) {
@@ -24,101 +24,94 @@ export function practiceLines(run, returnTo) {
         returnTo ? '[ENTER] CONTRACT BOARD' : '[ENTER] PLAY    [Q] MENU',
     ];
 }
-/**
- * What this tier added, and the best a CPU without it could do (tier 3:
- * forwarding, tier 4: guessing, tiers 5-6: overriding the predictor).
- */
-function baseline(f) {
-    const options = pipelineOptions(f.setup, f.setup.ratedMhz);
-    if (f.setup.predictor)
-        return { label: 'PREDICTOR ALONE', cycles: perfectCycles(f.freshCpu, options, 'hardware') };
-    if (f.setup.guessing)
-        return { label: 'NEVER GUESSING', cycles: perfectCycles(f.freshCpu, { ...options, predictor: undefined }, 'hardware') };
-    if (f.setup.forwarding)
-        return { label: 'NO FORWARDING', cycles: perfectCycles(f.freshCpu, { ...options, forwarding: false }) };
-    return undefined;
-}
-/** The results of a real run (or its replay), as charts. */
-export function resultLines(f) {
+/** A finished run's report. */
+export function runReport(f) {
     const { run, setup } = f;
     const { contract, ratedMhz } = setup;
-    const paid = setup.replay?.paid ?? false;
     const p = run.pipeline;
     const { chip } = run;
     const n = Math.max(1, p.instructions);
-    const time = (micros) => formatDuration(micros / 1e6);
-    // Time per instruction at the clocks actually run, plus the time the clock was stopped to cool (µs).
-    const avgPeriod = chip.micros / Math.max(1, chip.cycles);
-    const cooling = chip.haltedMicros / n;
-    const perInstruction = p.cpi * avgPeriod + cooling;
-    const lines = [`RESULTS: ${setup.spec.client ?? setup.spec.name} ON ${f.tierTitle}`];
-    // Extra lines only when they apply: branch guessing, and a clock that wasn't the rated one.
-    if (setup.predictor) {
-        lines.push(`BRANCH GUESSES ${p.branches - p.mispredicted}/${p.branches} RIGHT (PREDICTOR ALONE: ${p.branches - p.predictorMisses}/${p.branches})`);
-    }
-    else if (setup.guessing) {
-        lines.push(`BRANCH GUESSES ${p.branches - p.mispredicted}/${p.branches} RIGHT`);
-    }
-    if (chip.cycles > 0 && (f.dials.some((d) => d !== 1) || chip.overheats > 0)) {
-        lines.push(`CLOCK: AVERAGE ${formatMhz(Number((1 / avgPeriod).toPrecision(3)))}, PEAK ${Math.round(chip.peak)}°C` +
-            (chip.overheats > 0 ? `, OVERHEATED ${chip.overheats}x: MAX CLOCK NOW ${Math.round(chip.maxDial * 100)}%` : ''));
-    }
-    if (chip.haltedBeats > 0) {
-        lines.push(`CLOCK STOPPED TO COOL FOR ${chip.haltedBeats} BEATS: NO CYCLES, BUT ${time(chip.haltedMicros)} LOST (+${time(cooling)} PER INSTRUCTION)`);
-    }
-    const { memory } = p;
-    if (setup.l1 && memory.loads > 0) {
-        const kinds = Object.keys(MISS_WORDS).filter((k) => memory.missKinds[k] > 0).map((k) => `${memory.missKinds[k]} ${MISS_WORDS[k]}`);
-        lines.push(`L1 CACHE: ${memory.hits} OF ${memory.loads} LOADS HIT (${Math.round((memory.hits / memory.loads) * 100)}%)` + (kinds.length > 0 ? `, MISSES: ${kinds.join(', ')}` : ''));
-    }
-    // Where the cycles went: every cycle either finished an instruction or was lost.
+    const paid = Boolean(contract && setup.replay?.paid);
+    const late = setup.replay?.late ?? false;
+    // Every cycle either finished an instruction or was lost; what's left over is the pipeline filling and emptying.
     const fill = Math.max(0, p.cycles - p.instructions - p.stalls - p.flushed - p.memoryCycles - p.refillCycles);
-    const waited = [
-        ...(p.memoryCycles > 0 ? [[`WAITING ON RAM (${memory.ramTrips} TRIP${memory.ramTrips === 1 ? '' : 'S'})`, p.memoryCycles]] : []),
-        ...(p.refillCycles > 0 ? [['REFILLING (DEEP PIPELINE)', p.refillCycles]] : []),
-    ];
-    const rows = setup.singleCycle
-        ? [['FINISHED AN INSTRUCTION', p.instructions], ['LOST (MISSED OR WRONG KEY)', p.stalls], ...waited]
-        : [
-            ['FINISHED AN INSTRUCTION', p.instructions],
-            ['STALLED (WAITING / MISSED)', p.stalls],
-            ['FLUSHED (WRONG PATH)', p.flushed],
-            ...waited,
-            ['FILLING AND EMPTYING', fill],
-        ];
-    const count = (c) => String(c).padStart(String(p.cycles).length);
-    lines.push('', `WHERE THE ${p.cycles} CYCLES WENT`);
-    for (const [label, c] of rows)
-        lines.push(`  ${label.padEnd(27)} ${bar(c, p.cycles, 24)} ${count(c)}`);
-    lines.push(`  CPI = ${p.cycles} CYCLES / ${p.instructions} INSTRUCTIONS = ${p.cpi.toFixed(2)}`);
-    // Time per instruction: CPI x clock period, next to the CPU this tier improved on (all at the rated clock, RAM waits included).
-    const compare = [['YOU', p.cpi, avgPeriod]];
-    const base = baseline(f);
+    const counts = [['finished', p.instructions], ['stalled', p.stalls], ['flushed', p.flushed], ['ram', p.memoryCycles], ['refill', p.refillCycles], ['fill', fill]];
     const rated = pipelineOptions(setup, ratedMhz);
-    if (base)
-        compare.push([`${base.label} (BEST)`, base.cycles / n, 1 / ratedMhz]);
+    const best = (options, guesses) => perfectCycles(f.freshCpu, options, guesses) / n / (ratedMhz * 1e6);
+    const compare = [];
+    if (setup.predictor)
+        compare.push({ cpu: 'predictor-alone', time: best(rated, 'hardware') });
+    else if (setup.guessing)
+        compare.push({ cpu: 'never-guessing', time: best({ ...rated, predictor: undefined }, 'hardware') });
+    else if (setup.forwarding)
+        compare.push({ cpu: 'no-forwarding', time: best({ ...rated, forwarding: false }) });
     if (setup.l1)
-        compare.push(['NO CACHE (BEST)', perfectCycles(f.freshCpu, { ...rated, cache: false }) / n, 1 / ratedMhz]);
+        compare.push({ cpu: 'no-cache', time: best({ ...rated, cache: false }) });
     if (!setup.singleCycle) {
+        // A single-cycle CPU's clock is a quarter of a pipelined one's (its cycle is all five stages long).
         const singleMhz = ratedMhz / 4;
-        const singleCycles = perfectCycles(f.freshCpu, { ...rated, singleCycle: true, mhz: singleMhz });
-        compare.push(['SINGLE-CYCLE', singleCycles / n, 1 / singleMhz]);
+        compare.push({ cpu: 'single-cycle', time: perfectCycles(f.freshCpu, { ...rated, singleCycle: true, mhz: singleMhz }) / n / (singleMhz * 1e6) });
     }
-    const slowest = Math.max(...compare.map(([, cpi, period]) => cpi * period));
-    lines.push('', 'TIME PER INSTRUCTION = CPI x CLOCK PERIOD');
-    for (const [label, cpi, period] of compare) {
-        const sum = `${cpi.toFixed(2)} x ${time(period)} = ${time(cpi * period)}`;
-        lines.push(`  ${label.padEnd(20)} ${sum.padEnd(27)} ${bar(cpi * period, slowest, 18)}`);
+    const period = chip.micros / Math.max(1, chip.cycles) / 1e6;
+    return {
+        client: setup.spec.client ?? setup.spec.name,
+        verdict: paid ? (late ? 'late' : 'on-time') : 'done',
+        job: paid && contract ? { pay: payFor(contract, late), seconds: jobSeconds(run, contract), deadline: contract.deadline } : undefined,
+        cycles: p.cycles,
+        instructions: p.instructions,
+        cpi: p.cpi,
+        uses: counts.filter(([use, cycles]) => use === 'finished' || cycles > 0).map(([use, cycles]) => ({ use, cycles })),
+        singleCycle: setup.singleCycle,
+        ramTrips: p.memory.ramTrips,
+        period,
+        cooling: chip.haltedMicros / n / 1e6,
+        compare,
+        branches: setup.guessing ? { right: p.branches - p.mispredicted, total: p.branches, predictorRight: setup.predictor ? p.branches - p.predictorMisses : undefined } : undefined,
+        cache: setup.l1 && p.memory.loads > 0 ? { hits: p.memory.hits, loads: p.memory.loads } : undefined,
+        clock: chip.cycles > 0 && (f.dials.some((d) => d !== 1) || chip.overheats > 0)
+            ? { averageMhz: Number((1 / period / 1e6).toPrecision(3)), peak: Math.round(chip.peak), overheats: chip.overheats, maxDial: chip.maxDial }
+            : undefined,
+    };
+}
+/** Each use's character in the cycles' bar, and its name in the key under it. */
+const USE_MARKS = {
+    finished: { char: '#', name: 'FINISHED' },
+    stalled: { char: '=', name: 'STALLED' },
+    flushed: { char: 'x', name: 'FLUSHED' },
+    ram: { char: '~', name: 'WAITING ON RAM' },
+    refill: { char: '+', name: 'REFILLING' },
+    fill: { char: '.', name: 'FILLING' },
+};
+/** How wide the card's lines are (characters). */
+export const CARD_WIDTH = 50;
+export function resultCard(report) {
+    const w = CARD_WIDTH;
+    const word = { 'on-time': 'ON TIME', late: 'LATE', done: 'DONE' }[report.verdict];
+    const lines = [];
+    const { job } = report;
+    if (job) {
+        lines.push(spread(report.client, report.verdict === 'late' ? `HALF PAY: ${formatMoney(job.pay)}` : `PAID ${formatMoney(job.pay)}`, w), spread(`THE JOB TOOK ${formatHours(job.seconds)}`, `DUE IN ${formatHours(job.deadline)}`, w), deadlineBar(job.seconds, job.deadline, w - 2), '');
     }
-    // The whole contract at this pace: the song is the first part of the job.
-    if (contract) {
-        const seconds = (contract.instructions * perInstruction) / 1e6;
-        const verdict = setup.replay?.late ? `LATE: HALF PAY ${formatMoney(payFor(contract, true))}` : `ON TIME: PAID ${formatMoney(contract.pay)}`;
-        lines.push('', `WHOLE CONTRACT = ${formatCount(contract.instructions)} INSTRUCTIONS x YOUR ${time(perInstruction)} = ${formatDuration(seconds)}`, `  NEEDED IN ${formatDuration(contract.deadline).padEnd(12)} ${deadlineBar(seconds, contract.deadline, 24)}  ${paid ? verdict : ''}`);
-        if (paid)
-            lines.push(`  MONEY NOW ${formatMoney(f.money)}`);
+    else {
+        lines.push(report.client, '');
     }
-    lines.push('', contract && paid ? '[ENTER] CONTRACT BOARD    [W] WATCH AGAIN    [Q] MENU' : '[ENTER] PLAY AGAIN    [W] WATCH AGAIN    [Q] MENU');
-    return lines;
+    // Where the cycles went: a bar, then its key. A single-cycle CPU's lost cycles are misses, not stalls.
+    const name = (use) => (use === 'stalled' && report.singleCycle ? 'MISSED' : USE_MARKS[use].name);
+    lines.push(spread(`WHERE THE ${report.cycles} CYCLES WENT`, `CPI ${report.cpi.toFixed(2)}`, w));
+    lines.push(`[${stackedBar(report.uses.filter((u) => u.use !== 'fill').map((u) => ({ value: u.cycles, char: USE_MARKS[u.use].char })), report.cycles, w - 2)}]`);
+    let key = '';
+    for (const { use, cycles } of report.uses) {
+        const entry = `${USE_MARKS[use].char} ${cycles} ${name(use)}`;
+        if (key && key.length + 3 + entry.length > w) {
+            lines.push(key);
+            key = entry;
+        }
+        else
+            key = key ? `${key}   ${entry}` : entry;
+    }
+    lines.push(key);
+    // A paid contract goes back to the board; any other run plays again.
+    const next = report.job ? '[ENTER] CONTRACT BOARD' : '[ENTER] PLAY AGAIN';
+    return { stamp: frame(banner(word)), late: report.verdict === 'late', lines, keys: `${next}   [W] WATCH AGAIN   [T] ASK TICK   [Q] MENU` };
 }
 //# sourceMappingURL=results.js.map

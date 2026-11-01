@@ -39,7 +39,7 @@ const DESKTOP = {
     },
     computer: { display: 'crt', drive: 'disk', bios: 'BIT CYCLER BIOS 4.0', bootText: 0xaaaaaa, root: 'C:\\BITCYCLR', shell: false, splash: 0xffffff, beam: 0xffffff },
     sound: { whine: true, beep: true },
-    chip: 'lowpoly',
+    models: 'lowpoly',
 };
 export const ERAS = [
     {
@@ -53,7 +53,7 @@ export const ERAS = [
         screen: { hires: false, smooth: false, glow: 1.8, bootGlow: 1.2, menuGlow: 0.5, scanlines: 0.4, curve: 0.02, vignette: 0.4, flicker: 0.02, lcd: 0 },
         computer: { display: 'crt', drive: 'floppy', bios: 'BIT CYCLER BIOS 1.0', bootText: 0x39ff14, root: 'A:', shell: false, splash: 0x39ff14, beam: 0xd8ffc8 },
         sound: { whine: true, beep: true },
-        chip: 'wire',
+        models: 'wire',
     },
     {
         // A late-80s DOS app in text mode on a CRT: blue, the 16-color palette, double-line boxes, drop shadows.
@@ -73,7 +73,7 @@ export const ERAS = [
         },
         computer: { display: 'crt', drive: 'disk', bios: 'BIT CYCLER BIOS 2.0', bootText: 0xaaaaaa, root: 'C:\\BITCYCLR', shell: false, splash: 0x55ffff, beam: 0xffffff },
         sound: { whine: true, beep: true },
-        chip: 'flat',
+        models: 'flat',
     },
     {
         ...DESKTOP,
@@ -104,7 +104,7 @@ export const ERAS = [
         },
         computer: { display: 'lcd', drive: 'ssd', bios: '', bootText: 0xe6e6e6, root: '~/bit-cycler', shell: true, splash: 0x4fd6be, beam: 0xffffff },
         sound: { whine: false, beep: false },
-        chip: 'smooth',
+        models: 'smooth',
     },
 ];
 /** An era shown for this session only (?era=N, for previews and testing), in place of the save's. */

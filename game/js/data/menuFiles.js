@@ -65,18 +65,28 @@ const BLOCK_LETTERS = {
     I: ['#####', '..#..', '..#..', '..#..', '#####'],
     L: ['#....', '#....', '#....', '#....', '#####'],
     M: ['#...#', '##.##', '#.#.#', '#...#', '#...#'],
+    N: ['#...#', '##..#', '#.#.#', '#..##', '#...#'],
+    O: ['.###.', '#...#', '#...#', '#...#', '.###.'],
     R: ['####.', '#...#', '####.', '#..#.', '#...#'],
     S: ['.####', '#....', '.###.', '....#', '####.'],
     T: ['#####', '..#..', '..#..', '..#..', '..#..'],
     Y: ['#...#', '.#.#.', '..#..', '..#..', '..#..'],
 };
 /**
+ * A word in the block letters as 5 rows of pixels ('#' lit), a blank column
+ * between letters; a letter without a drawing is blank. The main menu's 3D
+ * title is built from these too (visual/title3d.ts).
+ */
+export function blockPixels(word) {
+    return [0, 1, 2, 3, 4].map((row) => [...word].map((letter) => BLOCK_LETTERS[letter]?.[row] ?? '.....').join('.'));
+}
+/**
  * A word in big block letters, two pixel rows to a line of text with the
  * half-block characters (▀ top, ▄ bottom, █ both), as old PC screens drew
  * big titles. Three lines tall.
  */
 export function banner(word) {
-    const rows = [0, 1, 2, 3, 4].map((row) => [...word].map((letter) => BLOCK_LETTERS[letter]?.[row] ?? '.....').join('.'));
+    const rows = blockPixels(word);
     const lines = [];
     for (let row = 0; row < rows.length; row += 2) {
         const top = rows[row];

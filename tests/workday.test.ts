@@ -69,6 +69,8 @@ test('the clock and the date read as a day at work', () => {
   assert.equal(formatHours(3 * 3600 + 20 * 60), '3 H 20 MIN');
   assert.equal(formatHours(4 * 3600), '4 H');
   assert.equal(formatHours(45 * 60), '45 MIN');
+  assert.equal(formatHours(0.002), 'UNDER 1 MIN');
+  assert.equal(formatHours(0), '0 MIN');
   assert.equal(dateLine({ ...NEW_GAME, day: 2, worked: 4.5 * 3600 }), 'TUESDAY NOV 2, 1:30 PM');
 });
 

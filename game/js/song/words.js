@@ -1,6 +1,6 @@
 import { DEEP_PIPELINE } from '../data/economy.js';
 import { GLOSSARY } from '../data/glossary.js';
-import { formatDuration, formatMhz } from '../format.js';
+import { formatDuration, formatHours, formatMhz, formatMoney } from '../format.js';
 import { addressOf } from '../sim/cpu.js';
 import { describe, format, UNIT_ROLES, unitOf } from '../sim/isa.js';
 import { BLOCK_BYTES, blockOf, CACHE_LINES, lineOf, MEMORY_TIMING, tagOf } from '../sim/memory.js';
@@ -345,6 +345,61 @@ export class SongWords {
         }
     }
     /** A wrong key in practice: what it should have been, and why. */
+    /**
+     * TICK going through a run's results, asked for on the results card ([T]):
+     * the verdict, why the song's pace is the whole job's, the CPI and where
+     * the lost cycles went, time per instruction and what this CPU improves on,
+     * then branch guesses, the cache and the clock when they apply.
+     */
+    resultsTour(report) {
+        const lower = (words) => words.toLowerCase();
+        const time = (seconds) => lower(formatDuration(seconds));
+        const steps = [];
+        const { job } = report;
+        if (job) {
+            const [took, due, pay] = [lower(formatHours(job.seconds)), lower(formatHours(job.deadline)), formatMoney(job.pay)];
+            steps.push({
+                say: report.verdict === 'late' ? `Late. At your pace the whole job took ${took}, but it was due in ${due}, so it paid half: ${pay}.` : `On time! At your pace the whole job took ${took}. It was due in ${due}, so it paid in full: ${pay}.`,
+                point: 'verdict',
+            });
+            steps.push({ say: 'The song was a small piece of the job. The rest runs the same way, so how you played sets the whole job\'s time.', point: 'verdict' });
+        }
+        steps.push({ say: `Your CPU took ${report.cycles} cycles to finish ${report.instructions} instructions: a CPI (cycles per instruction) of ${report.cpi.toFixed(2)}. Lower is faster.`, point: 'cycles' });
+        const lost = {
+            stalled: (c) => (report.singleCycle ? `${c} cycles finished nothing: a missed beat or a wrong key wastes the whole cycle.` : `${c} cycles were stalls: waiting for a value that wasn't ready yet, or a missed beat.`),
+            flushed: (c) => `${c} cycles were flushed: instructions fetched down the wrong path after a branch, then thrown away.`,
+            ram: (c) => `${c} cycles waited on RAM (${report.ramTrips} trip${report.ramTrips === 1 ? '' : 's'}). Memory is far slower than the CPU: that's the memory wall.`,
+            refill: (c) => `${c} cycles refilled the deep pipeline after wrong guesses: more stages means more to refill.`,
+            fill: (c) => `${c} cycles were the pipeline filling at the start and emptying at the end, when not every stage has work.`,
+        };
+        for (const { use, cycles } of report.uses)
+            if (use !== 'finished')
+                steps.push({ say: lost[use](cycles), point: 'cycles' });
+        steps.push({ say: `Time per instruction is CPI x clock period: ${report.cpi.toFixed(2)} x ${time(report.period)} = ${time(report.cpi * report.period)}.` });
+        if (report.cooling > 0)
+            steps.push({ say: `The clock also stopped to cool, which added ${time(report.cooling)} to every instruction.` });
+        const compare = {
+            'no-forwarding': (t) => `Without forwarding, even a perfect run would take ${t} an instruction.`,
+            'never-guessing': (t) => `Without guessing, waiting at every branch instead, a perfect run would take ${t} an instruction.`,
+            'predictor-alone': (t) => `The predictor alone, with no help from you, would take ${t} an instruction.`,
+            'no-cache': (t) => `With no cache, every load going to RAM, a perfect run would take ${t} an instruction.`,
+            'single-cycle': (t) => `A single-cycle CPU needs a clock a quarter as fast as yours, so it takes ${t} an instruction.`,
+        };
+        for (const { cpu, time: t } of report.compare)
+            steps.push({ say: compare[cpu](time(t)) });
+        const { branches, cache, clock } = report;
+        if (branches) {
+            const alone = branches.predictorRight === undefined ? '' : ` The predictor alone would have got ${branches.predictorRight}.`;
+            steps.push({ say: `You guessed ${branches.right} of ${branches.total} branches right.${alone}` });
+        }
+        if (cache)
+            steps.push({ say: `The L1 cache already had ${cache.hits} of ${cache.loads} loads (${Math.round((cache.hits / cache.loads) * 100)}%), so those didn't wait on RAM.` });
+        if (clock) {
+            const hot = clock.overheats > 0 ? ` It overheated, so its top clock is now ${Math.round(clock.maxDial * 100)}%.` : '';
+            steps.push({ say: `Your clock averaged ${formatMhz(clock.averageMhz)}, and the chip peaked at ${clock.peak}°C.${hot}` });
+        }
+        return steps;
+    }
     mistake(outcome) {
         const slot = this.run.pipeline.stages.ID;
         const hazard = this.run.pipeline.hazard();

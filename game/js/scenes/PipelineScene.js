@@ -22,12 +22,13 @@ import { Highway } from '../song/highway.js';
 import { GAUGE_BOTTOM, HIT_Y, LANE_X0, LANES_W, REGISTER_COUNT, REPLAY_SPEEDS, ROW_GAP } from '../song/layout.js';
 import { Panel } from '../song/panel.js';
 import { ReplayControls } from '../song/replay.js';
-import { jobSeconds, practiceLines, resultLines } from '../song/results.js';
+import { jobSeconds, practiceLines, resultCard, runReport } from '../song/results.js';
 import { pipelineOptions, playAgain, songSetup, watch } from '../song/setup.js';
 import { Fades } from '../song/view.js';
 import { SongWords } from '../song/words.js';
 import { Guide } from '../ui/guide.js';
 import { Screen } from '../ui/screen.js';
+import { cssColor } from '../ui/eras.js';
 import { Box, glideIn } from '../ui/widgets.js';
 import { HEIGHT, WIDTH } from '../visual/display.js';
 import { HeatEffects } from '../visual/heat.js';
@@ -48,6 +49,8 @@ const SONG_CLICK = 0.27;
 /** Where the guide waits in practice (its top-left corner), below the stats; and how dark the screen gets around what a tip points at. */
 const GUIDE_HOME = { x: 850, y: 426 };
 const TIP_DIM = 0.45;
+/** The results go over everything the replay draws (its hover outline is at 640, its explanations at 650), under TICK. */
+const RESULTS_DEPTH = 660;
 /**
  * Each beat, route the instruction in ID to its unit, or stall (Space) while
  * a register it needs is still being computed by an instruction below it;
@@ -75,6 +78,9 @@ export class PipelineScene extends Screen {
     finished = false;
     /** The results box is up (Enter / W work). */
     showingResults = false;
+    /** A real run's report, for TICK to explain from the results card ([T]); and where the card's parts are, for him to point at. */
+    report;
+    cardAreas = {};
     /** Beat on which the last instruction leaves WB (set once the program is done). */
     endBeat;
     /** Practice: beats the chart has been held for the player. */
@@ -134,6 +140,8 @@ export class PipelineScene extends Screen {
         this.lastFrameMs = performance.now();
         this.finished = false;
         this.showingResults = false;
+        this.report = undefined;
+        this.cardAreas = {};
         this.endBeat = undefined;
         this.replayBeat = -0.5;
         this.speedIndex = 1;
@@ -223,6 +231,8 @@ export class PipelineScene extends Screen {
         };
         if (/^x\d+$/.test(target))
             return this.panel.registerArea(Number(target.slice(1)));
+        if (target === 'verdict' || target === 'cycles')
+            return this.cardAreas[target] ?? { x: 0, y: 0, w: WIDTH, h: HEIGHT };
         return target in highway ? highway[target] : this.panel.areas[target];
     }
     update() {
@@ -310,6 +320,10 @@ export class PipelineScene extends Screen {
                 this.scene.start('board');
             else
                 this.scene.restart(playAgain(setup));
+        }
+        else if (key === 'T' && this.report) {
+            // TICK goes through the numbers behind the card.
+            this.guide.tour(this.words.resultsTour(this.report), (target) => this.where(target), () => { });
         }
         else if (key === 'W' && this.showingResults && setup.replay) {
             this.scene.restart(watch(setup, setup.replay));
@@ -782,21 +796,48 @@ export class PipelineScene extends Screen {
             return;
         }
         this.showingResults = true;
-        const lines = setup.practice
-            ? practiceLines(this.run, setup.returnTo)
-            : resultLines({
-                run: this.run,
-                setup,
-                tierTitle: this.words.tierTitle(),
-                freshCpu: this.freshCpu,
-                dials: setup.replay?.dials ?? this.dialRecording,
-                money: getProgress().money,
-            });
-        const height = Math.min(524, lines.length * 21 + 36);
-        const box = new Box(this, this.era, WIDTH / 2, HEIGHT / 2, 820, height).setDepth(500);
-        // Left-aligned so the charts' columns line up.
-        const text = this.text(WIDTH / 2, HEIGHT / 2, lines.join('\n'), 15).setAlign('left').setDepth(501).setLineSpacing(4);
-        glideIn(this, [box.body, text]);
+        // A shade under the results that takes the pointer, so the replay under them no longer outlines or explains what's hovered.
+        this.add.rectangle(0, 0, WIDTH, HEIGHT, this.era.bg, 0.6).setOrigin(0).setDepth(RESULTS_DEPTH).setInteractive();
+        if (setup.practice) {
+            const lines = practiceLines(this.run, setup.returnTo);
+            const box = new Box(this, this.era, WIDTH / 2, HEIGHT / 2, 820, lines.length * 21 + 36).setDepth(RESULTS_DEPTH + 1);
+            const text = this.text(WIDTH / 2, HEIGHT / 2, lines.join('\n'), 15).setAlign('left').setDepth(RESULTS_DEPTH + 2).setLineSpacing(4);
+            glideIn(this, [box.body, text]);
+            return;
+        }
+        this.showCard(runReport({ run: this.run, setup, freshCpu: this.freshCpu, dials: setup.replay?.dials ?? this.dialRecording }));
+    }
+    /**
+     * The results card: the verdict as a stamp (late in the warning color),
+     * the job against its deadline, and where the cycles went. TICK explains
+     * the rest when asked ([T]).
+     */
+    showCard(report) {
+        this.report = report;
+        const card = resultCard(report);
+        const depth = RESULTS_DEPTH + 2;
+        // The stamp closes up (no line spacing) so the block letters' half blocks join.
+        const stamp = this.text(0, 0, card.stamp.join('\n'), 15).setLineSpacing(0).setColor(cssColor(card.late ? this.colors.warn : this.era.accent)).setDepth(depth);
+        const lines = this.text(0, 0, card.lines.join('\n'), 15).setAlign('left').setLineSpacing(5).setDepth(depth);
+        const keys = this.text(0, 0, card.keys, 13).setAlpha(0.7).setDepth(depth);
+        const gap = 18;
+        const width = Math.max(stamp.width, lines.width, keys.width) + 56;
+        const height = stamp.height + lines.height + keys.height + gap * 2 + 48;
+        const top = HEIGHT / 2 - height / 2;
+        stamp.setPosition(WIDTH / 2, top + 24 + stamp.height / 2);
+        lines.setPosition(WIDTH / 2, stamp.y + stamp.height / 2 + gap + lines.height / 2);
+        keys.setPosition(WIDTH / 2, lines.y + lines.height / 2 + gap + keys.height / 2);
+        const box = new Box(this, this.era, WIDTH / 2, HEIGHT / 2, width, height).setDepth(RESULTS_DEPTH + 1);
+        // TICK points at the stamp with the job's line, and at the cycles' bar and its key.
+        const jobLines = report.job ? 3 : 1;
+        const lineHeight = lines.height / card.lines.length;
+        const left = WIDTH / 2 - width / 2 + 10;
+        const linesTop = lines.y - lines.height / 2;
+        this.cardAreas = {
+            verdict: { x: left, y: top + 10, w: width - 20, h: linesTop + jobLines * lineHeight + 6 - (top + 10) },
+            cycles: { x: left, y: linesTop + (jobLines + 1) * lineHeight - 4, w: width - 20, h: (card.lines.length - jobLines - 1) * lineHeight + 8 },
+        };
+        glideIn(this, [box.body, stamp, lines, keys]);
     }
 }
 //# sourceMappingURL=PipelineScene.js.map

@@ -30,7 +30,33 @@ const SHEET_X = 400;
 const SHEET_Y = 92;
 const SHEET_W = LAYOUT.right - SHEET_X;
 const SHEET_H = 362;
-const PAD = 16;
+const SHEET_MID = SHEET_X + SHEET_W / 2;
+/**
+ * Where the job sheet's rows are: what matters for choosing (who, what, the
+ * pay, the time against the deadline, the verdict) large in the middle, and
+ * the details (the loop, its notes, the memory it uses, the time's working
+ * out) small along the bottom.
+ */
+const SHEET_ROWS = {
+  client: SHEET_Y + 20,
+  job: SHEET_Y + 46,
+  figures: SHEET_Y + 78,
+  bar: SHEET_Y + 138,
+  verdict: SHEET_Y + 158,
+  when: SHEET_Y + 177,
+  details: SHEET_Y + 208,
+  working: SHEET_Y + SHEET_H - 22,
+} as const;
+/** The three big figures' middles, and the details' columns. */
+const FIGURE_XS = [SHEET_MID - 170, SHEET_MID, SHEET_MID + 170];
+/** The space between the details' two columns, which are centered together on the sheet. */
+const DETAIL_GAP = 44;
+const DETAIL_LINE = 16;
+/** The memory map's heading, in lines below the details' top (under the notes). */
+const MEMORY_ROW = 4.4;
+/** The details' text: smaller and dimmer than what matters. */
+const DETAIL_SIZE = TEXT.small - 1;
+const DETAIL_ALPHA = 0.7;
 
 /** Over the board, but under TICK (who points at it): the timecard as the day ends. */
 const OVERLAY_DEPTH = 800;
@@ -79,6 +105,8 @@ export class BoardScene extends Screen {
   private dayBar!: Phaser.GameObjects.Text;
   /** Where the calendar starts, under the list (for TICK to point at). */
   private calendarTop = 0;
+  /** Where the job sheet's two detail columns start, and how wide they are (they're centered together, so it depends on the job). */
+  private columns = { left: 0, leftW: 0, right: 0, rightW: 0 };
   /** The timecard over the board, while it's up (the day ending). */
   private card: Phaser.GameObjects.GameObject[] | undefined;
 
@@ -241,13 +269,14 @@ export class BoardScene extends Screen {
   private where(target: BoardTarget): Rect {
     const inner = { x: SHEET_X + 6, w: SHEET_W - 12 };
     const bottom = this.menu.rowY(this.contracts.length - 1) + ROW_H / 2 + 4;
+    const top = SHEET_ROWS.details;
     const areas: Record<BoardTarget, Rect> = {
       list: { x: LIST_X - 12, y: LIST_TOP - 30, w: LIST_W + 24, h: bottom - LIST_TOP + 30 },
-      job: { ...inner, y: SHEET_Y + 8, h: 76 },
-      loop: { x: inner.x, y: SHEET_Y + 92, w: 286, h: 136 },
-      notes: { x: SHEET_X + 292, y: SHEET_Y + 92, w: SHEET_W - 298, h: 76 },
-      memory: { ...inner, y: SHEET_Y + 242, h: 76 },
-      time: { ...inner, y: SHEET_Y + 318, h: 38 },
+      job: { ...inner, y: SHEET_ROWS.client - 8, h: SHEET_ROWS.figures + 50 - (SHEET_ROWS.client - 8) },
+      loop: { x: this.columns.left - 8, y: top - 6, w: this.columns.leftW + 16, h: 7 * DETAIL_LINE + 10 },
+      notes: { x: this.columns.right - 8, y: top - 6, w: this.columns.rightW + 16, h: 4 * DETAIL_LINE + 8 },
+      memory: { x: this.columns.right - 8, y: top + MEMORY_ROW * DETAIL_LINE - 6, w: this.columns.rightW + 16, h: 3 * DETAIL_LINE + 8 },
+      time: { ...inner, y: SHEET_ROWS.figures - 6, h: SHEET_ROWS.when + 20 - (SHEET_ROWS.figures - 6) },
       calendar: { x: LIST_X - 12, y: this.calendarTop - 8, w: LAYOUT.right - LIST_X + 24, h: LAYOUT.about + 12 - (this.calendarTop - 8) },
       workday: { x: this.dayBar.x - this.dayBar.width / 2 - 8, y: LAYOUT.about - 13, w: this.dayBar.width + 16, h: 26 },
       card: { x: WIDTH / 2 - CARD.w / 2 - 6, y: CARD.y - CARD.h / 2 - 6, w: CARD.w + 12, h: CARD.h + 12 },
@@ -263,7 +292,7 @@ export class BoardScene extends Screen {
     this.showDay(this.contracts[this.menu.selected]);
   }
 
-  /** The chosen contract's job sheet. */
+  /** The chosen contract's job sheet: what matters large in the middle, the details small along the bottom (SHEET_ROWS). */
   private drawSheet(): void {
     this.sheet.removeAll(true);
     const contract = this.contracts[this.menu.selected];
@@ -272,19 +301,35 @@ export class BoardScene extends Screen {
     const spec = programByName(contract.program);
     const job = jobSheet(contract.program);
     const standing = standingOf(contract);
-    const left = SHEET_X + PAD;
-    const right = SHEET_X + SHEET_W - PAD;
-    const line = (x: number, y: number, content: string, size: number = TEXT.small, alpha = 0.95) => {
-      const text = this.textAt(x, y, content, size).setAlpha(alpha);
+    const seconds = contractSeconds(contract, progress);
+    const add = (text: Phaser.GameObjects.Text) => {
       this.sheet.add(text);
       return text;
     };
-    const heading = (x: number, y: number, content: string) => line(x, y, content, TEXT.small - 1, 0.8).setColor(cssColor(this.era.accent));
+    const centered = (y: number, content: string, size: number, alpha = 1) => add(this.textAt(SHEET_MID, y, content, size).setOrigin(0.5, 0).setAlpha(alpha));
+    const detail = (x: number, y: number, content: string, alpha = DETAIL_ALPHA) => add(this.textAt(x, y, content, DETAIL_SIZE).setAlpha(alpha));
+    const heading = (x: number, y: number, content: string) => detail(x, y, content, 0.8).setColor(cssColor(this.era.accent));
+    // The warning color for every standing but ready: the danger red is hard to read on DOS blue.
+    const color = cssColor(standing === 'ready' ? this.era.fg : this.colors.warn);
 
-    // Who it's for, the pay, and the job in their words.
-    line(left, SHEET_Y + 16, spec.client ?? spec.name, TEXT.body + 2, 1).setFontStyle('bold');
-    line(right, SHEET_Y + 16, formatMoney(contract.pay), TEXT.body + 2, 1).setOrigin(1, 0);
-    line(left, SHEET_Y + 42, `${spec.verb} ${formatCount(jobItems(contract))} ${spec.unit}`, TEXT.body);
+    // Who it's for, and the job in their words.
+    centered(SHEET_ROWS.client, spec.client ?? spec.name, TEXT.body + 4).setFontStyle('bold');
+    centered(SHEET_ROWS.job, `${spec.verb} ${formatCount(jobItems(contract))} ${spec.unit}`, TEXT.body, 0.85);
+
+    // The three figures that decide it: the pay, how long your CPU takes (played perfectly), and the deadline.
+    const figures: [string, string, string?][] = [
+      ['PAYS', formatMoney(contract.pay)],
+      ['YOUR CPU TAKES', formatHours(seconds), color],
+      ['DUE IN', formatHours(contract.deadline)],
+    ];
+    figures.forEach(([label, value, tint], i) => {
+      add(this.textAt(FIGURE_XS[i], SHEET_ROWS.figures, label, TEXT.small).setOrigin(0.5, 0).setAlpha(ALPHA.subtitle));
+      const big = add(this.textAt(FIGURE_XS[i], SHEET_ROWS.figures + 20, value, TEXT.title).setOrigin(0.5, 0).setFontStyle('bold'));
+      if (tint) big.setColor(tint);
+    });
+
+    // The time against the deadline, what that means, and when it would be done.
+    centered(SHEET_ROWS.bar, deadlineBar(seconds, contract.deadline, 40), TEXT.small).setColor(color);
     const lastDay = contract.expires <= progress.day;
     const verdict = {
       ready: 'YOUR CPU HAS TIME TO SPARE.',
@@ -292,35 +337,36 @@ export class BoardScene extends Screen {
       locked: 'TOO SLOW: A FASTER CPU FROM THE SHOP [S] CAN DO IT.',
       tomorrow: lastDay ? "NOT ENOUGH TIME LEFT TODAY, AND IT'S GONE TOMORROW." : "NOT ENOUGH TIME LEFT TODAY: LOG OFF [L], IT'S STILL HERE TOMORROW.",
     }[standing];
-    // The warning color for both: the danger red is hard to read on DOS blue.
-    const color = standing === 'ready' ? this.era.fg : this.colors.warn;
-    line(left, SHEET_Y + 64, verdict, TEXT.small, 1).setColor(cssColor(color));
-
-    // The loop the song plays, and the notes it sends down each lane.
-    const top = SHEET_Y + 98;
-    heading(left, top, `THE LOOP, RUN ${job.loopRuns} TIMES`);
-    job.loop.forEach((code, i) => line(left, top + 20 + i * 17, code, TEXT.small));
-    const notesX = SHEET_X + 300;
-    const total = UNITS.reduce((sum, unit) => sum + job.notes[unit], 0);
-    heading(notesX, top, `${total} NOTES IN THE SONG`);
-    UNITS.forEach((unit, i) => line(notesX, top + 20 + i * 17, `${unit.padEnd(6)} ${bar(job.notes[unit], total, 8)} ${job.notes[unit]}`, TEXT.small));
-
-    // Which memory it reads and writes: one character per address.
-    const memory = SHEET_Y + 248;
-    const strip = (marks: readonly boolean[]) => marks.map((on) => (on ? '#' : '.')).join('');
-    heading(left, memory, `MEMORY IT USES, ADDRESSES 0-${job.reads.length - 1}`);
-    line(left, memory + 20, `       ${'0'.padEnd(8)}${'8'.padEnd(8)}${'16'.padEnd(8)}24`, TEXT.small, 0.6);
-    line(left, memory + 37, `READS  ${strip(job.reads)}`);
-    line(left, memory + 54, `WRITES ${strip(job.writes)}`);
-
-    // How long your CPU takes for the whole job, against the deadline.
-    const seconds = contractSeconds(contract, progress);
-    const time = SHEET_Y + 330;
-    const period = formatDuration(1 / (ratedMhz(progress) * 1e6));
-    line(left, time - 8, `${formatCount(contract.instructions)} INSTRUCTIONS x CPI ${cpiFor(contract.program, progress).toFixed(2)} x ${period} = ${formatDuration(seconds)}`, TEXT.small, 0.8);
+    centered(SHEET_ROWS.verdict, verdict, TEXT.small).setColor(color);
     const offer = isTutorial(contract) ? '' : lastDay ? 'LAST DAY ON OFFER' : 'ON OFFER TILL TOMORROW';
-    line(left, time + 10, `DUE IN ${formatHours(contract.deadline)}`.padEnd(18) + deadlineBar(seconds, contract.deadline, 18), TEXT.small).setColor(cssColor(color));
-    line(right, time + 10, offer, TEXT.small, 0.7).setOrigin(1, 0);
+    const done = standing === 'ready' || standing === 'tight' ? `DONE BY ${formatClock(clockSeconds(progress) + (isTutorial(contract) ? 0 : seconds))}` : '';
+    centered(SHEET_ROWS.when, [done, offer].filter(Boolean).join('   '), TEXT.small, ALPHA.subtitle);
+
+    // The details: a rule, then the loop the song plays, the notes it sends down each lane, and the memory it uses.
+    add(this.textAt(SHEET_MID, SHEET_ROWS.details - 13, '-'.repeat(60), DETAIL_SIZE).setOrigin(0.5, 0).setAlpha(0.35));
+    const top = SHEET_ROWS.details;
+    // Each column is drawn at x = 0, measured, then both are moved so they sit centered together.
+    const left = [heading(0, top, `THE LOOP, RUN ${job.loopRuns} TIMES`), ...job.loop.map((code, i) => detail(0, top + (i + 1) * DETAIL_LINE, code))];
+    const total = UNITS.reduce((sum, unit) => sum + job.notes[unit], 0);
+    // Which memory it reads and writes: one character per address.
+    const memory = top + MEMORY_ROW * DETAIL_LINE;
+    const strip = (marks: readonly boolean[]) => marks.map((on) => (on ? '#' : '.')).join('');
+    const right = [
+      heading(0, top, `${total} NOTES IN THE SONG`),
+      ...UNITS.map((unit, i) => detail(0, top + (i + 1) * DETAIL_LINE, `${unit.padEnd(6)} ${bar(job.notes[unit], total, 8)} ${job.notes[unit]}`)),
+      heading(0, memory, `MEMORY IT USES: ADDRESSES 0-${job.reads.length - 1}`),
+      detail(0, memory + DETAIL_LINE, `READS  ${strip(job.reads)}`),
+      detail(0, memory + 2 * DETAIL_LINE, `WRITES ${strip(job.writes)}`),
+    ];
+    const widest = (texts: Phaser.GameObjects.Text[]) => Math.max(...texts.map((text) => text.width));
+    const [leftW, rightW] = [widest(left), widest(right)];
+    const start = Math.round(SHEET_MID - (leftW + DETAIL_GAP + rightW) / 2);
+    this.columns = { left: start, leftW, right: start + leftW + DETAIL_GAP, rightW };
+    for (const text of left) text.setX(this.columns.left);
+    for (const text of right) text.setX(this.columns.right);
+    // How the time is worked out: instructions x CPI x clock period.
+    const period = formatDuration(1 / (ratedMhz(progress) * 1e6));
+    detail(SHEET_MID, SHEET_ROWS.working, `TIME = ${formatCount(contract.instructions)} INSTRUCTIONS x CPI ${cpiFor(contract.program, progress).toFixed(2)} x ${period} = ${formatDuration(seconds)}`).setOrigin(0.5, 0);
   }
 
   private take(): void {

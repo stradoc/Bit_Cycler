@@ -14,6 +14,7 @@ import { ListMenu } from '../ui/list.js';
 import { Screen } from '../ui/screen.js';
 import { ALPHA, LAYOUT } from '../ui/theme.js';
 import { HEIGHT, WIDTH } from '../visual/display.js';
+import { TitleLogo } from '../visual/title3d.js';
 const FOLDER_PATH = { root: [], briefings: ['BRIEFS'] };
 const LIST_X = 230;
 const LIST_TOP = 172;
@@ -27,6 +28,8 @@ const CODE_COLUMNS = [24, 740];
 const CODE_TOP = 24;
 const CODE_BOTTOM = 430;
 const CODE_WIDTH = 196;
+/** The game's name, as the 3D title spells it, and where it hovers. */
+const TITLE = { word: 'BIT CYCLER', x: WIDTH / 2, y: 60 };
 /**
  * The main menu, as the game's own disk: programs to run (continue, a new
  * campaign, practice, shut down), folders to open (saves, BRIEFS: TICK's lessons), the
@@ -61,6 +64,8 @@ export class TitleScene extends Screen {
     guide;
     /** The welcome plays once the menu has arrived. */
     welcomeDue = false;
+    /** The game's name in 3D, hovering at the top. */
+    logo;
     constructor() {
         super('title');
     }
@@ -78,8 +83,8 @@ export class TitleScene extends Screen {
         this.setUp({ glow: 'menu' });
         const { era } = this;
         this.scrollingCode();
-        const title = this.text(WIDTH / 2, 62, 'BIT CYCLER', 52).setColor(cssColor(era.accent));
-        const tagline = this.text(WIDTH / 2, 102, 'A CPU TYCOON WHERE EVERY BEAT IS ONE CLOCK CYCLE', 13).setAlpha(ALPHA.subtitle);
+        this.logo = new TitleLogo(this, era, TITLE.x, TITLE.y, TITLE.word);
+        const tagline = this.text(WIDTH / 2, 106, 'A CPU TYCOON WHERE EVERY BEAT IS ONE CLOCK CYCLE', 13).setAlpha(ALPHA.subtitle);
         this.prompt = this.text(LIST_X, 138, '', 15).setOrigin(0, 0.5);
         this.menu = new ListMenu(this, era, { x: LIST_X, top: LIST_TOP, width: 500, rowHeight: ROW_H, size: 16 });
         // Block letters close up (no line spacing), so their half blocks join into whole letters.
@@ -94,14 +99,15 @@ export class TitleScene extends Screen {
         this.guide = new Guide(this, era);
         if (this.fromBoot) {
             this.cameras.main.fadeIn(300, 0, 0, 0);
-            this.arrive(title, tagline, [this.footer, this.about, status, hints]);
+            this.arrive(tagline, [this.footer, this.about, status, hints]);
         }
         else {
             this.welcomeIfDue();
         }
     }
-    update() {
+    update(time, delta) {
         super.update();
+        this.logo.update(time, delta);
         this.guide.update(performance.now());
     }
     /** TICK's welcome, if it's due: what the game is for, and where things are. */
@@ -374,19 +380,19 @@ export class TitleScene extends Screen {
     }
     // ---- effects ----
     /**
-     * From the intro: the title types itself out, the tagline fades in, the
+     * From the intro: the 3D title types itself out, the tagline fades in, the
      * folder's listing command types itself at the prompt, the files appear a
      * line at a time with a key click each, then the lines below fade in. Any
      * key skips to the end.
      */
-    arrive(title, tagline, fades) {
-        const name = title.text;
+    arrive(tagline, fades) {
+        const name = TITLE.word;
         const command = this.prompt.text;
         const promptEnd = command.length - listCommand(this.era).length;
         const taglineAlpha = tagline.alpha;
         const alphas = fades.map((text) => text.alpha);
         const at = (ms, action) => this.arrival.push(this.time.delayedCall(ms, action));
-        title.setText('');
+        this.logo.show(0, true);
         tagline.setAlpha(0);
         this.prompt.setText('');
         for (const text of fades)
@@ -395,7 +401,7 @@ export class TitleScene extends Screen {
         let t = 450;
         for (let typed = 1; typed <= name.length; typed++, t += 110) {
             at(t, () => {
-                title.setText(name.slice(0, typed) + (typed < name.length ? '█' : ''));
+                this.logo.show(typed, typed < name.length);
                 this.cue('letter');
             });
         }
@@ -429,7 +435,7 @@ export class TitleScene extends Screen {
                 timer.remove();
             this.arrival = [];
             this.tweens.killTweensOf([tagline, ...fades]);
-            title.setText(name);
+            this.logo.show(name.length);
             tagline.setAlpha(taglineAlpha);
             this.prompt.setText(command);
             fades.forEach((text, i) => text.setAlpha(alphas[i]));

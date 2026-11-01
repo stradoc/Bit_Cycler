@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { behind, buildChip, drawOrder, overlaps, screenOutline, type Part, type Shape } from '../game/src/visual/chip3d.ts';
+import { buildChip } from '../game/src/visual/chip3d.ts';
+import { behind, drawOrder, overlaps, screenOutline, type Part, type Shape } from '../game/src/visual/model3d.ts';
+import { blockPixels } from '../game/src/data/menuFiles.ts';
+import { buildTitle, pixelBlocks } from '../game/src/visual/title3d.ts';
 import { NEW_GAME, withEverything } from '../game/src/sim/progress.ts';
 
 /** The shop's camera, seen from the model, as the chip turns to `spin` (420 units away, tilted down 0.62 rad). */
@@ -65,6 +68,54 @@ test('as the chip turns, every part is drawn after every part it can hide', () =
         const iFirst = behind(shapes[i], shapes[j], camera);
         assert.notEqual(iFirst, null, `step ${step}: parts ${i} and ${j} overlap on screen but their planes disagree`);
         assert.equal((position.get(i) ?? 0) < (position.get(j) ?? 0), iFirst, `step ${step}: parts ${i} and ${j} out of order`);
+      }
+    }
+  }
+});
+
+test("the title's blocks cover exactly the block letters' lit pixels, once each", () => {
+  const rows = blockPixels('BIT CYCLER');
+  const lit = rows.join('').split('').filter((pixel) => pixel === '#').length;
+  const cells = new Set<string>();
+  for (const { x, y, w, h } of pixelBlocks(rows)) {
+    for (let dy = 0; dy < h; dy++) {
+      for (let dx = 0; dx < w; dx++) {
+        assert.equal(rows[y + dy][x + dx], '#');
+        assert.ok(!cells.has(`${x + dx},${y + dy}`), 'covered twice');
+        cells.add(`${x + dx},${y + dy}`);
+      }
+    }
+  }
+  assert.equal(cells.size, lit);
+});
+
+test('the title types itself without moving: each letter lands where the whole word has it, the cursor after it', () => {
+  const where = (part: Part) => JSON.stringify([part.plan, part.bottom, part.top]);
+  const whole = new Set(buildTitle('BIT CYCLER').map(where));
+  const typed = buildTitle('BIT CYCLER', 3);
+  // "BIT" is blocks of the whole word, in the same places.
+  assert.ok(typed.length > 0 && typed.every((part) => whole.has(where(part))));
+  // Nothing typed yet: the cursor alone, a 5 x 5 block at the left end.
+  const [cursor, ...rest] = buildTitle('BIT CYCLER', 0, true);
+  assert.equal(rest.length, 0);
+  assert.equal(cursor.plan[0][0], Math.min(...buildTitle('BIT CYCLER').flatMap((part) => part.plan.map(([x]) => x))));
+  assert.equal(cursor.top - cursor.bottom, 50);
+});
+
+test('as the title turns toward the pointer, every block is drawn after every block it can hide', () => {
+  const shapes = buildTitle('BIT CYCLER');
+  for (const yaw of [-0.45, -0.2, 0, 0.2, 0.45]) {
+    for (const tilt of [-0.45, -0.18, 0, 0.1]) {
+      const camera: [number, number, number] = [900 * Math.cos(tilt) * Math.sin(yaw), -900 * Math.sin(tilt), -900 * Math.cos(tilt) * Math.cos(yaw)];
+      const position = new Map(drawOrder(shapes, camera).map((part, place) => [part, place]));
+      const outlines = shapes.map((shape) => screenOutline(shape, camera));
+      for (let i = 0; i < shapes.length; i++) {
+        for (let j = i + 1; j < shapes.length; j++) {
+          if (!overlaps(outlines[i], outlines[j])) continue;
+          const iFirst = behind(shapes[i], shapes[j], camera);
+          assert.notEqual(iFirst, undefined, `blocks ${i} and ${j} overlap`);
+          if (iFirst !== null) assert.equal((position.get(i) ?? 0) < (position.get(j) ?? 0), iFirst, `yaw ${yaw} tilt ${tilt}: blocks ${i} and ${j} out of order`);
+        }
       }
     }
   }

@@ -43,8 +43,10 @@ export function formatClock(seconds) {
     const hour = hour24 % 12 === 0 ? 12 : hour24 % 12;
     return `${hour}:${String(minutes % 60).padStart(2, '0')} ${hour24 < 12 ? 'AM' : 'PM'}`;
 }
-/** A span of the workday in hours and minutes: "3 H 20 MIN", "4 H", "45 MIN" (under a minute: "0 MIN"). */
+/** A span of the workday in hours and minutes: "3 H 20 MIN", "4 H", "45 MIN", "UNDER 1 MIN" (the tutorial job), "0 MIN". */
 export function formatHours(seconds) {
+    if (seconds > 0 && seconds < 60)
+        return 'UNDER 1 MIN';
     const minutes = Math.floor(seconds / 60);
     const [h, m] = [Math.floor(minutes / 60), minutes % 60];
     if (h === 0)

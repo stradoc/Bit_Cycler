@@ -5,8 +5,8 @@ import { PipelineRun, type Action } from '../game/src/rhythm/pipelineRun.ts';
 import { assemble } from '../game/src/sim/assembler.ts';
 import { Cpu } from '../game/src/sim/cpu.ts';
 import { unitOf } from '../game/src/sim/isa.ts';
-import { practiceLines, resultLines } from '../game/src/song/results.ts';
-import { NEW_GAME } from '../game/src/sim/progress.ts';
+import { CARD_WIDTH, practiceLines, resultCard, runReport } from '../game/src/song/results.ts';
+import { fillBoard, NEW_GAME } from '../game/src/sim/progress.ts';
 import { songSetup, type SongStart } from '../game/src/song/setup.ts';
 import type { Shown } from '../game/src/song/view.ts';
 import { SongWords } from '../game/src/song/words.ts';
@@ -59,16 +59,57 @@ test('practice explains a hazard on the line before anything else, and says why 
   assert.match(words.mistake('violation'), /isn't ready/);
 });
 
-test('the results add up: where the cycles went sums to the cycles, and the CPI line matches', () => {
-  const { run, setup, fresh, words } = song({ practice: false });
+/** A real run of the board's first job, its replay recorded as paid (late if `late`). */
+function paidRun(late: boolean, options: SongStart = {}) {
+  const contract = fillBoard(NEW_GAME, () => 0.5).board[0];
+  const replay = { cycles: [], dials: [], maxDial: 1.5, canOverclock: false, paid: true, late };
+  return song({ practice: false, contract, replay, ...options });
+}
+
+test('the results card adds up: every cycle is counted once, and the CPI is the one the run had', () => {
+  const { run, setup, fresh } = song({ practice: false });
   playPerfectly(run);
-  const lines = resultLines({ run, setup, tierTitle: words.tierTitle(), freshCpu: fresh, dials: [], money: 0 });
+  const report = runReport({ run, setup, freshCpu: fresh, dials: [] });
   const p = run.pipeline;
-  assert.ok(lines.includes(`WHERE THE ${p.cycles} CYCLES WENT`));
-  const start = lines.indexOf(`WHERE THE ${p.cycles} CYCLES WENT`) + 1;
-  const counts = lines.slice(start, start + 4).map((line) => Number(line.trim().split(/\s+/).at(-1)));
-  assert.equal(counts.reduce((a, b) => a + b, 0), p.cycles);
-  assert.ok(lines.some((line) => line.includes(`CPI = ${p.cycles} CYCLES / ${p.instructions} INSTRUCTIONS = ${p.cpi.toFixed(2)}`)));
-  assert.ok(lines.at(-1)?.includes('[ENTER] PLAY AGAIN'));
+  assert.equal(report.uses.reduce((sum, u) => sum + u.cycles, 0), p.cycles);
+  assert.equal(report.uses[0].use, 'finished');
+  // Not a contract: no stamp of a verdict, and Enter plays again.
+  assert.equal(report.verdict, 'done');
+  const card = resultCard(report);
+  assert.ok(card.lines.some((line) => line.includes(`WHERE THE ${p.cycles} CYCLES WENT`) && line.endsWith(`CPI ${p.cpi.toFixed(2)}`)));
+  assert.ok(card.keys.startsWith('[ENTER] PLAY AGAIN'));
+  assert.ok(card.lines.every((line) => line.length <= CARD_WIDTH + 1), 'a line runs off the card');
   assert.ok(practiceLines(run, 'board').includes('[ENTER] CONTRACT BOARD'));
+});
+
+test('a paid job\'s card stamps it on time with the full pay, or late with half', () => {
+  for (const late of [false, true]) {
+    const { run, setup, fresh } = paidRun(late);
+    playPerfectly(run);
+    const report = runReport({ run, setup, freshCpu: fresh, dials: [] });
+    const card = resultCard(report);
+    const pay = setup.contract?.pay ?? 0;
+    assert.equal(report.verdict, late ? 'late' : 'on-time');
+    assert.equal(report.job?.pay, late ? Math.round(pay / 2) : pay);
+    assert.equal(card.late, late);
+    assert.ok(card.lines[0].endsWith(late ? `HALF PAY: $${Math.round(pay / 2)}` : `PAID $${pay}`));
+    assert.ok(card.keys.startsWith('[ENTER] CONTRACT BOARD'));
+    // The stamp is framed block letters.
+    assert.ok(card.stamp[0].startsWith('+-') && card.stamp.some((line) => line.includes('█')));
+  }
+});
+
+test("TICK's explanation of the results: short lines, one for each way cycles were lost, on every tier", () => {
+  for (const options of [{ singleCycle: true }, {}, { forwarding: true }, { predictor: '2-bit', l1: true }] as SongStart[]) {
+    const { run, setup, fresh, words } = paidRun(false, options);
+    playPerfectly(run);
+    const report = runReport({ run, setup, freshCpu: fresh, dials: [] });
+    const steps = words.resultsTour(report);
+    for (const step of steps) assert.ok(step.say.length <= 150, `too long: ${step.say}`);
+    assert.match(steps[0].say, /^On time!/);
+    assert.ok(steps.some((step) => step.say.includes(`CPI (cycles per instruction) of ${report.cpi.toFixed(2)}`)));
+    const lost = report.uses.filter((u) => u.use !== 'finished');
+    for (const { cycles } of lost) assert.ok(steps.some((step) => step.say.startsWith(`${cycles} cycles`)), `no line for ${cycles} lost cycles`);
+    assert.equal(steps.filter((step) => step.say.startsWith('A single-cycle CPU')).length, setup.singleCycle ? 0 : 1);
+  }
 });
