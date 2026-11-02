@@ -36,6 +36,8 @@ export type GuideLine = {
   readonly keys?: string;
   /** It stays until Enter (or a click) closes it, and the screen waits (practice's tips). */
   readonly hold?: boolean;
+  /** Said in passing, from the screen's bottom-right corner, clear of what's being played (a practice mistake after the first practice). */
+  readonly aside?: boolean;
   /** A question's answers (ask() sets them). */
   readonly choices?: readonly string[];
   /** How he feels about it (calm unless given): happy, cheering, or worried. */
@@ -318,7 +320,7 @@ export class Guide {
     this.unit.add([...parts, tail]);
     this.bubble = [...parts, tail];
     this.words = words;
-    const goal = line.picture ? { x: WIDTH / 2 - w / 2, y: CARD.y + CARD.h / 2 + GAP } : placeBeside(w, h, p);
+    const goal = line.picture ? { x: WIDTH / 2 - w / 2, y: CARD.y + CARD.h / 2 + GAP } : line.aside ? { x: WIDTH - MARGIN - w, y: HEIGHT - MARGIN - h } : placeBeside(w, h, p);
     if (this.unit.visible) {
       this.walkTo(goal);
     } else {

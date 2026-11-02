@@ -12,7 +12,7 @@ import { assemble } from '../sim/assembler.js';
 import { addressOf, Cpu } from '../sim/cpu.js';
 import { keepsTotal, unitOf } from '../sim/isa.js';
 import { CACHE_LINES, freezeBeats } from '../sim/memory.js';
-import { thermalConfig, tierOf, withSeen } from '../sim/progress.js';
+import { thermalConfig, tierOf, withSeen, withTipSeen } from '../sim/progress.js';
 import { logJob, NO_CALLS, tallyCycle } from '../rhythm/skills.js';
 import { finishJob } from '../sim/workday.js';
 import { Chip, THERMAL } from '../sim/thermal.js';
@@ -402,7 +402,7 @@ export class PipelineScene extends Screen {
                 return;
             if (outcome !== 'issued' && outcome !== 'stalled') {
                 this.buzz();
-                this.guide.say({ say: this.words.mistake(outcome), point: this.where('line'), dim: TIP_DIM, keys: '[ENTER] OK', hold: true, mood: 'worried' });
+                this.explainMistake(this.words.mistake(outcome));
                 return;
             }
             this.guide.quiet();
@@ -428,7 +428,7 @@ export class PipelineScene extends Screen {
         if (this.setup.practice) {
             if (evaluate(this.run.pipeline, { ...decided, also: route }) !== 'paired') {
                 this.buzz();
-                this.guide.say({ say: this.words.mistake('wrong-pair'), point: this.where('line'), dim: TIP_DIM, keys: '[ENTER] OK', hold: true, mood: 'worried' });
+                this.explainMistake(this.words.mistake('wrong-pair'));
                 return true;
             }
             beat = this.run.dueBeat;
@@ -476,6 +476,16 @@ export class PipelineScene extends Screen {
         }
     }
     /**
+     * Practice: a wrong key, said by TICK. The first practice stops for it
+     * until Enter; later ones say it in passing, and the note waits for the right key.
+     */
+    explainMistake(say) {
+        if (this.setup.guided)
+            this.guide.say({ say, point: this.where('line'), dim: TIP_DIM, keys: '[ENTER] OK', hold: true, mood: 'worried' });
+        else
+            this.guide.say({ say, dim: 0, aside: true, mood: 'worried' });
+    }
+    /**
      * Practice: close cycles one at a time and hold the chart at the first
      * instruction in ID still waiting for the player (even if a slow frame
      * spans several beats). Returns the chart beat to use this frame.
@@ -484,14 +494,15 @@ export class PipelineScene extends Screen {
         while (!this.run.done) {
             // A memory wait passes on its own: only a decision holds the chart.
             if (this.run.pipeline.stages.ID && !this.run.decided && !this.run.frozen) {
-                // A new kind of instruction gets TICK's close look as soon as it's next, before a quick key can play it.
-                this.lookClosely();
-                if (beat > this.run.dueBeat) {
-                    this.chartOffset += beat - this.run.dueBeat;
-                    beat = this.run.dueBeat;
+                // A new kind of instruction gets TICK's close look as soon as it's next, before a quick key can play it;
+                // a new idea, its tip as it comes up (never because you're a moment late: a seen tip isn't said again).
+                if (!this.lookClosely())
                     for (const tip of this.words.situation())
                         if (this.tip(tip))
                             break;
+                if (beat > this.run.dueBeat) {
+                    this.chartOffset += beat - this.run.dueBeat;
+                    beat = this.run.dueBeat;
                 }
                 return beat;
             }
@@ -677,12 +688,15 @@ export class PipelineScene extends Screen {
     buzz() {
         this.cue('mistake');
     }
-    /** A practice tip, the first time it comes up. Returns whether it was shown. */
+    /** A practice tip, the first time it comes up in this game (`Progress.seenTips`). Returns whether it was shown. */
     tip(tip) {
-        // Not over TICK's tour or a close look still under way: the tip waits for the next time it comes up.
-        if (!this.setup.practice || !tip || !teaching().tips || this.explained.has(tip.id) || this.guide.touring || this.landing || this.closeLook)
+        // Not over TICK's tour, a line he's holding, or a close look still under way: the tip waits for the next time it comes up.
+        if (!this.setup.practice || !tip || !teaching().tips || this.explained.has(tip.id) || getProgress().seenTips.includes(tip.id))
+            return false;
+        if (this.guide.waiting || this.landing || this.closeLook)
             return false;
         this.explained.add(tip.id);
+        updateProgress((p) => withTipSeen(p, tip.id));
         this.guide.say({ say: tip.message, point: this.where(tip.point ?? 'line'), dim: TIP_DIM, keys: '[ENTER] OK', hold: true });
         return true;
     }

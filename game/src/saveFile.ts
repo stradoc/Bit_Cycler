@@ -66,6 +66,8 @@ function cleanProgress(raw: Record<string, unknown>): Progress {
     board: Array.isArray(progress.board) ? progress.board.filter(isContract) : [],
     nextId: Math.round(clamp(progress.nextId, 1, Number.MAX_SAFE_INTEGER, 1)),
     seenLessons: Array.isArray(progress.seenLessons) ? progress.seenLessons.filter((id) => typeof id === 'string') : [],
+    // Saves from before tips were remembered: none given yet.
+    seenTips: Array.isArray(progress.seenTips) ? progress.seenTips.filter((id) => typeof id === 'string') : [],
     // Saves from before the calendar start on day 1 at 9:00.
     day: Math.round(clamp(progress.day, 1, Number.MAX_SAFE_INTEGER, 1)),
     worked: clamp(progress.worked, 0, 24 * 3600, 0),

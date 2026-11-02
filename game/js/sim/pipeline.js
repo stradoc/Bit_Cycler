@@ -296,6 +296,51 @@ export class Pipeline {
         return this.pairCheck().ok ? 'pair' : 'issue';
     }
     /**
+     * Superscalar: the instructions (by seq) that will start as the second of
+     * a pair over the next `cycles` if they're played perfectly from here, so
+     * the song can draw a chord from the moment its notes appear, not only once
+     * both reach the front. Played on a copy that keeps up with any clock:
+     * memory waits change when pairs start, never which ones do.
+     */
+    plannedPartners(cycles) {
+        const partners = new Set();
+        if (!this.options.superscalar || this.options.singleCycle)
+            return partners;
+        const copy = this.copy();
+        for (let i = 0; i < cycles && !copy.done; i++) {
+            if (copy.waitLeft > 0) {
+                copy.wait();
+                continue;
+            }
+            const { event } = copy.step(copy.bestAction());
+            if (event.kind === 'paired')
+                partners.add(event.partner.seq);
+        }
+        return partners;
+    }
+    /** A copy to play ahead on: the same state, with memory that keeps up with any clock (no new waits). */
+    copy() {
+        const copy = new Pipeline(this.cpu.clone(), { ...this.options, mhz: undefined });
+        copy.regs.splice(0, copy.regs.length, ...this.regs);
+        copy.stages = { ...this.stages };
+        copy.partners = { ...this.partners };
+        copy.cycle = this.cycle;
+        copy.memoryWait = this.memoryWait;
+        copy.refillWait = this.refillWait;
+        for (const [pc, outcomes] of this.history)
+            copy.history.set(pc, [...outcomes]);
+        for (const [pc, counter] of this.counters)
+            copy.counters.set(pc, counter);
+        copy.fetchGuesses.clear();
+        for (const [seq, guess] of this.fetchGuesses)
+            copy.fetchGuesses.set(seq, guess);
+        copy.prediction = this.prediction;
+        copy.partnerPrediction = this.partnerPrediction;
+        copy.fetchPc = this.fetchPc;
+        copy.nextSeq = this.nextSeq;
+        return copy;
+    }
+    /**
      * Spends up to `cycles` of the current wait (memory first, then a refill),
      * nothing able to move on. Returns how many it spent. A refill holds the
      * whole pipeline too: what's ahead of the refetched instruction is only the

@@ -1,5 +1,4 @@
 import { parseSave, saveText, type Saved } from './saveFile.ts';
-import { teaching } from './settings.ts';
 import { fillBoard, NEW_GAME, newCampaign, type Progress } from './sim/progress.ts';
 
 // Saves the player's progress in the browser, like settings.ts does for
@@ -117,8 +116,8 @@ export function updateProgress(change: (progress: Progress) => Progress): Progre
 /** A new game in `slot` (erasing what was there), which becomes the active slot. */
 export function newGame(slot: SlotId = activeSlot()): Progress {
   switchSlot(slot);
-  // The tutorial job is part of TICK's teaching: skipped with the tutorial.
-  return setProgress(teaching().tips ? newCampaign() : fillBoard(NEW_GAME, Math.random));
+  // Every new game starts with the tutorial job, where TICK asks how much to teach.
+  return setProgress(newCampaign());
 }
 
 /**

@@ -89,6 +89,11 @@ export type SongSetup = {
   readonly difficulty: Difficulty;
   readonly pace: Pace;
   readonly practice: boolean;
+  /**
+   * The first practice (lesson 1, the single-cycle CPU): a wrong key stops it
+   * and TICK explains. In later practices he says why in passing and you play on.
+   */
+  readonly guided: boolean;
   readonly contract: Contract | undefined;
   readonly returnTo: string | undefined;
   /** The run being watched, in a replay. */
@@ -145,6 +150,7 @@ export function songSetup(start: SongStart, progress: Progress, params: URLSearc
     difficulty,
     pace: DIFFICULTIES[practice ? 'relaxed' : difficulty],
     practice,
+    guided: practice && singleCycle,
     contract,
     returnTo: start.returnTo,
     replay,

@@ -7,6 +7,7 @@ import { codeLine } from '../visual/codeLine.js';
 import { motionOf } from '../visual/motion.js';
 import { FLUSH_SHIFT, HIT_Y, LANE_KEYS, LANE_W, LANE_X0, laneCenter, LANES_W, LOOKAHEAD, NOTE_H, NOTE_W, noteKey, PX_PER_BEAT, ROW_GAP, STAGE_NAMES, } from './layout.js';
 import { Part } from './view.js';
+const NO_PARTNERS = new Set();
 /**
  * The highway: lanes for the units, notes falling to the hit line (ID), and
  * once issued, stepping down the EX / MEM / WB rows; the keys under the lanes;
@@ -35,6 +36,8 @@ export class Highway extends Part {
     hazardFrame;
     waitFrame;
     redirects = [];
+    /** Superscalar: which upcoming instructions will pair, and the pipeline's moment it was worked out for. */
+    plan;
     motion;
     constructor(view) {
         super(view);
@@ -187,8 +190,8 @@ export class Highway extends Part {
     /**
      * Keeps one falling note per upcoming instruction (ID, IF, then the next
      * fetches), on the notes' clock: the chart's beat minus the beats `frozen`
-     * waiting for memory, so they hold still during a wait. Superscalar: the
-     * first two arrive side by side (a chord) when they can start together.
+     * waiting for memory, so they hold still during a wait. Superscalar: two
+     * that will start together fall side by side from the top (a chord).
      */
     syncNotes(chartBeat, elapsed, frozen) {
         const { run } = this.view;
@@ -197,13 +200,18 @@ export class Highway extends Part {
         const beat = chartBeat - frozen;
         const due = run.dueBeat - run.waitBeats;
         const wanted = [];
-        // Superscalar: two that can start together arrive together, a chord, and everything behind them comes a beat sooner.
-        const chord = this.view.setup.superscalar && pipeline.pairCheck().ok ? 1 : 0;
+        // Superscalar: two that will start together fall side by side from the top, a chord, and everything behind them comes a beat sooner.
+        const partners = this.plannedPartners();
         if (ID)
             wanted.push({ slot: ID, k: 0 });
-        if (IF)
-            wanted.push({ slot: IF, k: 1 - chord });
-        pipeline.upcoming(LOOKAHEAD).forEach((slot, i) => wanted.push({ slot, k: 2 + i - chord }));
+        let k = 0;
+        for (const slot of [IF, ...pipeline.upcoming(LOOKAHEAD)]) {
+            if (!slot)
+                continue;
+            if (!partners.has(slot.seq))
+                k++;
+            wanted.push({ slot, k });
+        }
         // A note whose instruction is still coming keeps its place when it's numbered again (fetched again after a flush).
         const gone = [...this.notes].filter(([key]) => !wanted.some(({ slot }) => noteKey(slot) === key));
         const keep = new Set();
@@ -233,6 +241,21 @@ export class Highway extends Part {
             this.notes.delete(key);
             this.motion.play('note-drop', [view.box, view.label], { remove: true });
         }
+    }
+    /**
+     * Superscalar: the upcoming instructions that will start beside the one
+     * before them (`Pipeline.plannedPartners`), worked out again only when the
+     * pipeline has moved on.
+     */
+    plannedPartners() {
+        const { run, setup } = this.view;
+        if (!setup.superscalar)
+            return NO_PARTNERS;
+        const { pipeline } = run;
+        const at = `${pipeline.cycle}:${pipeline.stages.ID?.seq}:${pipeline.waitLeft}`;
+        if (this.plan?.at !== at)
+            this.plan = { at, partners: pipeline.plannedPartners(2 * (LOOKAHEAD + 2)) };
+        return this.plan.partners;
     }
     /** Moves issued notes down to the row of the stage they're in; drops notes that left WB. */
     syncRows() {

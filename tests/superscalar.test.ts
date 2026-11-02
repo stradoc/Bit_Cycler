@@ -196,3 +196,31 @@ test("instruction order decides what can pair: SUM ARRAY's loop has no pair, the
   assert.equal(paired.cpu.memory[8], 27);
   assert.equal(tierByNumber(7).options?.program, 'SUM PAIRS');
 });
+
+test('chords are known before they reach the front: the pairs a perfect run will start, worked out on a copy', () => {
+  // addi+lb, then add+sb (the first test): seen from the very first cycle, before either pair is at the front.
+  const pipeline = new Pipeline(new Cpu(assemble('addi x1, x0, 1\nlb x2, 0(x0)\nadd x3, x1, x1\nsb x1, 4(x0)'), 8), SUPER);
+  assert.deepEqual([...pipeline.plannedPartners(20)].sort(), [1, 3]);
+  // Planning changes nothing: the pipeline is still on its first cycle, with addi in fetch.
+  assert.equal(pipeline.cycle, 1);
+  assert.equal(pipeline.stages.IF?.seq, 0);
+  assert.equal(pipeline.stages.ID, null);
+  // SUM PAIRS, cycle by cycle: what's planned at each moment is what a perfect run then pairs.
+  const spec = programByName('SUM PAIRS');
+  const options: PipelineOptions = { forwarding: true, predictor: '2-bit', superscalar: true };
+  const live = new Pipeline(new Cpu(assemble(spec.source), 8, spec.memory), options);
+  const planned = live.plannedPartners(1000);
+  const paired = new Set<number>();
+  while (!live.done) {
+    if (live.waitLeft > 0) {
+      live.wait();
+      continue;
+    }
+    const { event } = live.step(live.bestAction());
+    if (event.kind === 'paired') paired.add(event.partner.seq);
+  }
+  assert.ok(paired.size >= 10);
+  assert.deepEqual([...planned].sort((a, b) => a - b), [...paired].sort((a, b) => a - b));
+  // Without superscalar nothing pairs.
+  assert.equal(new Pipeline(new Cpu(assemble(spec.source), 8, spec.memory), { forwarding: true }).plannedPartners(50).size, 0);
+});

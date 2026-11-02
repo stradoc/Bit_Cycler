@@ -27,7 +27,7 @@ const HELP = `Bit Cycler cheats (type in this console):
   cheat.board()         new random contracts
   cheat.time(6)         hours of today's workday already used (0-8; past 8 the day is over)
   cheat.endDay()        log off: the next morning, with new offers
-  cheat.lessons(true)   mark every lesson and tour seen (false: unseen again)
+  cheat.lessons(true)   mark every lesson and tour seen (false: unseen again, practice's tips too)
   cheat.autoplay()      the game plays songs for you (false to stop)
   cheat.temp(94)        set the chip's temperature mid-song
   cheat.reset()         new game (wipes the save)`;
@@ -70,7 +70,7 @@ export function installCheats(game: Phaser.Game): void {
     time: (hours: number) => change((p) => ({ ...p, worked: Math.max(0, Math.min(24, hours)) * 3600 })),
     endDay: () => change((p) => endDay(p, Math.random).progress),
     lessons: (read = true) => {
-      updateProgress((p) => ({ ...p, seenLessons: read ? [...TAUGHT_IDS] : [] }));
+      updateProgress((p) => (read ? { ...p, seenLessons: [...TAUGHT_IDS] } : { ...p, seenLessons: [], seenTips: [] }));
       return `lessons and tours marked ${read ? 'seen' : 'unseen'} (${getProgress().seenLessons.length} seen)`;
     },
     autoplay: (on = true) => {

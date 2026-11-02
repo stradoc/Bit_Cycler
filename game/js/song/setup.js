@@ -48,6 +48,7 @@ export function songSetup(start, progress, params) {
         difficulty,
         pace: DIFFICULTIES[practice ? 'relaxed' : difficulty],
         practice,
+        guided: practice && singleCycle,
         contract,
         returnTo: start.returnTo,
         replay,

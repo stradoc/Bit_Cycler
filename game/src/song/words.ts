@@ -20,6 +20,10 @@ import type { Shown } from './view.ts';
 // screen decides when to show them.
 
 /** A practice tip, said by the guide, which points at the part of the screen it's about (the hit line unless given). */
+/**
+ * A practice tip: said once per save (`Progress.seenTips`), so each id is one
+ * idea; a tip that says something new for another CPU needs its own id.
+ */
 export type Tip = { readonly id: string; readonly message: string; readonly point?: SongTarget };
 
 /** What each kind of instruction is for, in everyday words: tier 1's tips are for players who have never seen one. */
@@ -246,7 +250,7 @@ export class SongWords {
     const lost = this.setup.deep ? DEEP_PIPELINE.wrongGuessCycles : 1;
     const feedback = mispredicted ? `WRONG GUESS: ${lost} CYCLE${lost === 1 ? '' : 'S'} LOST\nNEXT INSTRUCTION FLUSHED` : `GOOD GUESS: ${taken ? 'TAKEN' : 'NOT TAKEN'}\nNO CYCLE LOST`;
     if (mispredicted && this.setup.deep) {
-      return { feedback, tip: { id: 'wrong-guess', point: 'rows', message: `WRONG GUESS: the work started behind\nthe branch is thrown out (FLUSHED), and\nthe deep pipeline's ${DEEP_PIPELINE.wrongGuessCycles - 1} extra front stages\nrefill: ${lost} cycles lost, not 1.` } };
+      return { feedback, tip: { id: 'deep-refill', point: 'rows', message: `WRONG GUESS: the work started behind\nthe branch is thrown out (FLUSHED), and\nthe deep pipeline's ${DEEP_PIPELINE.wrongGuessCycles - 1} extra front stages\nrefill: ${lost} cycles lost, not 1.` } };
     }
     if (mispredicted) return { feedback, tip: { id: 'wrong-guess', message: 'WRONG GUESS: the CPU fetched the wrong\nnext instruction, so it was thrown out\n(FLUSHED). It cost 1 cycle.' } };
     if (taken) return { feedback, tip: { id: 'right-guess', message: "RIGHT GUESS: the loop's first instruction\nwas fetched straight away.\nNo cycle lost." } };
@@ -270,7 +274,7 @@ export class SongWords {
         this.setup.predictor === '1-bit'
           ? 'PREDICTOR MISSED: it guessed what the\nbranch did last time. Watch x1 reach\nx2 to see a row end, then override.'
           : 'PREDICTOR MISSED: a row ended. That\nonly weakens its counter. Watch x1\nreach x2 to see it coming, then override.';
-      return { feedback, tip: { id: 'predictor-miss', message } };
+      return { feedback, tip: { id: `predictor-miss-${this.setup.predictor}`, message } };
     }
     return { feedback };
   }
@@ -306,7 +310,7 @@ export class SongWords {
       const message = this.setup.predictor
         ? "THE PREDICTOR'S GUESS GLOWS.\nPress that key to follow it, the other\nto override (J NOT TAKEN, K TAKEN)."
         : 'BRANCH: will it jump back to loop:?\nJ = guess NOT TAKEN, K = guess TAKEN.\nIts glow shows what it did last time.';
-      return [{ id: 'guess', message }, route];
+      return [{ id: this.setup.predictor ? 'predictor-guess' : 'guess', message }, route];
     }
     return [route];
   }

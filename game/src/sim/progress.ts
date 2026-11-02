@@ -78,6 +78,8 @@ export type Progress = {
   readonly nextId: number;
   /** Lesson ids whose briefing this player has finished: a new campaign starts with none. */
   readonly seenLessons: readonly string[];
+  /** Practice tips TICK has given (`Tip.id`, song/words.ts): each is said once a game, so a practice only teaches what's new. */
+  readonly seenTips: readonly string[];
   /** The calendar (sim/workday.ts): the day (from 1), the seconds of it worked so far (0 at 9:00), and its tally. */
   readonly day: number;
   readonly worked: number;
@@ -101,6 +103,7 @@ export const NEW_GAME: Progress = {
   board: [],
   nextId: 1,
   seenLessons: [],
+  seenTips: [],
   day: 1,
   worked: 0,
   today: { jobs: 0, late: 0, earned: 0 },
@@ -116,6 +119,11 @@ export function hasSeen(progress: Progress, id: string): boolean {
 /** Lessons or tours marked seen (each once). */
 export function withSeen(progress: Progress, ...ids: readonly string[]): Progress {
   return { ...progress, seenLessons: [...new Set([...progress.seenLessons, ...ids])] };
+}
+
+/** A practice tip marked given (each once). */
+export function withTipSeen(progress: Progress, id: string): Progress {
+  return progress.seenTips.includes(id) ? progress : { ...progress, seenTips: [...progress.seenTips, id] };
 }
 
 /** A random number in [0, 1); injectable so tests are repeatable. */

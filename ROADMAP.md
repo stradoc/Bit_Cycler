@@ -32,10 +32,7 @@ Upgrades follow microprocessor history and stay with the CPU and its control log
    - [ ] **5. Transitions**: power on and off (CRT beam or LCD fade as era variants), the title's arrival, the boot's typing
    - [ ] **6. Motion lab and docs**: done for recipes (2026-11-02: `?scene=motions`, the developer screen's MOTION LAB: every recipe on a sample, in any era, frozen at a time; "An animation" in `CLAUDE.md`). Left: TICK's poses in the lab
    - Not yet: the heat particles, the 3D models' motion
-0. **From the user's notes (2026-11-02)** (the branch animations are done: item 0, phase 4):
-   - [ ] Practice: after the first practice, notes still wait for you, but TICK doesn't stop you over a note missed by half a second; he teaches the new idea and gets out of the way
-   - [ ] TICK's full tutorial of every instruction moves to the first contract, where he asks whether you want it: FULL, SHORT or NO TUTORIAL
-   - [ ] Superscalar: make chords easier to see (FETCH higher up, or the chords shown at the top)
+0. **From the user's notes (2026-11-02)**: all four done (the branch animations, practice that teaches once and gets out of the way, the tutorial question at the first job, chords from the top; CHANGELOG 2026-11-02). Left: play them at speed in a real browser
 0. **From the user's notes (2026-11-01)**: all four done (results card, job sheet, difficulty, 12 songs and 13 kinds of program). Left from them:
    - [ ] Listen to the 12 songs and the music's reactions (`sound-export/music/`, `music/reactions/`), and play a song with sound (missed beats, stalls, wrong guesses): nothing here can hear them
    - [ ] Later: each era's own music style (DOS, 90s desktop, modern), added to the songs' table as data

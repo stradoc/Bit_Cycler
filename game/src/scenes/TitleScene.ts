@@ -1,7 +1,7 @@
 import { powerOff, stopHum } from '../audio/sound.ts';
 import { programListing } from '../data/boot.ts';
 import { LESSONS } from '../data/lessons.ts';
-import { BOARD_TOUR_ID, CALENDAR_TOUR_ID, FIRST_DAY_ID, WELCOME_AFTER, WELCOME_QUESTION, type MenuTarget } from '../data/tours.ts';
+import { BOARD_TOUR_ID, CALENDAR_TOUR_ID, FIRST_DAY_ID, WELCOME_TOUR, type MenuTarget } from '../data/tours.ts';
 import { openLesson } from '../flow.ts';
 import { banner, commandLine, CREDITS, listCommand, listingFooter, listingLine, readCommand, README, type TextFile } from '../data/menuFiles.ts';
 import { formatMoney } from '../format.ts';
@@ -142,17 +142,8 @@ export class TitleScene extends Screen {
     if (!this.welcomeDue) return;
     this.welcomeDue = false;
     if (this.folder !== 'root' || this.reading) this.openFolder('root');
-    // First: how much to teach. Then the welcome that goes with the answer.
-    this.guide.ask({
-      say: WELCOME_QUESTION.say,
-      mood: WELCOME_QUESTION.mood,
-      choices: WELCOME_QUESTION.choices.map((choice) => choice.answer),
-      done: (i) => {
-        const { level } = WELCOME_QUESTION.choices[i];
-        updateSettings({ tutorial: level });
-        this.guide.tour(WELCOME_AFTER[level], (target) => this.where(target), () => updateSettings({ welcomed: true }));
-      },
-    });
+    // How much to teach is asked at the first job (data/tours.ts TUTORIAL_QUESTION).
+    this.guide.tour(WELCOME_TOUR, (target) => this.where(target), () => updateSettings({ welcomed: true }));
   }
 
   /** Where the main menu's entries are, for TICK to point at (the rows from the first entry named to the last). */

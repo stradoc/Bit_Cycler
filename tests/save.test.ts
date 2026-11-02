@@ -22,6 +22,7 @@ test('a save from before slots (the progress alone) loads, missing fields taking
   assert.deepEqual(saved.progress.parts, ['pipeline']);
   assert.equal(saved.progress.cacheLevels, 0); // saved before the cache existed
   assert.deepEqual(saved.progress.seenLessons, []); // the settings kept these then
+  assert.deepEqual(saved.progress.seenTips, []); // saved before tips were remembered
   assert.equal(saved.progress.wordBits, 16); // saved before the chips: the pipeline needs the 16-bit one
 });
 
@@ -51,6 +52,7 @@ test('an edited save is pulled back into range', () => {
     overclocking: 'yes',
     chipMaxDial: 9,
     seenLessons: ['tier1', 42],
+    seenTips: ['hazard', null],
     wordBits: 12,
   };
   const saved = parseSave(saveText(edited as unknown as Progress, SAVED_AT));
@@ -64,6 +66,7 @@ test('an edited save is pulled back into range', () => {
   assert.equal(p.overclocking, false);
   assert.equal(p.chipMaxDial, THERMAL.maxDial);
   assert.deepEqual(p.seenLessons, ['tier1']);
+  assert.deepEqual(p.seenTips, ['hazard']);
   assert.ok(p.cooling < COOLING.length);
   assert.equal(p.wordBits, 64); // no 12-bit chip: the narrowest that runs the top clock
 });

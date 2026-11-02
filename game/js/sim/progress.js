@@ -25,6 +25,7 @@ export const NEW_GAME = {
     board: [],
     nextId: 1,
     seenLessons: [],
+    seenTips: [],
     day: 1,
     worked: 0,
     today: { jobs: 0, late: 0, earned: 0 },
@@ -38,6 +39,10 @@ export function hasSeen(progress, id) {
 /** Lessons or tours marked seen (each once). */
 export function withSeen(progress, ...ids) {
     return { ...progress, seenLessons: [...new Set([...progress.seenLessons, ...ids])] };
+}
+/** A practice tip marked given (each once). */
+export function withTipSeen(progress, id) {
+    return progress.seenTips.includes(id) ? progress : { ...progress, seenTips: [...progress.seenTips, id] };
 }
 // ---- the CPU you own ----
 export function tierOf(progress) {

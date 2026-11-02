@@ -2,10 +2,10 @@ import { GRADES } from '../data/economy.ts';
 import { banner } from '../data/menuFiles.ts';
 import { programByName } from '../data/programs.ts';
 import { playContract } from '../flow.ts';
-import { BOARD_TOUR, BOARD_TOUR_ID, FIRST_DAY_ID, FIRST_DAY_TOUR, TIMECARD_TOUR, TIMECARD_TOUR_ID, type BoardTarget, type TourStep } from '../data/tours.ts';
+import { BOARD_TOUR, BOARD_TOUR_ID, FIRST_DAY_ID, FIRST_DAY_TOUR, TIMECARD_TOUR, TIMECARD_TOUR_ID, TUTORIAL_QUESTION, TUTORIAL_REPLY, type BoardTarget, type TourStep } from '../data/tours.ts';
 import { formatClock, formatCount, formatDuration, formatHours, formatMoney } from '../format.ts';
 import { getProgress, setProgress, updateProgress } from '../save.ts';
-import { teaching } from '../settings.ts';
+import { teaching, updateSettings } from '../settings.ts';
 import { UNITS } from '../sim/isa.ts';
 import { jobSheet } from '../sim/jobSheet.ts';
 import { contractSeconds, cpiFor, cpuLine, hasSeen, isLocked, isTight, isTutorial, jobItems, ratedMhz, withSeen, type Contract } from '../sim/progress.ts';
@@ -383,13 +383,36 @@ export class BoardScene extends Screen {
       return;
     }
     this.cue('confirm');
+    if (isTutorial(contract)) {
+      this.askTutorial(contract);
+      return;
+    }
     this.menu.press(() => playContract(this, contract));
+  }
+
+  /**
+   * A new game's first job: TICK asks how much to teach (every instruction up
+   * close, each new part, or nothing), keeps the answer in the settings, then the job starts.
+   */
+  private askTutorial(contract: Contract): void {
+    const { say, mood, choices } = TUTORIAL_QUESTION;
+    this.guide.ask({
+      say,
+      mood,
+      choices: choices.map((choice) => choice.answer),
+      done: (i) => {
+        const { level } = choices[i];
+        updateSettings({ tutorial: level });
+        this.guide.tour(TUTORIAL_REPLY[level], (target) => this.where(target), () => playContract(this, contract));
+      },
+    });
   }
 
   protected onKey(key: string, event: KeyboardEvent): boolean | void {
     // TICK's tour: Enter shows the rest of the words, then goes on (a held-down key doesn't race through).
     if (this.guide.waiting) {
       if (key === 'Enter' && !event.repeat) this.guide.next();
+      else if (key === 'ArrowUp' || key === 'ArrowDown') this.guide.move(key === 'ArrowUp' ? -1 : 1);
       return key !== 'M';
     }
     // The timecard: Enter clocks out; Esc (or Q) goes back to work if the day isn't over.

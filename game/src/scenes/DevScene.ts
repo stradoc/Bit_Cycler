@@ -39,7 +39,7 @@ const ABOUT: Readonly<Record<Row, string>> = {
   board: "THROWS AWAY THE BOARD'S JOBS AND DEALS NEW ONES.",
   everything: 'THE WIDEST CHIP, THE LAST TIER AND EVERY UPGRADE.',
   lesson: "[LEFT/RIGHT] PICKS A LESSON, [ENTER] PLAYS IT: TICK'S TOUR, THEN ITS PRACTICE IF IT HAS ONE.",
-  seen: "LESSONS AND TOURS MARKED SEEN DON'T PLAY BY THEMSELVES. [ENTER] MARKS ALL SEEN OR NONE.",
+  seen: "LESSONS AND TOURS MARKED SEEN DON'T PLAY BY THEMSELVES. [ENTER] MARKS ALL SEEN, OR NONE (AND PRACTICE'S TIPS UNSEEN).",
   play: 'THE CONTRACT BOARD, WITH YOUR SAVE AS IT IS NOW.',
   practice: 'A PRACTICE SONG ON THIS TIER: NOTES WAIT FOR YOU.',
   autoplay: 'SONGS PLAY THEMSELVES, UNTIL THE PAGE IS RELOADED.',
@@ -237,7 +237,8 @@ export class DevScene extends Screen {
         this.message.setText(`A NEW MORNING: ${dateLine(getProgress())}.`);
         return;
       case 'seen':
-        return this.edit(row, (p) => ({ ...p, seenLessons: p.seenLessons.length < TAUGHT_IDS.length ? TAUGHT_IDS : [] }));
+        // All seen, or none: then practice's tips are given again too.
+        return this.edit(row, (p) => (p.seenLessons.length < TAUGHT_IDS.length ? { ...p, seenLessons: TAUGHT_IDS } : { ...p, seenLessons: [], seenTips: [] }));
       case 'autoplay':
         cheatFlags.autoplay = !cheatFlags.autoplay;
         this.cue('move');

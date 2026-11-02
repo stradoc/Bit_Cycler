@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { LESSONS } from '../game/src/data/lessons.ts';
-import { BOARD_TOUR, BOARD_TOUR_ID, CALENDAR_TOUR, CALENDAR_TOUR_ID, FIRST_DAY_ID, FIRST_DAY_TOUR, SONG_TOURS, TAUGHT_IDS, TIMECARD_TOUR, TIMECARD_TOUR_ID, TUTORIAL, WELCOME_AFTER, WELCOME_QUESTION } from '../game/src/data/tours.ts';
+import { BOARD_TOUR, BOARD_TOUR_ID, CALENDAR_TOUR, CALENDAR_TOUR_ID, FIRST_DAY_ID, FIRST_DAY_TOUR, SONG_TOURS, TAUGHT_IDS, TIMECARD_TOUR, TIMECARD_TOUR_ID, TUTORIAL, TUTORIAL_QUESTION, TUTORIAL_REPLY, WELCOME_TOUR } from '../game/src/data/tours.ts';
 import type { Instruction } from '../game/src/sim/isa.ts';
 import { SongWords } from '../game/src/song/words.ts';
 
@@ -13,7 +13,7 @@ import { SongWords } from '../game/src/song/words.ts';
 const LONGEST_LINE = 150;
 
 test('every line the guide says is short enough for its bubble', () => {
-  for (const step of [{ say: WELCOME_QUESTION.say }, ...Object.values(WELCOME_AFTER).flat(), ...BOARD_TOUR, ...FIRST_DAY_TOUR, ...TIMECARD_TOUR, ...CALENDAR_TOUR, ...Object.values(SONG_TOURS).flat()]) {
+  for (const step of [{ say: TUTORIAL_QUESTION.say }, ...WELCOME_TOUR, ...Object.values(TUTORIAL_REPLY).flat(), ...BOARD_TOUR, ...FIRST_DAY_TOUR, ...TIMECARD_TOUR, ...CALENDAR_TOUR, ...Object.values(SONG_TOURS).flat()]) {
     assert.ok(step.say.length <= LONGEST_LINE, `${step.say.length} characters: ${step.say}`);
     assert.ok(!(step.point && step.picture), 'a step points at something or holds up a picture, not both');
   }
@@ -103,15 +103,16 @@ test('every close look fits the bubble, even with the biggest numbers', () => {
   }
 });
 
-test("TICK asks how much to teach: one answer per level, from everything to nothing", () => {
-  assert.deepEqual(WELCOME_QUESTION.choices.map((choice) => choice.level), ['full', 'short', 'skip']);
-  assert.match(WELCOME_QUESTION.choices[0].answer, /FULL TUTORIAL/);
-  assert.match(WELCOME_QUESTION.choices[1].answer, /SHORT TUTORIAL/);
-  assert.match(WELCOME_QUESTION.choices[2].answer, /SKIP TUTORIAL/);
-  for (const choice of WELCOME_QUESTION.choices) assert.ok(choice.answer.length <= 56, `${choice.answer} fits the question's bubble`);
+test("TICK asks how much to teach at the first job: one answer per level, from everything to nothing", () => {
+  assert.deepEqual(TUTORIAL_QUESTION.choices.map((choice) => choice.level), ['full', 'short', 'skip']);
+  assert.match(TUTORIAL_QUESTION.choices[0].answer, /FULL TUTORIAL/);
+  assert.match(TUTORIAL_QUESTION.choices[1].answer, /SHORT TUTORIAL/);
+  assert.match(TUTORIAL_QUESTION.choices[2].answer, /NO TUTORIAL/);
+  for (const choice of TUTORIAL_QUESTION.choices) assert.ok(choice.answer.length <= 56, `${choice.answer} fits the question's bubble`);
   // The short tutorial drops only the instruction-by-instruction close looks; skipping drops all of TICK's teaching.
   assert.deepEqual(TUTORIAL.full, { tours: true, closeLooks: true, tips: true });
   assert.deepEqual(TUTORIAL.short, { tours: true, closeLooks: false, tips: true });
   assert.deepEqual(TUTORIAL.skip, { tours: false, closeLooks: false, tips: false });
-  assert.ok(WELCOME_AFTER.full.length > WELCOME_AFTER.short.length && WELCOME_AFTER.short.length > WELCOME_AFTER.skip.length);
+  // The welcome no longer asks: it says the first job will.
+  assert.match(WELCOME_TOUR.at(-1)!.say, /first job/);
 });

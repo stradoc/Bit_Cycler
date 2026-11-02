@@ -132,3 +132,9 @@ test('the difficulty sets the pace: from the start, then ?difficulty, then MEDIU
   assert.equal(songSetup(watch(hard, recording), NEW_GAME, url()).difficulty, 'hard');
   assert.equal(songSetup(playAgain(hard), NEW_GAME, url()).difficulty, 'hard');
 });
+
+test('only the first practice (the single-cycle CPU) is guided: there a wrong key stops it for TICK to explain', () => {
+  assert.equal(songSetup({ singleCycle: true, practice: true }, NEW_GAME, url()).guided, true);
+  assert.equal(songSetup({ forwarding: true, practice: true }, NEW_GAME, url()).guided, false);
+  assert.equal(songSetup({ singleCycle: true }, NEW_GAME, url()).guided, false);
+});

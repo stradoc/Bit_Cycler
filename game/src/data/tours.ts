@@ -54,7 +54,7 @@ export const TUTORIAL: Readonly<Record<TutorialLevel, {
   readonly tours: boolean;
   /** Lesson 1's practice goes through each kind of instruction up close. */
   readonly closeLooks: boolean;
-  /** Practice's tips, and a new game's tutorial job. */
+  /** Practice's tips. */
   readonly tips: boolean;
 }>> = {
   full: { tours: true, closeLooks: true, tips: true },
@@ -62,38 +62,39 @@ export const TUTORIAL: Readonly<Record<TutorialLevel, {
   skip: { tours: false, closeLooks: false, tips: false },
 };
 
-/** TICK's first words on the main menu: hello, and how much to teach. */
-export const WELCOME_QUESTION: { readonly say: string; readonly mood: Mood; readonly choices: readonly { readonly answer: string; readonly level: TutorialLevel }[] } = {
-  say: `Hi! I'm ${GUIDE_NAME}, and I live inside this computer. Welcome to Bit Cycler! Before we start: have you played before?`,
-  mood: 'cheer',
-  choices: [
-    { answer: "I'm new. (FULL TUTORIAL)", level: 'full' },
-    { answer: 'I already know most of this stuff. (SHORT TUTORIAL)', level: 'short' },
-    { answer: "I've already been through this. (SKIP TUTORIAL)", level: 'skip' },
-  ],
-};
-
-/** The whole welcome, after a new player's answer. */
+/**
+ * The main menu's welcome, the same for everyone: hello, and where things are.
+ * How much he teaches is asked at the first job (TUTORIAL_QUESTION), when
+ * there's something to teach; lesson 1 says what a CPU and its clock are.
+ */
 export const WELCOME_TOUR: readonly TourStep<MenuTarget>[] = [
-  { say: 'Every computer has a CPU: the chip that does all its work. This game shows you how a CPU works, from the inside.', picture: 'cpu' },
-  { say: 'A CPU runs on a clock that ticks very fast. Here, every beat of the music is one tick, and you play the part that gives the orders.', picture: 'clock' },
+  { say: `Hi! I'm ${GUIDE_NAME}, and I live inside this computer. Welcome to Bit Cycler! It shows you how a CPU works, from the inside.`, mood: 'cheer' },
   { say: 'Companies pay you to run their programs. With the money you buy parts that make your CPU faster, the way real CPUs got faster.' },
   { say: 'Start here. NEWGAME begins a new game; CONTINUE picks up where you left off.', point: 'new' },
   { say: 'Every lesson I give is kept in BRIEFS. Open it any time to see one again.', point: 'briefs' },
   { say: 'README has the keys and the rules. SETTINGS has the sound, the timing, and the DIFFICULTY: RELAXED if the beat is too fast.', point: 'readme' },
-  { say: 'While you play, press Q for the pause menu. After a song, click anything in its replay to learn what it is.' },
-  { say: "Don't try to remember it all: I'll explain each thing the first time you need it. Let's go!", point: 'new', mood: 'happy' },
+  { say: "When you take your first job, I'll ask how much you'd like me to explain. Let's go!", point: 'new', mood: 'happy' },
 ];
 
-/** What TICK says after the answer: the whole welcome, a short one, or just where to find him. */
-export const WELCOME_AFTER: Readonly<Record<TutorialLevel, readonly TourStep<MenuTarget>[]>> = {
-  full: WELCOME_TOUR,
-  short: [
-    { say: "Alright, the short version. I'll still show you each new part of the CPU as you get it, but I won't go through every instruction." },
-    { say: 'Every lesson I give is kept in BRIEFS, if you want one again.', point: 'briefs' },
-    { say: 'Press Q for the pause menu while you play, and change how much I explain in SETTINGS. Let\'s go!', point: 'settings', mood: 'happy' },
+/**
+ * Asked as a new game's first job (the tutorial job) is picked on the board:
+ * how much TICK teaches from here, saved in the settings (a row there changes it later).
+ */
+export const TUTORIAL_QUESTION: { readonly say: string; readonly mood: Mood; readonly choices: readonly { readonly answer: string; readonly level: TutorialLevel }[] } = {
+  say: 'Your first job! Its program is a list of INSTRUCTIONS, tiny commands for the CPU. Want me to go through every one of them in depth?',
+  mood: 'happy',
+  choices: [
+    { answer: 'Yes, every one up close. (FULL TUTORIAL)', level: 'full' },
+    { answer: 'Just each new part. (SHORT TUTORIAL)', level: 'short' },
+    { answer: 'No, I know this. (NO TUTORIAL)', level: 'skip' },
   ],
-  skip: [{ say: "Got it! I'll stay out of your way. Every lesson is in BRIEFS, and SETTINGS can bring me back.", point: 'briefs', mood: 'happy' }],
+};
+
+/** What TICK says after the answer, before the job starts (full and short: his lesson starts on the next screen). */
+export const TUTORIAL_REPLY: Readonly<Record<TutorialLevel, readonly TourStep<BoardTarget>[]>> = {
+  full: [],
+  short: [],
+  skip: [{ say: "Got it! I'll stay out of your way. Every lesson is in BRIEFS on the main menu, and SETTINGS can bring me back.", mood: 'happy' }],
 };
 
 export const BOARD_TOUR: readonly TourStep<BoardTarget>[] = [

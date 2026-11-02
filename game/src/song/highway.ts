@@ -29,6 +29,8 @@ import { Part, type SongView } from './view.ts';
 
 type Key = Unit | 'STALL';
 
+const NO_PARTNERS: ReadonlySet<number> = new Set();
+
 /** A branch's callout: fetch was sent elsewhere; its words over the new path's first note, linked to the branch. */
 type Redirect = { readonly branchSeq: number; readonly toKey: string | undefined; readonly tag: Phaser.GameObjects.Text; readonly link: Phaser.GameObjects.Graphics; readonly color: number };
 
@@ -60,6 +62,8 @@ export class Highway extends Part {
   private readonly hazardFrame: Phaser.GameObjects.Rectangle;
   private readonly waitFrame: Phaser.GameObjects.Rectangle;
   private readonly redirects: Redirect[] = [];
+  /** Superscalar: which upcoming instructions will pair, and the pipeline's moment it was worked out for. */
+  private plan: { at: string; partners: ReadonlySet<number> } | undefined;
   private readonly motion: MotionPlayer;
 
   constructor(view: SongView) {
@@ -222,8 +226,8 @@ export class Highway extends Part {
   /**
    * Keeps one falling note per upcoming instruction (ID, IF, then the next
    * fetches), on the notes' clock: the chart's beat minus the beats `frozen`
-   * waiting for memory, so they hold still during a wait. Superscalar: the
-   * first two arrive side by side (a chord) when they can start together.
+   * waiting for memory, so they hold still during a wait. Superscalar: two
+   * that will start together fall side by side from the top (a chord).
    */
   syncNotes(chartBeat: number, elapsed: number, frozen: number): void {
     const { run } = this.view;
@@ -232,11 +236,15 @@ export class Highway extends Part {
     const beat = chartBeat - frozen;
     const due = run.dueBeat - run.waitBeats;
     const wanted: { slot: Slot; k: number }[] = [];
-    // Superscalar: two that can start together arrive together, a chord, and everything behind them comes a beat sooner.
-    const chord = this.view.setup.superscalar && pipeline.pairCheck().ok ? 1 : 0;
+    // Superscalar: two that will start together fall side by side from the top, a chord, and everything behind them comes a beat sooner.
+    const partners = this.plannedPartners();
     if (ID) wanted.push({ slot: ID, k: 0 });
-    if (IF) wanted.push({ slot: IF, k: 1 - chord });
-    pipeline.upcoming(LOOKAHEAD).forEach((slot, i) => wanted.push({ slot, k: 2 + i - chord }));
+    let k = 0;
+    for (const slot of [IF, ...pipeline.upcoming(LOOKAHEAD)]) {
+      if (!slot) continue;
+      if (!partners.has(slot.seq)) k++;
+      wanted.push({ slot, k });
+    }
 
     // A note whose instruction is still coming keeps its place when it's numbered again (fetched again after a flush).
     const gone = [...this.notes].filter(([key]) => !wanted.some(({ slot }) => noteKey(slot) === key));
@@ -265,6 +273,20 @@ export class Highway extends Part {
       this.notes.delete(key);
       this.motion.play('note-drop', [view.box, view.label], { remove: true });
     }
+  }
+
+  /**
+   * Superscalar: the upcoming instructions that will start beside the one
+   * before them (`Pipeline.plannedPartners`), worked out again only when the
+   * pipeline has moved on.
+   */
+  private plannedPartners(): ReadonlySet<number> {
+    const { run, setup } = this.view;
+    if (!setup.superscalar) return NO_PARTNERS;
+    const { pipeline } = run;
+    const at = `${pipeline.cycle}:${pipeline.stages.ID?.seq}:${pipeline.waitLeft}`;
+    if (this.plan?.at !== at) this.plan = { at, partners: pipeline.plannedPartners(2 * (LOOKAHEAD + 2)) };
+    return this.plan.partners;
   }
 
   /** Moves issued notes down to the row of the stage they're in; drops notes that left WB. */
