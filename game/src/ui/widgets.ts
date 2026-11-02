@@ -1,4 +1,5 @@
-import { isSmooth, textBase } from '../visual/display.ts';
+import { textBase } from '../visual/display.ts';
+import { motionOf } from '../visual/motion.ts';
 import { cssColor, palette, type Era } from './eras.ts';
 import { TEXT } from './theme.ts';
 
@@ -163,13 +164,7 @@ export class Box {
   }
 }
 
-/** The modern era eases things onto the screen (fading in, rising a little); the retro eras just show them. */
-export function glideIn(scene: Phaser.Scene, targets: readonly Faded[], rise = 14): void {
-  if (!isSmooth()) return;
-  for (const target of targets) {
-    const { alpha, y } = target;
-    target.alpha = 0;
-    target.y = y + rise;
-    scene.tweens.add({ targets: target, alpha, y, duration: 260, ease: 'Cubic.Out' });
-  }
+/** Things arriving on the screen, the era's way (the 'glide-in' recipe, data/motions.ts). Phase 2 of the animation plan moves its callers onto the recipe. */
+export function glideIn(scene: Phaser.Scene, targets: readonly Faded[]): void {
+  motionOf(scene).play('glide-in', targets);
 }

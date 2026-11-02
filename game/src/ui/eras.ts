@@ -15,6 +15,7 @@ import type { WordBits } from '../data/economy.ts';
 import { getProgress } from '../save.ts';
 import type { TokenKind } from '../sim/isa.ts';
 import { getSettings } from '../settings.ts';
+import type { EraMotion } from '../data/motions.ts';
 import type { ModelStyle } from '../visual/model3d.ts';
 
 /** Color per syntax token kind. */
@@ -140,6 +141,13 @@ export type Era = {
     readonly beep: boolean;
   };
 
+  /**
+   * How things move on its screen (data/motions.ts): the green CRT jumps but
+   * lets fading things glow off, DOS steps in character cells, the 90s
+   * desktop slides plainly, the modern era eases; and its own versions of any animation.
+   */
+  readonly motion: EraMotion;
+
   /** How 3D models (the shop's chip, the main menu's title) are drawn: the way 3D looked at the time (visual/model3d.ts). */
   readonly models: ModelStyle;
   /** A dark variant of this era, chosen in the settings (the era itself never is). */
@@ -164,6 +172,7 @@ const DESKTOP: Era = {
   },
   computer: { display: 'crt', drive: 'disk', bios: 'BIT CYCLER BIOS 4.0', bootText: 0xaaaaaa, root: 'C:\\BITCYCLR', shell: false, splash: 0xffffff, beam: 0xffffff },
   sound: { whine: true, beep: true },
+  motion: { style: 'tween' },
   models: 'lowpoly',
 };
 
@@ -179,6 +188,8 @@ export const ERAS: readonly Era[] = [
     screen: { hires: false, smooth: false, glow: 1.8, bootGlow: 1.2, menuGlow: 0.5, scanlines: 0.4, curve: 0.02, vignette: 0.4, flicker: 0.02, lcd: 0 },
     computer: { display: 'crt', drive: 'floppy', bios: 'BIT CYCLER BIOS 1.0', bootText: 0x39ff14, root: 'A:', shell: false, splash: 0x39ff14, beam: 0xd8ffc8 },
     sound: { whine: true, beep: true },
+    // A phosphor screen: nothing slides, but what goes dark fades over a quarter second.
+    motion: { style: 'cut', afterglow: 250 },
     models: 'wire',
   },
   {
@@ -199,6 +210,8 @@ export const ERAS: readonly Era[] = [
     },
     computer: { display: 'crt', drive: 'disk', bios: 'BIT CYCLER BIOS 2.0', bootText: 0xaaaaaa, root: 'C:\\BITCYCLR', shell: false, splash: 0x55ffff, beam: 0xffffff },
     sound: { whine: true, beep: true },
+    // Text mode: redrawn about ten times a second, in whole character cells.
+    motion: { style: 'step', fps: 10, cell: { x: 8, y: 16 } },
     models: 'flat',
   },
   {
@@ -230,6 +243,7 @@ export const ERAS: readonly Era[] = [
     },
     computer: { display: 'lcd', drive: 'ssd', bios: '', bootText: 0xe6e6e6, root: '~/bit-cycler', shell: true, splash: 0x4fd6be, beam: 0xffffff },
     sound: { whine: false, beep: false },
+    motion: { style: 'ease' },
     models: 'smooth',
   },
 ];

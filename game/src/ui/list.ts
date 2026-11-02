@@ -1,5 +1,6 @@
 import { cue } from '../audio/cues.ts';
-import { isSmooth, textBase } from '../visual/display.ts';
+import { textBase } from '../visual/display.ts';
+import { motionOf } from '../visual/motion.ts';
 import { cssColor, palette, type Era } from './eras.ts';
 import { ALPHA, TEXT } from './theme.ts';
 import { PressButton } from './widgets.ts';
@@ -164,12 +165,12 @@ export class ListMenu {
   private drawRow(row: MenuRow, selected: boolean, y: number): void {
     const { era } = this;
     const [left, w, h] = [this.x - 8, this.width + 16, this.rowHeight - 4];
-    if (selected && isSmooth()) {
+    if (selected && era.kind === 'modern') {
+      // The modern era's highlight is one bar that slides from row to row (the 'list-select' recipe).
       if (!this.bar) {
         this.bar = this.scene.add.rectangle(left + w / 2, y, w, h, era.accent, 0.1).setStrokeStyle(1, era.accent, 0.8).setDepth((this.depth ?? 0) - 1);
       }
-      this.scene.tweens.killTweensOf(this.bar);
-      this.scene.tweens.add({ targets: this.bar, y, duration: 160, ease: 'Cubic.Out' });
+      motionOf(this.scene).play('list-select', this.bar, { goal: { y } });
     } else if (selected && era.kind === 'desktop') {
       // A raised button in the selection color (Enter presses it in).
       this.button = PressButton.create(this.scene, era, left, y - (h + 4) / 2, w, h + 4, palette(era).select);

@@ -1,6 +1,6 @@
 # Bit Cycler
 
-A tycoon + rhythm game where every beat is one CPU clock cycle. You are the processor's control unit: route each instruction to the right unit on the beat, wait out data hazards, guess branches, and earn money from contracts to buy the hardware that does those jobs for you, from a single-cycle CPU to a pipelined one with forwarding, branch predictors and a cache.
+A tycoon + rhythm game where every beat is one CPU clock cycle. You are the processor's control unit: route each instruction to the right unit on the beat, wait out data hazards, guess branches, and earn money from contracts to buy the hardware that does those jobs for you, from a single-cycle CPU to a pipelined one with forwarding, branch predictors, a cache, and a superscalar CPU that starts two instructions at once.
 
 Made for CSC 3501 (Computer Organization), Fall 2026.
 
@@ -16,6 +16,7 @@ The game opens on a dark screen: press any key to switch the computer on. It boo
 | `D` / `F` / `J` | Route the instruction on the line to its unit: ALU (math and logic), MEM (loads and stores), BRANCH |
 | `Space` | Stall for a cycle, when the instruction needs a value still being computed (pipelined CPUs) |
 | `J` / `K` | Branch prediction (tier 4 and up): guess the branch not taken / taken |
+| Two lanes at once | Superscalar (tier 7): two instructions that can start together arrive side by side, a chord: press both lanes to start them as a pair. They can pair when each needs a different unit, the second doesn't need the first's result, and a branch comes second; one key is never wrong, just slower, and a chord on two that can't pair throws both away |
 | `G` / `H` | Clock down / up 10% (above 100% needs the overclocking upgrade, and heats the chip) |
 | `Q` (or `Esc`) | Pause menu: resume, restart, or go to the board, the calendar, the shop, the settings or the main menu |
 
@@ -23,7 +24,7 @@ Each song opens with a short count-in naming its music and the loop's key regist
 
 **Menus.** Arrows choose, `Enter` opens, `Q` (or `Esc`) goes back (on the board, the calendar and in the shop it opens the pause menu), `M` turns the computer's hum on or off. On the main menu: CONTINUE, NEWGAME, PRACTICE (your CPU, with notes that wait for you), SAVES (three slots, export and import), BRIEFS (every lesson TICK gives, to play again, and TICK's welcome), SETTINGS, README.TXT and CREDITS.TXT, SHUTDOWN. On the board: `L` logs off for the day, `C` opens the calendar, `S` opens the shop. In the shop: `Enter` buys, `B` goes back to the board.
 
-**Settings.** The difficulty, how fast songs go: RELAXED (80%, with wider timing), EASY (100%), MEDIUM (115%, where you start) or HARD (150%); the pay is the same at every one, and practice always plays relaxed. Then the tutorial (how much TICK explains: full, short or off), START OVER (erases every save and brings back TICK's first tutorial), audio calibration (line the light up with the click), volume, the hum, CRT effects and dark mode for the 90s desktop.
+**Settings.** The difficulty, how fast songs go: RELAXED (80%, with wider timing), EASY (100%), MEDIUM (115%, where you start) or HARD (150%); the pay is the same at every one, and practice always plays relaxed. Then the tutorial (how much TICK explains: full, short or off), START OVER (erases every save and brings back TICK's first tutorial), REDUCED MOTION (things jump into place instead of moving), audio calibration (line the light up with the click), volume, the hum, CRT effects and dark mode for the 90s desktop.
 
 **A deep pipeline, if you want it.** Once you can guess branches on the 32-bit chip, the shop sells a deep pipeline: ten shorter stages, so the clock runs 1.5x faster, but a wrong guess throws away 4 cycles of work instead of 1. Switch it on or off in the shop whenever you like: it pays off if you (or your predictor) guess well. At the very top clock it gains nothing, as real chips found. (Stylized: real deep pipelines lost 10-20 cycles per wrong guess.)
 

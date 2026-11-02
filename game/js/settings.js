@@ -1,7 +1,7 @@
 import { TUTORIAL } from './data/tours.js';
 import { DEFAULT_DIFFICULTY, isDifficulty } from './rhythm/tempo.js';
 const STORAGE_KEY = 'bit-cycler-settings';
-const DEFAULTS = { offset: 0, difficulty: DEFAULT_DIFFICULTY, music: true, dark: false, volume: 1, crt: 1, bootSeen: false, welcomed: false, tutorial: 'full' };
+const DEFAULTS = { offset: 0, difficulty: DEFAULT_DIFFICULTY, music: true, dark: false, volume: 1, crt: 1, bootSeen: false, welcomed: false, tutorial: 'full', reducedMotion: false };
 let current;
 export function getSettings() {
     if (!current) {

@@ -20,10 +20,12 @@ export type Settings = {
   readonly welcomed: boolean;
   /** How much TICK teaches (data/tours.ts TUTORIAL), chosen at his welcome. */
   readonly tutorial: TutorialLevel;
+  /** Every animation jumps instead of moving, in every era, except what gameplay needs (data/motions.ts). */
+  readonly reducedMotion: boolean;
 };
 
 const STORAGE_KEY = 'bit-cycler-settings';
-const DEFAULTS: Settings = { offset: 0, difficulty: DEFAULT_DIFFICULTY, music: true, dark: false, volume: 1, crt: 1, bootSeen: false, welcomed: false, tutorial: 'full' };
+const DEFAULTS: Settings = { offset: 0, difficulty: DEFAULT_DIFFICULTY, music: true, dark: false, volume: 1, crt: 1, bootSeen: false, welcomed: false, tutorial: 'full', reducedMotion: false };
 
 let current: Settings | undefined;
 

@@ -3,6 +3,7 @@ import { startHum, toggleHum } from '../audio/hum.js';
 import { loadSounds } from '../audio/samples.js';
 import { keyOf, onKeyDown } from '../input/keys.js';
 import { WIDTH } from '../visual/display.js';
+import { motionOf } from '../visual/motion.js';
 import { TerminalLook } from '../visual/terminal.js';
 import { cssColor, currentEra } from './eras.js';
 import { PauseMenu } from './pauseMenu.js';
@@ -116,6 +117,7 @@ export class Screen extends Phaser.Scene {
     }
     update(_time, _delta) {
         this.look.update();
+        motionOf(this).update(performance.now());
     }
     /** Text in the era's font and color, centered on (x, y). */
     text(x, y, content, size = TEXT.body) {

@@ -23,6 +23,14 @@ The latest handoff (what's done, what's unchecked, what's next) is the top entry
 
 Upgrades follow microprocessor history and stay with the CPU and its control logic (decided 2026-10-31; the reasoning and sources are in the design doc's "Eras and upgrade order").
 
+0. **Animations as data** (decided 2026-11-01; Decisions table). Phases, each playable, each deleting what it replaces:
+   - [x] **1. Foundation** (done; `glideIn` still wraps the recipe until its callers on the song screen move in phase 2): `data/motions.ts` (recipes: tracks of keyframes, duration, easing, delay, stagger, loops; the pure maths of easing, sampling and each era's style), `motion` in each `ERAS` entry (style: cut, step, tween, ease; fps; character cell; afterglow; variants), `visual/motion.ts` (one player per screen, `motionOf(scene)`, updated by `Screen.update`), REDUCED MOTION in the settings; the first recipes: gliding in, the list's sliding bar
+   - [ ] **2. One-shots and loops**: fades, flashes, the highlight settling, the beat light, pulses (count-in, pictures, standby), shakes (shop, hazard), cursor blinks
+   - [ ] **3. TICK**: a character sheet per era (`data/tick.ts`: parts and poses, frame sequences), his bob, walk, typing and spotlight as recipes; new poses as proof: walking feet, a cheer, a worried look (tours can ask for a mood)
+   - [ ] **4. Gameplay feel**: notes and rows easing, the listing scroll, bus paths, the hazard pulse (positions stay locked to the beat in the song code: only the feel moves)
+   - [ ] **5. Transitions**: power on and off (CRT beam or LCD fade as era variants), the title's arrival, the boot's typing
+   - [ ] **6. Motion lab and docs**: `?scene=motions` and a developer screen row (every recipe and TICK pose, in any era, frozen at a time for screenshots); "An animation" in `CLAUDE.md`
+   - Not yet: the heat particles, the 3D models' motion
 0. **From the user's notes (2026-11-01)**: all four done (results card, job sheet, difficulty, 12 songs and 13 kinds of program). Left from them:
    - [ ] Listen to the 12 songs and the music's reactions (`sound-export/music/`, `music/reactions/`), and play a song with sound (missed beats, stalls, wrong guesses): nothing here can hear them
    - [ ] Later: each era's own music style (DOS, 90s desktop, modern), added to the songs' table as data
@@ -35,7 +43,7 @@ Upgrades follow microprocessor history and stay with the CPU and its control log
 3. **Word size, phase 3: the song screen.** Registers shown at the chip's width (64-bit needs a new panel layout), the carry chain's practice tips and click-to-learn, results showing instructions per item, a lesson (the guide's tour, and practice) for each chip.
 4. **Hardware multiplier** (end of the 8-bit era, like the Motorola 6809): without it a multiply is a loop of shifts and adds; with it, one `mul` that holds its unit for several beats (a structural hazard). Textbook section 3.3.
 5. **Block-copy trap** (16-bit era, like the 8086's `REP MOVS`): one instruction copies a block, but each copy takes many cycles, so the job is barely faster; the textbook's Chapter 2 fallacy ("more powerful instructions mean higher performance"). Shares the multi-cycle unit with the multiplier.
-6. **Superscalar** (decided 2026-11-01, Decisions table; built after the learning objective): tier 7, on the 32-bit chip after the 2-bit predictor (like the Pentium, 1993). The player decides: when the next two instructions can start together, press both lanes as a chord. They can when each goes to a different unit (ALU+MEM, ALU+BRANCH, MEM+BRANCH: one ALU, so never two ALU notes, a structural hazard you can see), the second doesn't need the first's result, and a branch comes second. A wrong chord costs like issuing too early; a missed chance only loses the speedup (CPI under 1). Like the i960CA (one instruction per unit a cycle); the textbook's static two-issue (Patterson & Hennessy 4.10) is stricter (no ALU+BRANCH), so the lesson says so. Needs: a 2-wide pipeline model with hand-worked cycle counts, the run logic taking chords, the highway drawing them, a lesson and practice, the shop chip, replays. Later: **a second ALU** (the Pentium's U and V pipes), so two ALU instructions can pair.
+6. **Superscalar: done** (tier 7, CHANGELOG 2026-11-01). Still to do: balance its price ($1,800) and how often pairs come up by playing; a picture for TICK's lesson (it points at the screen for now); say in the README's accuracy section that the textbook's two-issue CPU is stricter (one ALU-or-branch with one load-or-store); later, **a second ALU** (the Pentium's U and V pipes), so two ALU instructions can pair.
 7. **Campaign goal: the debt deadline.** On the workday's calendar (item 1): one far deadline to pay a debt by, possibly in installments; free play on the endless board after. Open, to decide with the team: what missing the deadline does; installments or one payment; how the board shows the date. Where it fits in the code: "Campaign mode" in `CLAUDE.md`.
 8. **The job sheet names the access pattern.** The board's job sheet now marks which addresses a job reads and writes; it could also say it in words (sequential, two arrays, two arrays colliding in the cache, grid by column), since a colliding ADD ARRAYS can be locked even at 4 GHz with the L1 and the sheet only says why in marks.
 9. **Balance pass** once word size is in: chip prices and top clocks, contract sizes and deadlines, once jobs are sized to your CPU (item 1).
@@ -59,7 +67,7 @@ Upgrades follow microprocessor history and stay with the CPU and its control log
 - [ ] Show the team the lesson tours (all nine are TICK's now) and play them through in a real browser: reading pace, where TICK stands, whether any line needs a better picture
 
 **Audio and art**
-- [ ] Decide with the team: the guide's name (TICK) and look (one robot drawn in characters, the same in every era, in the era's font and colors)
+- [ ] Decide with the team: the guide's name (TICK). His look: one per era (decided 2026-11-01)
 - [ ] Sounds for branch flushes (a wrong guess is silent)
 - [ ] Decide: let the game play an edited sound file in place of a synthesized sound when one exists (the recorded keys already work this way); the music stays synthesized
 - [ ] Decide whether sprites are needed (the art is the four era looks and the 3D chip)

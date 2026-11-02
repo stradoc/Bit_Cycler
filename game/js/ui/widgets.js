@@ -1,4 +1,5 @@
-import { isSmooth, textBase } from '../visual/display.js';
+import { textBase } from '../visual/display.js';
+import { motionOf } from '../visual/motion.js';
 import { cssColor, palette } from './eras.js';
 import { TEXT } from './theme.js';
 /** Text in the era's font and color (and its size; Phaser's default origin, top-left). */
@@ -141,15 +142,8 @@ export class Box {
         this.button.press(down);
     }
 }
-/** The modern era eases things onto the screen (fading in, rising a little); the retro eras just show them. */
-export function glideIn(scene, targets, rise = 14) {
-    if (!isSmooth())
-        return;
-    for (const target of targets) {
-        const { alpha, y } = target;
-        target.alpha = 0;
-        target.y = y + rise;
-        scene.tweens.add({ targets: target, alpha, y, duration: 260, ease: 'Cubic.Out' });
-    }
+/** Things arriving on the screen, the era's way (the 'glide-in' recipe, data/motions.ts). Phase 2 of the animation plan moves its callers onto the recipe. */
+export function glideIn(scene, targets) {
+    motionOf(scene).play('glide-in', targets);
 }
 //# sourceMappingURL=widgets.js.map

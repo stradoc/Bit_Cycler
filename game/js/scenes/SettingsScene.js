@@ -11,7 +11,7 @@ import { ALPHA, LAYOUT, TEXT } from '../ui/theme.js';
 import { WIDTH } from '../visual/display.js';
 const CALIBRATION_BPM = 120;
 const OFFSET_STEP_MS = 5;
-const ROWS = ['difficulty', 'tutorial', 'calibrate', 'volume', 'hum', 'crt', 'dark', 'restart', 'back'];
+const ROWS = ['difficulty', 'tutorial', 'calibrate', 'volume', 'hum', 'crt', 'motion', 'dark', 'restart', 'back'];
 /** The tutorial choices, in the order left / right steps through them, and how each is shown. */
 const TUTORIALS = ['full', 'short', 'skip'];
 const TUTORIAL_NAMES = { full: 'FULL', short: 'SHORT', skip: 'OFF' };
@@ -23,6 +23,7 @@ const ABOUT = {
     volume: 'EVERY SOUND IN THE GAME.',
     hum: "THE OLD COMPUTER'S HUM IN THE MENUS: FAN, MAINS HUM, HARD DRIVE.",
     crt: 'SCANLINES, GLOW, CURVE AND FLICKER ON THE CRT SCREENS. TURN THEM DOWN IF THEY TIRE YOUR EYES.',
+    motion: 'ON: THINGS JUMP INTO PLACE INSTEAD OF MOVING, IN EVERY ERA. WHAT THE GAME NEEDS TO PLAY STILL MOVES.',
     dark: 'DARK WINDOWS FOR THE 90s DESKTOP.',
     restart: "ERASES EVERY SAVE (ALL 3 SLOTS) AND STARTS OVER WITH TICK'S TUTORIAL. SOUND AND SCREEN SETTINGS STAY. TO KEEP A SAVE, EXPORT IT FIRST (SAVES).",
     back: 'BACK TO THE MAIN MENU.',
@@ -90,6 +91,7 @@ export class SettingsScene extends Screen {
             volume: ['VOLUME', percent(s.volume)],
             hum: ['COMPUTER HUM', onOff(s.music)],
             crt: ['CRT EFFECTS', percent(s.crt)],
+            motion: ['REDUCED MOTION', onOff(s.reducedMotion)],
             dark: ['DARK MODE', hasDark ? onOff(s.dark) : '32-BIT ONLY'],
             restart: [this.confirmRestart ? 'START OVER: PRESS ENTER AGAIN' : 'START OVER (ERASE EVERYTHING)', undefined],
             back: ['BACK', undefined],
@@ -162,6 +164,9 @@ export class SettingsScene extends Screen {
             case 'crt':
                 updateSettings({ crt: Phaser.Math.Clamp(Math.round(s.crt * 4 + step) / 4, 0, 1) });
                 return this.rebuild();
+            case 'motion':
+                updateSettings({ reducedMotion: !s.reducedMotion });
+                break;
             case 'dark':
                 if (!baseEra().dark)
                     return this.cue('error');
