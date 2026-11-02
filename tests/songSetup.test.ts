@@ -89,7 +89,7 @@ test('a replay plays on the chip its run started on, and watching again or playi
 
 test('the simulator runs the setup\'s hardware', () => {
   const setup = songSetup({ forwarding: true, predictor: '1-bit' }, worn, url());
-  assert.deepEqual(pipelineOptions(setup, 40), { forwarding: true, predictor: '1-bit', singleCycle: false, cache: true, mhz: 40, wrongGuessCycles: 1 });
+  assert.deepEqual(pipelineOptions(setup, 40), { forwarding: true, predictor: '1-bit', singleCycle: false, cache: true, mhz: 40, wrongGuessCycles: 1, superscalar: false });
 });
 
 test('the deep pipeline: from the save where branches are guessed, a faster rated clock, dearer wrong guesses, kept by retries and replays', () => {

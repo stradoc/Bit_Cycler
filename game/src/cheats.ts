@@ -16,7 +16,7 @@ const HELP = `Bit Cycler cheats (type in this console):
   cheat.status()        what you have now
   cheat.money(5000)     set your money
   cheat.chip(32)        your CPU chip (${CHIPS.map((chip) => chip.bits).join(', ')}): sets the era; drops parts it can't run
-  cheat.tier(4)         set your CPU tier (1-6): gives or removes parts (and fits a chip that runs them)
+  cheat.tier(4)         set your CPU tier (1-7): gives or removes parts (and fits a chip that runs them)
   cheat.clock(5)        clock upgrade level (0-${CLOCK.factors.length - 1}), on a chip that runs it
   cheat.cooling(2)      cooler (0 stock, 1 heatsink, 2 fan)
   cheat.cache()         own the L1 cache (false to remove)

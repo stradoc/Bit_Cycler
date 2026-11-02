@@ -30,6 +30,38 @@ loop: lb   x4, 0(x1)
         ],
     },
     {
+        name: 'SUM PAIRS',
+        // SUM ARRAY with two lines swapped, for superscalar (tier 7): there, nothing in the loop can pair
+        // (add needs the load, add and addi both need the ALU, bne needs addi). Moving addi up next to
+        // the load lets lb+addi start together, then add+bne: two chords each time round, one stall
+        // between them while add waits for the load. Instruction order decides what can pair.
+        source: `
+      addi x1, x0, 0      # x1 = address of next byte
+      addi x2, x0, 6      # x2 = end address
+      addi x3, x0, 0      # x3 = running sum
+loop: lb   x4, 0(x1)
+      addi x1, x1, 1
+      add  x3, x3, x4
+      bne  x1, x2, loop
+      sb   x3, 8(x0)
+    `,
+        memory: [3, 5, 7, 2, 4, 6],
+        elements: 6,
+        verb: 'SUM',
+        unit: 'BYTES',
+        roles: {
+            1: 'the address of the next number to add (moved on right after the load, so the two can pair)',
+            2: 'the end address (6): the loop stops when x1 reaches it',
+            3: 'the running sum',
+            4: 'the number just loaded from memory',
+        },
+        memoryNote: 'Addresses 0-5 hold the numbers to add (3, 5, 7, 2, 4, 6). The sum is stored at address 8.',
+        keys: [
+            { reg: 1, tag: 'NEXT', about: "NEXT BYTE'S ADDRESS, FROM 0" },
+            { reg: 2, tag: 'END', about: 'STOP WHEN x1 REACHES 6' },
+        ],
+    },
+    {
         name: 'SUM GRID',
         // Adds a 4-row x 3-column grid of bytes (addresses 0-11) and stores the total at address 12.
         // A loop inside a loop: the inner branch goes taken, taken, not taken on every row.

@@ -37,6 +37,8 @@ export function songSetup(start, progress, params) {
         // ?cache fits the L1 cache.
         l1: start.l1 ?? (hasCache(progress) || params.has('cache')),
         deep,
+        // ?superscalar lets two start together (a tier's options pass it in, like its other hardware).
+        superscalar: !singleCycle && (start.superscalar ?? params.has('superscalar')),
         ratedMhz: ratedMhzFor(progress, !singleCycle, deep),
         // Wear is the chip's own, and a replay plays on the chip its run started on.
         // Practice always runs on a new chip, so it never overheats.
@@ -58,8 +60,8 @@ export function songSetup(start, progress, params) {
 }
 /** The hardware the simulator runs for this song, at a clock (MHz). */
 export function pipelineOptions(setup, mhz) {
-    const { forwarding, predictor, singleCycle, l1, deep } = setup;
-    return { forwarding, predictor, singleCycle, cache: l1, mhz, wrongGuessCycles: deep ? DEEP_PIPELINE.wrongGuessCycles : 1 };
+    const { forwarding, predictor, singleCycle, l1, deep, superscalar } = setup;
+    return { forwarding, predictor, singleCycle, cache: l1, mhz, wrongGuessCycles: deep ? DEEP_PIPELINE.wrongGuessCycles : 1, superscalar };
 }
 // Starting the song again passes its whole setup on. songSetup reads only what
 // SongStart names and works out the rest again, so the chip's wear is the save's

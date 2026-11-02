@@ -295,7 +295,7 @@ export function jobItems(contract: Contract): number {
   return contract.instructions / (executed / spec.elements);
 }
 
-/** A copy of `progress` with exactly the CPU parts for `tier` (1-6), on a chip that runs them, for testing (cheat.tier). */
+/** A copy of `progress` with exactly the CPU parts for `tier` (1-7), on a chip that runs them, for testing (cheat.tier). */
 export function withTier(progress: Progress, tier: number): Progress {
   const count = Math.max(0, Math.min(CPU_PARTS.length, Math.round(tier) - 1));
   return fitChip({ ...progress, parts: CPU_PARTS.slice(0, count).map((part) => part.id) });

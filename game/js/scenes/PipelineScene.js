@@ -396,6 +396,8 @@ export class PipelineScene extends Screen {
         if (!this.conductor || this.finished)
             return;
         this.highway.flash(action.kind === 'stall' ? 'STALL' : action.unit, performance.now());
+        if (this.chord(action, beat))
+            return;
         if (this.setup.practice) {
             // Practice grades the choice, not the timing, and explains mistakes.
             const outcome = evaluate(this.run.pipeline, action);
@@ -415,6 +417,29 @@ export class PipelineScene extends Screen {
         const decision = this.run.press(action, beat);
         if (decision)
             this.showDecision(decision);
+    }
+    /**
+     * Superscalar: a second lane pressed in the same cycle turns the first
+     * press into a chord. Practice explains a chord that can't go together
+     * instead of playing it. Returns whether the press was taken as a chord.
+     */
+    chord(action, beat) {
+        const decided = this.run.decided?.action;
+        if (!this.setup.superscalar || action.kind !== 'route' || decided?.kind !== 'route' || decided.also || decided.unit === action.unit)
+            return false;
+        const route = { unit: action.unit, ...(action.guessTaken !== undefined ? { guessTaken: action.guessTaken } : {}) };
+        if (this.setup.practice) {
+            if (evaluate(this.run.pipeline, { ...decided, also: route }) !== 'paired') {
+                this.buzz();
+                this.guide.say({ say: this.words.mistake('wrong-pair'), point: this.where('line'), dim: TIP_DIM, keys: '[ENTER] OK', hold: true });
+                return true;
+            }
+            beat = this.run.dueBeat;
+        }
+        const chord = this.run.chord(route, beat);
+        if (chord)
+            this.showDecision(chord);
+        return true;
     }
     advanceTo(beat) {
         for (const report of this.run.update(beat))
@@ -482,10 +507,17 @@ export class PipelineScene extends Screen {
         return beat;
     }
     bestAction() {
-        const slot = this.run.pipeline.stages.ID;
-        if (this.run.pipeline.hazard() || !slot)
+        const { pipeline } = this.run;
+        const slot = pipeline.stages.ID;
+        if (pipeline.hazard() || !slot)
             return { kind: 'stall' };
-        const taken = this.run.pipeline.branchOutcome();
+        const taken = pipeline.branchOutcome();
+        const behind = pipeline.stages.IF;
+        // Superscalar: a chord whenever the two can go together (a pair's branch is always the second).
+        if (this.setup.superscalar && behind && pipeline.pairCheck().ok) {
+            const second = pipeline.branchOutcome('IF');
+            return { kind: 'route', unit: unitOf(slot.instr), also: { unit: unitOf(behind.instr), ...(second !== undefined ? { guessTaken: second } : {}) } };
+        }
         return { kind: 'route', unit: unitOf(slot.instr), ...(this.setup.guessing && taken !== undefined ? { guessTaken: taken } : {}) };
     }
     /** Beat of the chart (conductor beat minus practice holds) at a performance.now() time. */
@@ -496,10 +528,11 @@ export class PipelineScene extends Screen {
     }
     // ---- what happened ----
     showDecision(d) {
-        if (d.outcome === 'issued') {
-            // The press plays a note of the chord sounding now, so it joins the music.
-            const unit = unitOf(d.slot.instr);
-            this.cue(HIT_CUE[unit], { pitch: this.music?.hitPitch(this.musicBeat - 1, unit) });
+        if (d.outcome === 'issued' || d.outcome === 'paired') {
+            // The press plays a note of the chord sounding now, so it joins the music; a pair plays both its units' notes.
+            const units = d.outcome === 'paired' && d.action?.kind === 'route' && d.action.also ? [d.action.unit, d.action.also.unit] : [unitOf(d.slot.instr)];
+            for (const unit of units)
+                this.cue(HIT_CUE[unit], { pitch: this.music?.hitPitch(this.musicBeat - 1, unit) });
         }
         else if (d.outcome === 'stalled')
             this.cue('stall');
@@ -547,6 +580,9 @@ export class PipelineScene extends Screen {
         }
         this.highway.syncRows();
         this.bus.send(report.committed, this.beatSeconds());
+        // A pair's second reaches WRITE BACK beside its first: its value travels too.
+        if (report.committedPartner)
+            this.bus.send(report.committedPartner, this.beatSeconds());
         if (report.access)
             this.onAccess(report.access.slot, report.access.access);
         this.panel.refresh();

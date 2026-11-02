@@ -76,6 +76,8 @@ export type SongSetup = {
   readonly l1: boolean;
   /** The deep pipeline, switched on in the shop (with branch guessing): the rated clock is faster and a wrong guess costs more. */
   readonly deep: boolean;
+  /** Superscalar (tier 7): two instructions can start together, a chord. */
+  readonly superscalar: boolean;
   /** The rated clock in MHz, from the clock upgrades owned; the dial over- or underclocks it. */
   readonly ratedMhz: number;
   /** The chip's top clock as the song starts (its wear), and whether H may pass the rated clock. */
@@ -132,6 +134,8 @@ export function songSetup(start: SongStart, progress: Progress, params: URLSearc
     // ?cache fits the L1 cache.
     l1: start.l1 ?? (hasCache(progress) || params.has('cache')),
     deep,
+    // ?superscalar lets two start together (a tier's options pass it in, like its other hardware).
+    superscalar: !singleCycle && (start.superscalar ?? params.has('superscalar')),
     ratedMhz: ratedMhzFor(progress, !singleCycle, deep),
     // Wear is the chip's own, and a replay plays on the chip its run started on.
     // Practice always runs on a new chip, so it never overheats.
@@ -154,8 +158,8 @@ export function songSetup(start: SongStart, progress: Progress, params: URLSearc
 
 /** The hardware the simulator runs for this song, at a clock (MHz). */
 export function pipelineOptions(setup: SongSetup, mhz: number): PipelineOptions {
-  const { forwarding, predictor, singleCycle, l1, deep } = setup;
-  return { forwarding, predictor, singleCycle, cache: l1, mhz, wrongGuessCycles: deep ? DEEP_PIPELINE.wrongGuessCycles : 1 };
+  const { forwarding, predictor, singleCycle, l1, deep, superscalar } = setup;
+  return { forwarding, predictor, singleCycle, cache: l1, mhz, wrongGuessCycles: deep ? DEEP_PIPELINE.wrongGuessCycles : 1, superscalar };
 }
 
 // Starting the song again passes its whole setup on. songSetup reads only what

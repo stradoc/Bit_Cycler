@@ -70,7 +70,7 @@ export const GLOSSARY = {
   },
   THROUGHPUT: {
     title: 'THROUGHPUT',
-    body: 'Instructions finished per cycle over the last 8 cycles. 1.00 means the pipeline is full and one instruction finishes every cycle.',
+    body: 'Instructions finished per cycle over the last 8 cycles. 1.00 means the pipeline is full and one instruction finishes every cycle. A superscalar CPU can reach 2.00: two a cycle.',
   },
   STATS: {
     title: 'CYCLES AND CPI',

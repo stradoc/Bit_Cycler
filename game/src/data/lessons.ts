@@ -37,6 +37,7 @@ export const LESSONS: Readonly<Record<string, Lesson>> = Object.fromEntries(
     { id: 'tier4', title: 'LESSON 4: BRANCH PREDICTION', scene: 'pipeline', options: { forwarding: true, guessing: true }, practice: true },
     { id: 'tier5', title: 'LESSON 5: A 1-BIT PREDICTOR', scene: 'pipeline', options: { forwarding: true, guessing: true, predictor: '1-bit', program: 'SUM GRID' }, practice: true },
     { id: 'tier6', title: 'LESSON 6: A 2-BIT PREDICTOR', scene: 'pipeline', options: { forwarding: true, guessing: true, predictor: '2-bit', program: 'SUM GRID' }, practice: true },
+    { id: 'tier7', title: 'LESSON 7: TWO AT ONCE (SUPERSCALAR)', scene: 'pipeline', options: { forwarding: true, guessing: true, predictor: '2-bit', superscalar: true, program: 'SUM PAIRS' }, practice: true },
     // Explained once, on the song screen, as the upgrade arrives (or the clock first outruns RAM); no practice of their own.
     { id: 'overclock', title: 'OVERCLOCKING', scene: 'pipeline', practice: false },
     { id: 'memwall', title: 'THE MEMORY WALL', scene: 'pipeline', options: { forwarding: true }, practice: false },

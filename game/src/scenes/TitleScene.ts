@@ -41,7 +41,7 @@ const LIST_X = 230;
 const LIST_TOP = 172;
 const ROW_H = 26;
 /** BRIEFS holds more files: its rows are closer together. */
-const BRIEFS_ROW_H = 19;
+const BRIEFS_ROW_H = 16.5;
 /** The code in the margins scrolls up this fast (layout pixels a second). */
 const CODE_SPEED = 14;
 /** The margins' code columns: their left edges, and the band they show in. */

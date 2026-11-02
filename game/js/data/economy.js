@@ -79,6 +79,14 @@ export const CPU_PARTS = [
         bits: 32,
         about: 'A counter per branch: one surprise only weakens it, so loops are guessed better.',
     },
+    {
+        id: 'superscalar',
+        name: 'SUPERSCALAR (2 AT ONCE)',
+        price: 1800,
+        tier: 7,
+        bits: 32,
+        about: 'A second path through the CPU: two instructions can start in one cycle, if they need different units and the second needs nothing from the first.',
+    },
 ];
 /**
  * The deep pipeline: an optional part, switched on or off in the shop. Ten

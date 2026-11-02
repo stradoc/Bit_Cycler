@@ -35,11 +35,15 @@ export function runReport(f) {
     const paid = Boolean(contract && setup.replay?.paid);
     const late = setup.replay?.late ?? false;
     // Every cycle either finished an instruction or was lost; what's left over is the pipeline filling and emptying.
-    const fill = Math.max(0, p.cycles - p.instructions - p.stalls - p.flushed - p.memoryCycles - p.refillCycles);
-    const counts = [['finished', p.instructions], ['stalled', p.stalls], ['flushed', p.flushed], ['ram', p.memoryCycles], ['refill', p.refillCycles], ['fill', fill]];
+    // A pair finishes two instructions in one cycle, so the cycles that finished work are the instructions less the pairs.
+    const worked = p.instructions - p.pairs;
+    const fill = Math.max(0, p.cycles - worked - p.stalls - p.flushed - p.memoryCycles - p.refillCycles);
+    const counts = [['finished', worked], ['stalled', p.stalls], ['flushed', p.flushed], ['ram', p.memoryCycles], ['refill', p.refillCycles], ['fill', fill]];
     const rated = pipelineOptions(setup, ratedMhz);
     const best = (options, guesses) => perfectCycles(f.freshCpu, options, guesses) / n / (ratedMhz * 1e6);
     const compare = [];
+    if (setup.superscalar)
+        compare.push({ cpu: 'one-at-a-time', time: best({ ...rated, superscalar: false }, 'hardware') });
     if (setup.predictor)
         compare.push({ cpu: 'predictor-alone', time: best(rated, 'hardware') });
     else if (setup.guessing)
@@ -63,6 +67,7 @@ export function runReport(f) {
         cpi: p.cpi,
         uses: counts.filter(([use, cycles]) => use === 'finished' || cycles > 0).map(([use, cycles]) => ({ use, cycles })),
         singleCycle: setup.singleCycle,
+        pairs: p.pairs,
         ramTrips: p.memory.ramTrips,
         period,
         cooling: chip.haltedMicros / n / 1e6,
@@ -103,7 +108,8 @@ export function resultCard(report) {
     lines.push(`[${stackedBar(report.uses.filter((u) => u.use !== 'fill').map((u) => ({ value: u.cycles, char: USE_MARKS[u.use].char })), report.cycles, w - 2)}]`);
     let key = '';
     for (const { use, cycles } of report.uses) {
-        const entry = `${USE_MARKS[use].char} ${cycles} ${name(use)}`;
+        const pairs = use === 'finished' && report.pairs > 0 ? `, ${report.pairs} AS PAIRS` : '';
+        const entry = `${USE_MARKS[use].char} ${cycles} ${name(use)}${pairs}`;
         if (key && key.length + 3 + entry.length > w) {
             lines.push(key);
             key = entry;

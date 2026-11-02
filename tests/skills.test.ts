@@ -54,12 +54,13 @@ test('REPORT.TXT says what it measures, sums the calls, and charts each kind job
   ];
   assert.deepEqual(totalCalls(log).hazards, { right: 8, total: 12 });
   const report = skillReport(log);
-  assert.equal(report.pages.length, 4);
-  const [summary, , hazards, branches] = report.pages;
+  assert.equal(report.pages.length, 5);
+  const [summary, , hazards, branches, pairing] = report.pages;
   assert.ok(summary.some((line) => line.startsWith('HAZARDS') && line.includes('67% OF 12')));
   // The hazard chart rises job by job: 25%, 75%, 100%.
   assert.deepEqual(hazards.filter((line) => line.includes('%')).map((line) => line.match(/(\d+)%/)?.[1]), ['25', '75', '100']);
   assert.ok(branches.some((line) => line.includes('NO CALLS YET')));
+  assert.ok(pairing.some((line) => line.includes('SUPERSCALAR (TIER 7)')));
   for (const page of report.pages) for (const line of page) assert.ok(line.length <= 50, `too wide for the viewer: ${line}`);
 });
 

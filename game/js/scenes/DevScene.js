@@ -1,6 +1,7 @@
 import { cheatFlags } from '../cheatFlags.js';
 import { CHIPS, CLOCK, COOLING } from '../data/economy.js';
 import { LESSONS } from '../data/lessons.js';
+import { TIERS } from '../data/tiers.js';
 import { folderPath } from '../data/menuFiles.js';
 import { TAUGHT_IDS } from '../data/tours.js';
 import { openLesson } from '../flow.js';
@@ -169,7 +170,7 @@ export class DevScene extends Screen {
                 });
             case 'tier':
                 // A tier or clock the chip can't run fits the chip that can.
-                return this.edit(row, (p) => withTier(p, Phaser.Math.Clamp(tierOf(p).number + delta, 1, 6)));
+                return this.edit(row, (p) => withTier(p, Phaser.Math.Clamp(tierOf(p).number + delta, 1, TIERS.length)));
             case 'clock':
                 return this.edit(row, (p) => fitChip({ ...p, clockLevel: clampInt(p.clockLevel + delta, CLOCK.factors.length - 1) }));
             case 'time':

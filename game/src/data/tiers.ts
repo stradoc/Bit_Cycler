@@ -22,6 +22,8 @@ export type TierOptions = {
   readonly guessing?: boolean;
   /** A hardware predictor guesses first; the player can override it. */
   readonly predictor?: Predictor;
+  /** Two instructions can start together, a chord (sim/pipeline.ts pairCheck). */
+  readonly superscalar?: boolean;
   /** Program name (see data/programs.ts); SUM ARRAY by default. */
   readonly program?: string;
 };
@@ -38,6 +40,10 @@ export const TIERS: readonly Tier[] = [
   {
     number: 6, name: '2-BIT PREDICTOR', lessonId: 'tier6', scene: 'pipeline',
     options: { forwarding: true, guessing: true, predictor: '2-bit', program: 'SUM GRID' },
+  },
+  {
+    number: 7, name: 'SUPERSCALAR', lessonId: 'tier7', scene: 'pipeline',
+    options: { forwarding: true, guessing: true, predictor: '2-bit', superscalar: true, program: 'SUM PAIRS' },
   },
 ];
 

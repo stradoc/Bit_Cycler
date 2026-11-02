@@ -216,8 +216,10 @@ export class Panel extends Part {
     const { pipeline } = run;
     const pending = new Map<number, string>();
     for (const stage of ['MEM', 'EX'] as const) {
-      const wrote = pipeline.stages[stage]?.step?.wrote;
-      if (wrote !== undefined) pending.set(wrote, stage); // EX overrides MEM: it's newer
+      for (const slot of pipeline.inStage(stage)) {
+        const wrote = slot.step?.wrote;
+        if (wrote !== undefined) pending.set(wrote, stage); // EX overrides MEM, and a pair's second its first: they're newer
+      }
     }
     const tags = new Map((setup.spec.keys ?? []).map((key) => [key.reg, key.tag]));
     shown.regs.forEach((value, r) => {
@@ -236,7 +238,8 @@ export class Panel extends Part {
       this.cacheTexts[i]?.setText(`${i} ${line.valid ? bin(line.tag, 4) : '----'} ${data}`);
     });
 
-    const filled = Math.round(run.throughput * 8);
+    // A superscalar CPU can finish two a cycle, so its bar is full at 2.
+    const filled = Math.min(8, Math.round((run.throughput / (this.view.setup.superscalar ? 2 : 1)) * 8));
     this.throughputText.setText(`THROUGHPUT [${'#'.repeat(filled)}${'.'.repeat(8 - filled)}] ${run.throughput.toFixed(2)}`);
     const waited = (pipeline.memoryCycles > 0 ? `  WAITING ON RAM ${pipeline.memoryCycles}` : '') + (pipeline.refillCycles > 0 ? `  REFILLS ${pipeline.refillCycles}` : '');
     this.statsText.setText(
@@ -256,8 +259,7 @@ export class Panel extends Part {
     const { pipeline } = run;
     const stagesAt = new Map<number, Stage[]>();
     for (const stage of STAGES) {
-      const slot = pipeline.stages[stage];
-      if (slot) stagesAt.set(slot.pc, [...(stagesAt.get(slot.pc) ?? []), stage]);
+      for (const slot of pipeline.inStage(stage)) stagesAt.set(slot.pc, [...(stagesAt.get(slot.pc) ?? []), stage]);
     }
     const focusPc = pipeline.stages.ID?.pc ?? pipeline.stages.IF?.pc ?? pipeline.cpu.pc;
     const focusLine = Math.max(0, this.listing.findIndex((line) => 'pc' in line && line.pc === focusPc));

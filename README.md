@@ -53,6 +53,7 @@ Add these to the URL, e.g. `http://localhost:8000/?scene=play&autoplay`. Any `?s
 | `&cache` | The L1 cache |
 | `&clock=150` | Start with the clock dial at 50–150% |
 | `&deep` | The deep pipeline (on a pipelined tier): a 1.5x clock, 4 cycles per wrong guess |
+| `&superscalar` | Superscalar (on a pipelined tier): chords start two instructions at once |
 | `&contract=fair` | Play the board's first contract of that grade (`easy` / `fair` / `stretch`), with pay, results and the workday's clock |
 | `&autoplay` | Every note played perfectly (demos, checking results) |
 | `?scene=pipeline&single&practice&tour=tier1` | Play a lesson's tour of the song screen, then its practice (any lesson id in `data/lessons.ts`; `tour=memwall,cache` plays two in a row). The developer screen's OPEN LESSON and the main menu's BRIEFS do the same with the right hardware |

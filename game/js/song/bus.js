@@ -52,8 +52,8 @@ export class Bus extends Part {
             const value = committed.value;
             this.carry(committed, setup.rows.WB, `x${rd}=${value}`, this.panel.registerY(rd), beatSeconds, () => this.panel.landRegister(rd, value));
         }
-        // Stores leave from MEMORY; on the single-cycle CPU, from the finished instruction.
-        const store = setup.singleCycle ? run.pipeline.stages.WB : run.pipeline.stages.MEM;
+        // Stores leave from MEMORY (a pair holds at most one); on the single-cycle CPU, from the finished instruction.
+        const store = setup.singleCycle ? run.pipeline.stages.WB : run.pipeline.inStage('MEM').find((slot) => slot.step?.stored !== undefined);
         const address = store?.step?.stored;
         if (store && address !== undefined && !this.storesSent.has(store.seq)) {
             this.storesSent.add(store.seq);

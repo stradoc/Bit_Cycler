@@ -53,6 +53,8 @@ export function buildChip(progress: Progress): Part<Material>[] {
   } else {
     const stages: Material[] = ['stage0', 'stage1', 'stage2', 'stage3', 'stage4'];
     stages.forEach((material, i) => parts.push(box([-31 + i * 13, DIE_TOP, -28], [-21 + i * 13, PART_TOP, -16], material)));
+    // Superscalar: a second row of the five stages, so two instructions can go through side by side.
+    if (tier >= 7) stages.forEach((material, i) => parts.push(box([-31 + i * 13, DIE_TOP, -7], [-21 + i * 13, PART_TOP, 2], material)));
     // Forwarding: a wire from EX and MEM back to the stage before them.
     if (tier >= 3) parts.push(box([-16, DIE_TOP, -12], [24, DIE_TOP + 1.5, -9], 'wire'));
     // Branch prediction, with a bit (1-bit) or two (2-bit) of history on top.

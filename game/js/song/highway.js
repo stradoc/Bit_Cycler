@@ -139,7 +139,8 @@ export class Highway extends Part {
     /**
      * Keeps one falling note per upcoming instruction (ID, IF, then the next
      * fetches), on the notes' clock: the chart's beat minus the beats `frozen`
-     * waiting for memory, so they hold still during a wait.
+     * waiting for memory, so they hold still during a wait. Superscalar: the
+     * first two arrive side by side (a chord) when they can start together.
      */
     syncNotes(chartBeat, elapsed, frozen) {
         const { run } = this.view;
@@ -148,11 +149,13 @@ export class Highway extends Part {
         const beat = chartBeat - frozen;
         const due = run.dueBeat - run.waitBeats;
         const wanted = [];
+        // Superscalar: two that can start together arrive together, a chord, and everything behind them comes a beat sooner.
+        const chord = this.view.setup.superscalar && pipeline.pairCheck().ok ? 1 : 0;
         if (ID)
             wanted.push({ slot: ID, k: 0 });
         if (IF)
-            wanted.push({ slot: IF, k: 1 });
-        pipeline.upcoming(LOOKAHEAD).forEach((slot, i) => wanted.push({ slot, k: 2 + i }));
+            wanted.push({ slot: IF, k: 1 - chord });
+        pipeline.upcoming(LOOKAHEAD).forEach((slot, i) => wanted.push({ slot, k: 2 + i - chord }));
         const keep = new Set();
         for (const { slot, k } of wanted) {
             const key = noteKey(slot);
@@ -180,10 +183,10 @@ export class Highway extends Part {
     /** Moves issued notes down to the row of the stage they're in; drops notes that left WB. */
     syncRows() {
         const { run, setup, words } = this.view;
-        const stages = run.pipeline.stages;
+        const { stages, partners } = run.pipeline;
         const present = new Set();
-        for (const stage of ['EX', 'MEM', 'WB']) {
-            const slot = stages[stage];
+        // Each row's instruction, and superscalar, the second of its pair beside it in its own lane.
+        for (const [stage, slot] of ['EX', 'MEM', 'WB'].flatMap((stage) => [[stage, stages[stage]], [stage, partners[stage]]])) {
             if (!slot)
                 continue;
             present.add(slot.seq);

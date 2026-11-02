@@ -194,6 +194,17 @@ export const SONG_TOURS: Readonly<Record<string, readonly TourStep<SongTarget>[]
     { say: 'Your results compare you with the predictor on its own. Every right override is a beat it would have lost.', picture: 'score2' },
     { say: 'Practice time!', point: 'line' },
   ],
+  tier7: [
+    { say: 'Your CPU has a second path through it now: TWO instructions can start in the same beat. That is called SUPERSCALAR.', point: 'lanes' },
+    { say: "Think of a shop opening a second till: two customers served at once, as long as they don't need the same counter.", point: 'lanes' },
+    { say: 'There is still one of each unit: one ALU, one memory, one branch unit. So two can only go together if they need different units.', point: 'lanes' },
+    { say: "And the second can't need the first one's answer: if it reads a register the first is still writing, it waits its turn.", point: 'listing' },
+    { say: "A branch can only go second. Until it's decided, the CPU doesn't know which instruction comes after it.", point: 'listing' },
+    { say: 'Two that can go together arrive side by side, a CHORD: press both lanes at the same moment, like F and D for lb and addi.', point: 'line' },
+    { say: "One key is never wrong, just slower. A chord on two that can't go together throws both away, like issuing too early.", point: 'line' },
+    { say: 'With pairs, more than one instruction finishes per cycle, so CPI can drop below 1. THROUGHPUT now goes up to 2.', point: 'stats' },
+    { say: "Let's practice some chords.", point: 'line' },
+  ],
   overclock: [
     { say: "This is your CPU's clock and temperature. You can now OVERCLOCK: run the clock faster than it's rated for.", point: 'gauge' },
     { say: 'In a song, H speeds the clock up 10% and G slows it down. The music follows, since one beat is still one cycle.', picture: 'overclock' },

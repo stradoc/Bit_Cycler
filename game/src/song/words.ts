@@ -6,7 +6,7 @@ import type { Decision, Outcome, PipelineRun } from '../rhythm/pipelineRun.ts';
 import { addressOf } from '../sim/cpu.ts';
 import { describe, format, UNIT_ROLES, unitOf, type Instruction, type RType, type Unit } from '../sim/isa.ts';
 import { BLOCK_BYTES, blockOf, CACHE_LINES, lineOf, MEMORY_TIMING, tagOf, type Access, type MissKind } from '../sim/memory.ts';
-import type { Hazard, Slot, Stage } from '../sim/pipeline.ts';
+import type { Hazard, PairBlock, Slot, Stage } from '../sim/pipeline.ts';
 import type { Chip } from '../sim/thermal.ts';
 import { THERMAL } from '../sim/thermal.ts';
 import { addressBits, bin, hex, LANE_KEYS, MISS_WORDS, STAGE_NAMES, type FreezeView } from './layout.ts';
@@ -57,8 +57,17 @@ const BITWISE: ReadonlySet<Instruction['op']> = new Set(['and', 'or', 'xor']);
 /** Why an instruction goes down each lane, to start a sentence. */
 const LANE_WORK: Readonly<Record<Unit, string>> = { ALU: 'This is math or logic', MEM: 'This is memory work', BRANCH: 'This decides what runs next' };
 
+/** Why two instructions can't start together, as feedback says it. */
+const PAIR_WHY: Readonly<Record<PairBlock, string>> = {
+  'no-second': 'NOTHING BEHIND IT',
+  'branch-first': 'A BRANCH MUST GO SECOND',
+  'same-unit': 'BOTH NEED THE SAME UNIT',
+  depends: "THE SECOND NEEDS THE FIRST'S RESULT",
+  hazard: 'ONE IS STILL WAITING FOR A VALUE',
+};
+
 /** The player's calls of each kind, as TICK says them ("4 of 5 hazard calls"). */
-const CALL_WORDS: Readonly<Record<Skill, string>> = { routing: 'routes', hazards: 'hazard calls', branches: 'branch guesses' };
+const CALL_WORDS: Readonly<Record<Skill, string>> = { routing: 'routes', hazards: 'hazard calls', branches: 'branch guesses', pairing: 'pairing calls' };
 
 export class SongWords {
   private readonly run: PipelineRun;
@@ -84,8 +93,9 @@ export class SongWords {
   }
 
   tierTitle(): string {
-    const { singleCycle, predictor, guessing, forwarding } = this.setup;
+    const { singleCycle, predictor, guessing, forwarding, superscalar } = this.setup;
     if (singleCycle) return 'TIER 1: SINGLE-CYCLE';
+    if (superscalar) return 'TIER 7: SUPERSCALAR';
     if (predictor) return `TIER ${predictor === '1-bit' ? 5 : 6}: ${predictor.toUpperCase()} PREDICTOR`;
     if (guessing) return 'TIER 4: BRANCH PREDICTION';
     return forwarding ? 'TIER 3: FORWARDING' : 'TIER 2: PIPELINE';
@@ -96,8 +106,16 @@ export class SongWords {
   /** After a key press: how it went (an issued note's timing and streak, a stall, or the mistake). */
   decision(d: Decision, streak: number): string | undefined {
     switch (d.outcome) {
-      case 'issued':
-        return `${d.waited ? 'GO' : d.judgment}${streak >= 4 ? `\nSTREAK ${streak}` : ''}`;
+      case 'issued': {
+        // Superscalar: one key on two that could have gone together is right, but slower.
+        const behind = this.run.pipeline.stages.IF;
+        const chance = d.pairable && behind ? `\nCOULD PAIR WITH ${behind.instr.op}` : '';
+        return `${d.waited ? 'GO' : d.judgment}${streak >= 4 ? `\nSTREAK ${streak}` : ''}${chance}`;
+      }
+      case 'paired':
+        return `${d.waited ? 'GO' : d.judgment}: PAIRED\nTWO AT ONCE${streak >= 4 ? `\nSTREAK ${streak}` : ''}`;
+      case 'wrong-pair':
+        return `CAN'T PAIR: ${PAIR_WHY[d.pairBlock ?? 'no-second']}\nBOTH FLUSHED`;
       case 'stalled':
         return `STALL: WAITING FOR x${d.hazard?.reg}`;
       case 'wasted-stall':
@@ -263,6 +281,17 @@ export class SongWords {
     if (this.setup.singleCycle) return [{ id: slot.instr.op, message: `NEW INSTRUCTION: ${format(slot.instr)}\n${PLAIN[slot.instr.op]}\n${describe(slot.instr)}\n${UNIT_ROLES[unit]} -> press ${LANE_KEYS[unit]} (${unit})` }];
     if (hazard) return [{ id: 'hazard', point: 'rows', message: `HAZARD: ${slot.instr.op} needs x${hazard.reg}, but\n${this.whyNotReady(hazard)}\nPress SPACE until the link is gone.` }];
     const route = { id: 'route', message: `NO LINK: nothing below is still\ncomputing what it needs.\nRoute it: press ${LANE_KEYS[unit]} (${unit})` };
+    // Superscalar: the first time two can go together, and the first time each reason stops them.
+    const behind = pipeline.stages.IF;
+    if (this.setup.superscalar && behind) {
+      const check = pipeline.pairCheck();
+      const other = unitOf(behind.instr);
+      if (check.ok) {
+        return [{ id: 'pair', message: `PAIR: ${slot.instr.op} (${unit}) and ${behind.instr.op} (${other})\nneed different units, and nothing links them.\nPress ${LANE_KEYS[unit]} and ${LANE_KEYS[other]} together.` }, route];
+      }
+      if (check.reason === 'same-unit') return [{ id: 'pair-same', message: `ONE AT A TIME: ${slot.instr.op} and ${behind.instr.op}\nboth need the ${unit}, and there's only one.\nPress just ${LANE_KEYS[unit]}.` }, route];
+      if (check.reason === 'depends') return [{ id: 'pair-depends', message: `ONE AT A TIME: ${behind.instr.op} needs what\n${slot.instr.op} is still working out.\nPress just ${LANE_KEYS[unit]}.` }, route];
+    }
     if (this.setup.guessing && pipeline.branchOutcome() !== undefined) {
       const message = this.setup.predictor
         ? "THE PREDICTOR'S GUESS GLOWS.\nPress that key to follow it, the other\nto override (J NOT TAKEN, K TAKEN)."
@@ -406,6 +435,7 @@ export class SongWords {
       steps.push({ say: 'The song was a small piece of the job. The rest runs the same way, so how you played sets the whole job\'s time.', point: 'verdict' });
     }
     steps.push({ say: `Your CPU took ${report.cycles} cycles to finish ${report.instructions} instructions: a CPI (cycles per instruction) of ${report.cpi.toFixed(2)}. Lower is faster.`, point: 'cycles' });
+    if (report.pairs > 0) steps.push({ say: `${report.pairs} cycles started two instructions at once. That's how a superscalar CPU gets its CPI under 1.`, point: 'cycles' });
     const lost: Readonly<Record<Exclude<CycleUse, 'finished'>, (cycles: number) => string>> = {
       stalled: (c) => (report.singleCycle ? `${c} cycles finished nothing: a missed beat or a wrong key wastes the whole cycle.` : `${c} cycles were stalls: waiting for a value that wasn't ready yet, or a missed beat.`),
       flushed: (c) => `${c} cycles were flushed: instructions fetched down the wrong path after a branch, then thrown away.`,
@@ -417,6 +447,7 @@ export class SongWords {
     steps.push({ say: `Time per instruction is CPI x clock period: ${report.cpi.toFixed(2)} x ${time(report.period)} = ${time(report.cpi * report.period)}.` });
     if (report.cooling > 0) steps.push({ say: `The clock also stopped to cool, which added ${time(report.cooling)} to every instruction.` });
     const compare: Readonly<Record<RunReport['compare'][number]['cpu'], (t: string) => string>> = {
+      'one-at-a-time': (t) => `Starting just one instruction a cycle, even a perfect run would take ${t} an instruction.`,
       'no-forwarding': (t) => `Without forwarding, even a perfect run would take ${t} an instruction.`,
       'never-guessing': (t) => `Without guessing, waiting at every branch instead, a perfect run would take ${t} an instruction.`,
       'predictor-alone': (t) => `The predictor alone, with no help from you, would take ${t} an instruction.`,
@@ -445,6 +476,10 @@ export class SongWords {
     const unit = unitOf(slot.instr);
     if (outcome === 'violation' && hazard) return `WAIT! x${hazard.reg} isn't ready:\n${this.whyNotReady(hazard)}\nPress SPACE to stall.`;
     if (outcome === 'wasted-stall') return `NO NEED TO WAIT: there's no link.\nRoute it: press ${LANE_KEYS[unit]} (${unit})`;
+    if (outcome === 'wrong-pair') {
+      const check = this.run.pipeline.pairCheck();
+      return `THESE TWO CAN'T GO TOGETHER:\n${PAIR_WHY[check.ok ? 'no-second' : check.reason].toLowerCase()}.\nPress just ${LANE_KEYS[unit]} (${unit}).`;
+    }
     return `${describe(slot.instr)}\n${UNIT_ROLES[unit]} -> press ${LANE_KEYS[unit]} (${unit})`;
   }
 
@@ -563,7 +598,7 @@ export class SongWords {
   register(r: number): Entry {
     const role = this.setup.spec.roles?.[r];
     const job = r === 0 ? 'x0 is wired to zero: writing to it does nothing.' : role ? `In this program: ${role}.` : 'Not used by this program.';
-    const pending = (['EX', 'MEM'] as const).some((stage) => this.run.pipeline.stages[stage]?.step?.wrote === r);
+    const pending = (['EX', 'MEM'] as const).some((stage) => this.run.pipeline.inStage(stage).some((slot) => slot.step?.wrote === r));
     const note = pending ? ' A new value for it is still in the pipeline.' : '';
     return { title: `REGISTER x${r} = ${this.shown.regs[r]}`, body: `${job}${note} ${GLOSSARY.REGISTERS.body}` };
   }

@@ -135,6 +135,7 @@ export const README: TextFile = {
       '  [SPACE]  STALL: WAIT FOR A VALUE',
       "           THAT ISN'T READY YET",
       '  [G] [H]  CLOCK DOWN / UP',
+      '  TWO LANES AT ONCE: A PAIR (TIER 7)',
       '  [Q]      PAUSE MENU (OR [ESC])',
     ],
     [

@@ -32,7 +32,7 @@ test('the boot reports the save: CPU, clock, the trip to RAM in cycles, cache, c
 test('upgrades change the boot', () => {
   for (const era of ERAS) {
     const text = screen(bootScript(maxed, SLOT, era)).join('\n');
-    assert.match(text, /64-BIT, TIER 6 2-BIT PREDICTOR, DEEP PIPELINE/, `era ${era.name}`);
+    assert.match(text, /64-BIT, TIER 7 SUPERSCALAR, DEEP PIPELINE/, `era ${era.name}`);
     assert.match(text, /4 GHz, A CYCLE EVERY 0.25 ns/, `era ${era.name}`);
     assert.match(text, /61 ns = 244 CYCLES/, `era ${era.name}`); // checking L1 on the way: 61 ns
     assert.match(text, /16 BYTES, DIRECT-MAPPED/, `era ${era.name}`);

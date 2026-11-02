@@ -65,13 +65,15 @@ export type RunReport = {
   readonly uses: readonly { readonly use: CycleUse; readonly cycles: number }[];
   /** A single-cycle CPU: its lost cycles are missed beats and wrong keys, not stalls. */
   readonly singleCycle: boolean;
+  /** Superscalar: cycles that started two instructions at once (among the cycles that finished work). */
+  readonly pairs: number;
   /** RAM trips, for the cycles spent waiting on them. */
   readonly ramTrips: number;
   /** The average clock period actually run at, and the time the clock stopped to cool, per instruction. */
   readonly period: number;
   readonly cooling: number;
   /** Time per instruction for the CPUs this one improves on, each at its best. */
-  readonly compare: readonly { readonly cpu: 'no-forwarding' | 'never-guessing' | 'predictor-alone' | 'no-cache' | 'single-cycle'; readonly time: number }[];
+  readonly compare: readonly { readonly cpu: 'one-at-a-time' | 'no-forwarding' | 'never-guessing' | 'predictor-alone' | 'no-cache' | 'single-cycle'; readonly time: number }[];
   readonly branches?: { readonly right: number; readonly total: number; readonly predictorRight?: number };
   readonly cache?: { readonly hits: number; readonly loads: number };
   /** The player's right calls of each kind: the learning objective, measured (rhythm/skills.ts). */
@@ -90,11 +92,14 @@ export function runReport(f: Finished): RunReport {
   const paid = Boolean(contract && setup.replay?.paid);
   const late = setup.replay?.late ?? false;
   // Every cycle either finished an instruction or was lost; what's left over is the pipeline filling and emptying.
-  const fill = Math.max(0, p.cycles - p.instructions - p.stalls - p.flushed - p.memoryCycles - p.refillCycles);
-  const counts: [CycleUse, number][] = [['finished', p.instructions], ['stalled', p.stalls], ['flushed', p.flushed], ['ram', p.memoryCycles], ['refill', p.refillCycles], ['fill', fill]];
+  // A pair finishes two instructions in one cycle, so the cycles that finished work are the instructions less the pairs.
+  const worked = p.instructions - p.pairs;
+  const fill = Math.max(0, p.cycles - worked - p.stalls - p.flushed - p.memoryCycles - p.refillCycles);
+  const counts: [CycleUse, number][] = [['finished', worked], ['stalled', p.stalls], ['flushed', p.flushed], ['ram', p.memoryCycles], ['refill', p.refillCycles], ['fill', fill]];
   const rated = pipelineOptions(setup, ratedMhz);
   const best = (options: typeof rated, guesses?: 'hardware') => perfectCycles(f.freshCpu, options, guesses) / n / (ratedMhz * 1e6);
   const compare: RunReport['compare'][number][] = [];
+  if (setup.superscalar) compare.push({ cpu: 'one-at-a-time', time: best({ ...rated, superscalar: false }, 'hardware') });
   if (setup.predictor) compare.push({ cpu: 'predictor-alone', time: best(rated, 'hardware') });
   else if (setup.guessing) compare.push({ cpu: 'never-guessing', time: best({ ...rated, predictor: undefined }, 'hardware') });
   else if (setup.forwarding) compare.push({ cpu: 'no-forwarding', time: best({ ...rated, forwarding: false }) });
@@ -114,6 +119,7 @@ export function runReport(f: Finished): RunReport {
     cpi: p.cpi,
     uses: counts.filter(([use, cycles]) => use === 'finished' || cycles > 0).map(([use, cycles]) => ({ use, cycles })),
     singleCycle: setup.singleCycle,
+    pairs: p.pairs,
     ramTrips: p.memory.ramTrips,
     period,
     cooling: chip.haltedMicros / n / 1e6,
@@ -165,7 +171,8 @@ export function resultCard(report: RunReport): ResultCard {
   lines.push(`[${stackedBar(report.uses.filter((u) => u.use !== 'fill').map((u) => ({ value: u.cycles, char: USE_MARKS[u.use].char })), report.cycles, w - 2)}]`);
   let key = '';
   for (const { use, cycles } of report.uses) {
-    const entry = `${USE_MARKS[use].char} ${cycles} ${name(use)}`;
+    const pairs = use === 'finished' && report.pairs > 0 ? `, ${report.pairs} AS PAIRS` : '';
+    const entry = `${USE_MARKS[use].char} ${cycles} ${name(use)}${pairs}`;
     if (key && key.length + 3 + entry.length > w) {
       lines.push(key);
       key = entry;
