@@ -16,6 +16,7 @@ import { getProgress } from '../save.ts';
 import type { TokenKind } from '../sim/isa.ts';
 import { getSettings } from '../settings.ts';
 import type { EraMotion } from '../data/motions.ts';
+import type { TickLook } from '../data/tick.ts';
 import type { ModelStyle } from '../visual/model3d.ts';
 
 /** Color per syntax token kind. */
@@ -150,6 +151,11 @@ export type Era = {
 
   /** How 3D models (the shop's chip, the main menu's title) are drawn: the way 3D looked at the time (visual/model3d.ts). */
   readonly models: ModelStyle;
+  /**
+   * How TICK, the guide, is drawn (data/tick.ts): in plain characters, in the
+   * PC's own box and block characters, as a 16-color pixel sprite, or in smooth vector shapes.
+   */
+  readonly tick: TickLook;
   /** A dark variant of this era, chosen in the settings (the era itself never is). */
   readonly dark?: Era;
 };
@@ -174,6 +180,7 @@ const DESKTOP: Era = {
   sound: { whine: true, beep: true },
   motion: { style: 'tween' },
   models: 'lowpoly',
+  tick: 'pixels',
 };
 
 export const ERAS: readonly Era[] = [
@@ -191,6 +198,7 @@ export const ERAS: readonly Era[] = [
     // A phosphor screen: nothing slides, but what goes dark fades over a quarter second.
     motion: { style: 'cut', afterglow: 250 },
     models: 'wire',
+    tick: 'ascii',
   },
   {
     // A late-80s DOS app in text mode on a CRT: blue, the 16-color palette, double-line boxes, drop shadows.
@@ -213,6 +221,7 @@ export const ERAS: readonly Era[] = [
     // Text mode: redrawn about ten times a second, in whole character cells.
     motion: { style: 'step', fps: 10, cell: { x: 8, y: 16 } },
     models: 'flat',
+    tick: 'cp437',
   },
   {
     ...DESKTOP,
@@ -245,6 +254,7 @@ export const ERAS: readonly Era[] = [
     sound: { whine: false, beep: false },
     motion: { style: 'ease' },
     models: 'smooth',
+    tick: 'vector',
   },
 ];
 

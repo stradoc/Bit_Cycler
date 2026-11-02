@@ -1,18 +1,24 @@
 import { cue } from '../audio/cues.ts';
 import type { DiagramId } from '../data/lessons.ts';
+import { poseAt, TICK, type Mood } from '../data/tick.ts';
 import { GUIDE_NAME, type TourStep } from '../data/tours.ts';
 import { drawDiagram } from '../visual/diagrams.ts';
 import { HEIGHT, WIDTH } from '../visual/display.ts';
+import { motionOf } from '../visual/motion.ts';
+import { tickFigure, type TickFigure } from '../visual/tickFigure.ts';
 import { cssColor, type Era } from './eras.ts';
 import { ALPHA, TEXT } from './theme.ts';
 import { Box, eraText } from './widgets.ts';
 
-// The guide: a little robot drawn in characters that bobs up and down,
-// talks in a speech bubble (its mouth moving while the words type out), and
-// points at a part of the screen by dimming everything else, or holds up a
-// lesson picture. It speaks in blips, one per word, and chirps hello and
-// goodbye around a tour. Screens give it what to say (data/tours.ts, practice's
-// tips) and where things are; it works out where to stand.
+// The guide: TICK, a little robot drawn the era's way (visual/tickFigure.ts)
+// who bobs up and down, walks over to what he's explaining, talks in a speech
+// bubble (his mouth moving while the words type out), and points at a part
+// of the screen by dimming everything else, or holds up a lesson picture. He
+// speaks in blips, one per word, and chirps hello and goodbye around a tour;
+// his face shows how he feels about a line (its mood). Screens give him what
+// to say (data/tours.ts, practice's tips) and where things are; he works out
+// where to stand. His bob, his walk and the spotlight's pulse are motions
+// (data/motions.ts), so each era moves him its own way.
 
 /** A part of the screen, in layout pixels: its top-left corner and size. */
 export type Rect = { readonly x: number; readonly y: number; readonly w: number; readonly h: number };
@@ -32,12 +38,13 @@ export type GuideLine = {
   readonly hold?: boolean;
   /** A question's answers (ask() sets them). */
   readonly choices?: readonly string[];
+  /** How he feels about it (calm unless given): happy, cheering, or worried. */
+  readonly mood?: Mood;
 };
 
 /** A question: what it asks, the answers to choose from, and what to do with the one chosen (its index). */
-export type GuideQuestion = { readonly say: string; readonly choices: readonly string[]; readonly done: (choice: number) => void };
+export type GuideQuestion = { readonly say: string; readonly choices: readonly string[]; readonly done: (choice: number) => void; readonly mood?: Mood };
 
-const CHARS_PER_SECOND = 60;
 /** Once all the words are showing, Enter waits this long (ms) before it closes them, so a double press can't skip a line unread. */
 const READ_MS = 300;
 const BUBBLE_W = 330;
@@ -52,46 +59,6 @@ const MARGIN = 8;
 const DEPTH = 900;
 /** Where a picture is held up, and how big its card is. */
 const CARD = { x: WIDTH / 2, y: 196, w: 880, h: 280 };
-
-/** Room under the robot's last line, so fonts that draw _ on their lowest pixel row don't lose its feet. */
-const FEET_PAD = 4;
-
-/** The robot, its eyes looking left, ahead or right, its mouth open or shut, standing on two little feet. */
-function robot(look: -1 | 0 | 1, blink: boolean, mouth: string): string {
-  const eye = blink ? '-' : 'o';
-  const eyes = look < 0 ? `${eye} ${eye}  ` : look > 0 ? `  ${eye} ${eye}` : ` ${eye} ${eye} `;
-  return ['  .-^-.  ', ` [${eyes}] `, `  | ${mouth} |  `, ' /|___|\\ ', '  _| |_  '].join('\n');
-}
-
-/**
- * Black behind the robot, in its own shape rather than a box: one rounded
- * strip per line, from its first character to its last, so the screen
- * underneath doesn't show through its lines.
- */
-function silhouette(scene: Phaser.Scene, face: string, body: Phaser.GameObjects.Text): Phaser.GameObjects.Graphics {
-  const lines = face.split('\n');
-  const charW = body.width / lines[0].length;
-  const lineH = (body.height - FEET_PAD) / lines.length;
-  const shape = scene.add.graphics().fillStyle(0x000000, 1);
-  lines.forEach((line, row) => {
-    const first = line.search(/\S/);
-    const last = line.trimEnd().length;
-    // The last line reaches down over the padding, under the feet.
-    const extra = row === lines.length - 1 ? FEET_PAD : 0;
-    shape.fillRoundedRect(first * charW - 4, row * lineH - 1, (last - first) * charW + 8, lineH + 2 + extra, 5);
-  });
-  return shape;
-}
-
-/** The robot's color on its black: the era's text color, or white where that is too dark to show (the light 90s desktop). */
-function inkOn(era: Era): number {
-  const [r, g, b] = [era.fg >> 16, (era.fg >> 8) & 0xff, era.fg & 0xff];
-  return 0.3 * r + 0.59 * g + 0.11 * b > 100 ? era.fg : 0xffffff;
-}
-
-/** Mouth shapes while talking, one every MOUTH_MS. */
-const MOUTHS = ['o', '-', 'O', '='];
-const MOUTH_MS = 90;
 
 /** The notes its voice uses: a major pentatonic from 520 Hz, so any run of words sounds friendly. */
 const VOICE = [0, 2, 4, 7, 9].map((step) => 520 * 2 ** (step / 12));
@@ -128,9 +95,9 @@ type Playing = { readonly lines: readonly GuideLine[]; index: number; readonly d
 export class Guide {
   private readonly scene: Phaser.Scene;
   private readonly era: Era;
-  /** The robot and its bubble, moved together. */
+  /** The robot and its bubble, moved together (his walk); the robot bobs inside it. */
   private readonly unit: Phaser.GameObjects.Container;
-  private readonly body: Phaser.GameObjects.Text;
+  private readonly figure: TickFigure;
   private readonly shade: Phaser.GameObjects.Graphics;
   private readonly frame: Phaser.GameObjects.Rectangle;
   /** Catches clicks during a tour (a click goes on, like Enter), so nothing underneath gets them. */
@@ -142,9 +109,12 @@ export class Guide {
   private full = '';
   private started = 0;
   private point: Rect | undefined;
-  /** Where it stands (before bobbing), and where it's going. */
-  private pos = { x: 0, y: 0 };
+  /** Where he's going (the unit's corner; he's walking until he's there). */
   private goal = { x: 0, y: 0 };
+  /** How he feels about what he's saying. */
+  private mood: Mood = 'calm';
+  /** Which bob is playing: slow while he waits, faster while he talks. */
+  private bobbing: 'tick-bob' | 'tick-bob-talk' | undefined;
   /** Where the robot waits while it has nothing to say; undefined: it leaves. */
   private readonly home: { x: number; y: number } | undefined;
   private playing: Playing | undefined;
@@ -157,7 +127,6 @@ export class Guide {
   /** The words being said, each with where it starts and the pitch it's said at; and how many have been voiced. */
   private syllables: { at: number; pitch: number }[] = [];
   private voiced = 0;
-  private lastMs = performance.now();
 
   /** `home`: where the robot waits (its top-left corner) between lines; without one it only shows while talking. */
   constructor(scene: Phaser.Scene, era: Era, home?: { x: number; y: number }) {
@@ -166,13 +135,11 @@ export class Guide {
     this.home = home;
     this.shade = scene.add.graphics().setDepth(DEPTH);
     this.frame = scene.add.rectangle(0, 0, 10, 10).setOrigin(0).setStrokeStyle(2, era.accent, 1).setDepth(DEPTH + 1).setVisible(false);
-    const face = robot(0, false, '-');
-    this.body = eraText(scene, era, 0, 0, face, TEXT.body + 3).setColor(cssColor(inkOn(era))).setPadding(0, 0, 0, FEET_PAD);
-    this.unit = scene.add.container(0, 0, [silhouette(scene, face, this.body), this.body]).setDepth(DEPTH + 10);
+    this.figure = tickFigure(scene, era);
+    this.unit = scene.add.container(0, 0, [this.figure.view]).setDepth(DEPTH + 10);
     this.catcher = scene.add.zone(0, 0, WIDTH, HEIGHT).setOrigin(0).setDepth(DEPTH - 1);
     this.catcher.on('pointerdown', () => this.next());
     const start = home ?? { x: WIDTH - 120, y: HEIGHT };
-    this.pos = { ...start };
     this.goal = { ...start };
     this.unit.setPosition(start.x, start.y).setVisible(home !== undefined);
   }
@@ -195,7 +162,7 @@ export class Guide {
   /** Plays a tour: each step on Enter (or a click), then `done`. `where` finds the part a step points at. */
   tour<Target extends string>(steps: readonly TourStep<Target>[], where: (target: Target) => Rect | undefined, done: () => void): void {
     const keys = (i: number) => (i === steps.length - 1 ? '[ENTER] OK!' : `[ENTER] NEXT   ${i + 1}/${steps.length}`);
-    const lines = steps.map((step, i): GuideLine => ({ say: step.say, point: step.point && where(step.point), picture: step.picture, keys: keys(i) }));
+    const lines = steps.map((step, i): GuideLine => ({ say: step.say, point: step.point && where(step.point), picture: step.picture, mood: step.mood, keys: keys(i) }));
     if (lines.length === 0) {
       done();
       return;
@@ -251,7 +218,7 @@ export class Guide {
    * Up / Down (move) or a click, and Enter (next).
    */
   ask(question: GuideQuestion): void {
-    this.say({ say: question.say, hold: true, keys: '[UP/DOWN] CHOOSE   [ENTER] OK', choices: question.choices });
+    this.say({ say: question.say, hold: true, keys: '[UP/DOWN] CHOOSE   [ENTER] OK', choices: question.choices, mood: question.mood });
     const texts = this.bubble.filter((part): part is Phaser.GameObjects.Text => part.getData('choice') !== undefined);
     this.asking = { question, selected: 0, texts };
     texts.forEach((text, i) =>
@@ -290,13 +257,14 @@ export class Guide {
 
   /** When all the words were showing: typed out, or shown at once by Enter. */
   private shownAt(): number {
-    return this.started === 0 ? this.skippedAt : this.started + (this.full.length / CHARS_PER_SECOND) * 1000;
+    return this.started === 0 ? this.skippedAt : this.started + (this.full.length / TICK.charsPerSecond) * 1000;
   }
 
   /** Says a line: the robot walks over beside what it points at, and the words type out. */
   say(line: GuideLine): void {
     this.clear();
     this.point = line.point;
+    this.mood = line.mood ?? 'calm';
     this.held = line.hold ?? false;
     if (this.held) this.catcher.setInteractive();
     const { era, scene } = this;
@@ -310,6 +278,7 @@ export class Guide {
       this.shade.fillRect(0, p.y, p.x, p.h).fillRect(p.x + p.w, p.y, WIDTH - p.x - p.w, p.h);
       this.frame.setPosition(p.x - 2, p.y - 2).setSize(p.w + 4, p.h + 4).setVisible(true);
       this.frame.setStrokeStyle(2, era.accent, 1);
+      motionOf(scene).play('tick-spotlight', this.frame);
     } else if (line.picture || dim > 0) {
       this.shade.fillRect(0, 0, WIDTH, HEIGHT);
     }
@@ -340,20 +309,23 @@ export class Guide {
     const box = new Box(scene, era, bubbleW / 2, bubbleH / 2, bubbleW, bubbleH, { strokeWidth: 2 });
 
     // The robot stands left of its bubble, its head level with the bubble's top; a tail joins them.
-    const robotW = this.body.width;
-    const left = robotW + GAP;
+    const left = this.figure.width + GAP;
     const w = left + bubbleW;
-    const h = Math.max(this.body.height, bubbleH);
+    const h = Math.max(this.figure.height, bubbleH);
     const parts = [...box.parts, name, words, ...choices, ...(hint ? [hint] : [])];
     for (const part of parts) (part as Phaser.GameObjects.Text).x += left;
     const tail = scene.add.triangle(0, 0, left + 1, 18, left + 1, 34, left - GAP, 26, era.bg).setOrigin(0).setStrokeStyle(1, era.fg, 1);
     this.unit.add([...parts, tail]);
     this.bubble = [...parts, tail];
     this.words = words;
-    this.goal = line.picture ? { x: WIDTH / 2 - w / 2, y: CARD.y + CARD.h / 2 + GAP } : placeBeside(w, h, p);
-    if (!this.unit.visible) {
-      this.pos = { ...this.goal };
-      this.unit.setVisible(true);
+    const goal = line.picture ? { x: WIDTH / 2 - w / 2, y: CARD.y + CARD.h / 2 + GAP } : placeBeside(w, h, p);
+    if (this.unit.visible) {
+      this.walkTo(goal);
+    } else {
+      // Not on the screen yet: he appears where he'll stand.
+      motionOf(scene).stop(this.unit);
+      this.goal = { x: Math.round(goal.x), y: Math.round(goal.y) };
+      this.unit.setPosition(this.goal.x, this.goal.y).setVisible(true);
     }
     this.started = performance.now();
   }
@@ -362,51 +334,59 @@ export class Guide {
   quiet(): void {
     this.clear();
     this.held = false;
+    this.mood = 'calm';
     if (!this.playing) this.catcher.disableInteractive();
-    if (this.home) this.goal = { ...this.home };
-    else this.unit.setVisible(false);
+    if (this.home) {
+      this.walkTo(this.home);
+    } else {
+      motionOf(this.scene).stop(this.unit);
+      this.unit.setVisible(false);
+    }
   }
 
-  /** Every frame: it bobs, glides to where it's going, types its words out and moves its mouth. */
-  update(now: number): void {
-    const dt = Math.min(100, now - this.lastMs);
-    this.lastMs = now;
-    if (!this.unit.visible) return;
-    // Glides on the real clock, so slow frames don't leave it behind.
-    const ease = Math.min(1, dt / 110);
-    this.pos.x += (this.goal.x - this.pos.x) * ease;
-    this.pos.y += (this.goal.y - this.pos.y) * ease;
-    const talking = this.words !== undefined && this.typedChars() < this.full.length;
-    const bob = Math.sin(now / (talking ? 140 : 380)) * (talking ? 4 : 3);
-    this.unit.setPosition(Math.round(this.pos.x), Math.round(this.pos.y + bob));
+  /** He walks to `goal` (whole pixels, so his words land sharp), the era's way (a motion). */
+  private walkTo(goal: { x: number; y: number }): void {
+    const to = { x: Math.round(goal.x), y: Math.round(goal.y) };
+    if (to.x === this.goal.x && to.y === this.goal.y) return;
+    this.goal = to;
+    motionOf(this.scene).play('tick-walk', this.unit, { goal: to });
+  }
 
+  /** Every frame: he bobs, types his words out, and takes his pose (talking, walking, looking, how he feels). */
+  update(now: number): void {
+    if (!this.unit.visible) return;
     const typed = this.typedChars();
+    const talking = this.words !== undefined && typed < this.full.length;
+    const bob = talking ? 'tick-bob-talk' : 'tick-bob';
+    if (bob !== this.bobbing) {
+      // From level, so switching never leaves him a little high or low.
+      this.bobbing = bob;
+      this.figure.view.y = 0;
+      motionOf(this.scene).play(bob, this.figure.view);
+    }
+
     if (this.words && this.words.text.length !== Math.min(typed, this.full.length)) this.words.setText(this.full.slice(0, typed));
     // A blip for each word as it starts to appear (one a frame at most, so a slow frame doesn't blurt several).
     let word: { at: number; pitch: number } | undefined;
     while (this.voiced < this.syllables.length && this.syllables[this.voiced].at < typed) word = this.syllables[this.voiced++];
     if (word) cue(this.scene, 'guide-talk', { pitch: word.pitch });
-    const look = this.lookToward();
-    const blink = now % 3600 < 130;
-    const mouth = talking ? MOUTHS[Math.floor(now / MOUTH_MS) % MOUTHS.length] : '-';
-    const face = robot(look, blink, mouth);
-    if (this.body.text !== face) this.body.setText(face);
-    if (this.frame.visible) this.frame.setAlpha(0.6 + 0.4 * Math.abs(Math.sin(now / 300)));
+    const walking = Math.abs(this.unit.x - this.goal.x) >= 1 || Math.abs(this.unit.y - this.goal.y) >= 1;
+    this.figure.show(poseAt({ talking, walking, look: this.lookToward(), mood: this.mood }, now), now);
   }
 
   /** Characters typed so far: all of them once Enter skips ahead (started = 0). */
   private typedChars(): number {
     if (this.started === 0) return this.full.length;
-    return Math.floor(((performance.now() - this.started) / 1000) * CHARS_PER_SECOND);
+    return Math.floor(((performance.now() - this.started) / 1000) * TICK.charsPerSecond);
   }
 
-  /** Which way its eyes look: toward what it points at. */
+  /** Which way his eyes look: toward what he points at. */
   private lookToward(): -1 | 0 | 1 {
     const p = this.point;
     if (!p) return 0;
     const cx = p.x + p.w / 2;
-    if (cx < this.pos.x) return -1;
-    if (cx > this.pos.x + this.body.width) return 1;
+    if (cx < this.unit.x) return -1;
+    if (cx > this.unit.x + this.figure.width) return 1;
     return 0;
   }
 
@@ -422,6 +402,7 @@ export class Guide {
     this.asking = undefined;
     this.point = undefined;
     this.shade.clear();
-    this.frame.setVisible(false);
+    motionOf(this.scene).stop(this.frame);
+    this.frame.setAlpha(1).setVisible(false);
   }
 }

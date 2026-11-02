@@ -431,6 +431,7 @@ export class SongWords {
       steps.push({
         say: report.verdict === 'late' ? `Late. At your pace the whole job took ${took}, but it was due in ${due}, so it paid half: ${pay}.` : `On time! At your pace the whole job took ${took}. It was due in ${due}, so it paid in full: ${pay}.`,
         point: 'verdict',
+        mood: report.verdict === 'late' ? 'worried' : 'happy',
       });
       steps.push({ say: 'The song was a small piece of the job. The rest runs the same way, so how you played sets the whole job\'s time.', point: 'verdict' });
     }

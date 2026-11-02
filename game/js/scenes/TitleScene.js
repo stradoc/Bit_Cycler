@@ -121,6 +121,7 @@ export class TitleScene extends Screen {
         // First: how much to teach. Then the welcome that goes with the answer.
         this.guide.ask({
             say: WELCOME_QUESTION.say,
+            mood: WELCOME_QUESTION.mood,
             choices: WELCOME_QUESTION.choices.map((choice) => choice.answer),
             done: (i) => {
                 const { level } = WELCOME_QUESTION.choices[i];

@@ -72,6 +72,25 @@ test("an era's variant replaces the recipe it names; REDUCED MOTION jumps, excep
   assert.deepEqual(styleFor(EASE, MOTIONS['glide-in'], true), { style: 'cut' });
   assert.equal(styleFor(EASE, { ...slide, essential: true }, true), EASE);
   assert.equal(styleFor(EASE, MOTIONS['glide-in'], false), EASE);
+  // A loop (TICK's bob, the spotlight's pulse) holds still on its first keyframe instead.
+  const bob = MOTIONS['tick-bob'];
+  const still = styleFor(EASE, bob, true);
+  assert.deepEqual(still, { style: 'still' });
+  for (const ms of [0, 300, 1000, 5000]) assert.equal(valueAt(bob, bob.tracks.y, 40, undefined, ms, still, 'y'), 40);
+});
+
+test("a recipe with its own style moves that way in every era: TICK is smooth everywhere", () => {
+  const walk = MOTIONS['tick-walk'];
+  for (const era of ERAS) {
+    assert.deepEqual(styleFor(era.motion, walk, false), { style: 'ease' }, era.name);
+    // Halfway through his walk he's on his way, eased (past halfway), not jumped there or stepped in cells.
+    const x = valueAt(walk, walk.tracks.x, 0, 100, walk.duration / 2, styleFor(era.motion, walk, false), 'x');
+    assert.ok(x > 50 && x < 100, `${era.name}: ${x}`);
+  }
+  // REDUCED MOTION still wins.
+  assert.deepEqual(styleFor(EASE, walk, true), { style: 'cut' });
+  // Recipes without a style keep their era's way.
+  assert.equal(styleFor(ERAS[0].motion, MOTIONS['glide-in'], false), ERAS[0].motion);
 });
 
 test('every era moves its own way, and every recipe plays to its end in every era', () => {
@@ -81,12 +100,13 @@ test('every era moves its own way, and every recipe plays to its end in every er
       const recipe = recipeFor(name, era.motion);
       assert.ok(recipe.duration > 0, name);
       for (const [prop, track] of Object.entries(recipe.tracks)) {
+        const motion = styleFor(era.motion, recipe, false);
         for (const ms of [0, recipe.duration / 3, recipe.duration * 2]) {
-          const value = valueAt(recipe, track, 10, 20, ms, era.motion, prop === 'x' || prop === 'y' ? prop : undefined);
+          const value = valueAt(recipe, track, 10, 20, ms, motion, prop === 'x' || prop === 'y' ? prop : undefined);
           assert.ok(Number.isFinite(value), `${era.name} ${name} ${prop} at ${ms}`);
         }
         const last = keyframes(track, 10, 20).at(-1);
-        if (!recipe.loop) assert.equal(valueAt(recipe, track, 10, 20, recipe.duration, era.motion), last, `${era.name} ${name} ends where it should`);
+        if (!recipe.loop) assert.equal(valueAt(recipe, track, 10, 20, recipe.duration, motion), last, `${era.name} ${name} ends where it should`);
       }
     }
   }

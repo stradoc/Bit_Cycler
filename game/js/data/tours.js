@@ -1,7 +1,7 @@
 import { LESSONS } from './lessons.js';
-// What the guide says on each screen: a robot made of characters that walks
-// the player through the real screen, pointing at its parts (everything else
-// dims) or holding up a lesson picture. Every lesson is one of these tours;
+// What the guide says on each screen: TICK, a little robot who walks the
+// player through the real screen, pointing at its parts (everything else
+// dims) or holding up a lesson picture, his face showing how he feels about a line. Every lesson is one of these tours;
 // there are no slides. Lines are short and in sentence case, and written for
 // someone who has never heard of a CPU: a new word comes in capitals, with
 // what it means. Drawing is ui/guide.ts's job.
@@ -23,6 +23,7 @@ export const TUTORIAL = {
 /** TICK's first words on the main menu: hello, and how much to teach. */
 export const WELCOME_QUESTION = {
     say: `Hi! I'm ${GUIDE_NAME}, and I live inside this computer. Welcome to Bit Cycler! Before we start: have you played before?`,
+    mood: 'cheer',
     choices: [
         { answer: "I'm new. (FULL TUTORIAL)", level: 'full' },
         { answer: 'I already know most of this stuff. (SHORT TUTORIAL)', level: 'short' },
@@ -38,7 +39,7 @@ export const WELCOME_TOUR = [
     { say: 'Every lesson I give is kept in BRIEFS. Open it any time to see one again.', point: 'briefs' },
     { say: 'README has the keys and the rules. SETTINGS has the sound, the timing, and the DIFFICULTY: RELAXED if the beat is too fast.', point: 'readme' },
     { say: 'While you play, press Q for the pause menu. After a song, click anything in its replay to learn what it is.' },
-    { say: "Don't try to remember it all: I'll explain each thing the first time you need it. Let's go!", point: 'new' },
+    { say: "Don't try to remember it all: I'll explain each thing the first time you need it. Let's go!", point: 'new', mood: 'happy' },
 ];
 /** What TICK says after the answer: the whole welcome, a short one, or just where to find him. */
 export const WELCOME_AFTER = {
@@ -46,9 +47,9 @@ export const WELCOME_AFTER = {
     short: [
         { say: "Alright, the short version. I'll still show you each new part of the CPU as you get it, but I won't go through every instruction." },
         { say: 'Every lesson I give is kept in BRIEFS, if you want one again.', point: 'briefs' },
-        { say: 'Press Q for the pause menu while you play, and change how much I explain in SETTINGS. Let\'s go!', point: 'settings' },
+        { say: 'Press Q for the pause menu while you play, and change how much I explain in SETTINGS. Let\'s go!', point: 'settings', mood: 'happy' },
     ],
-    skip: [{ say: "Got it! I'll stay out of your way. Every lesson is in BRIEFS, and SETTINGS can bring me back.", point: 'briefs' }],
+    skip: [{ say: "Got it! I'll stay out of your way. Every lesson is in BRIEFS, and SETTINGS can bring me back.", point: 'briefs', mood: 'happy' }],
 };
 export const BOARD_TOUR = [
     { say: "This is the contract board. Companies send in jobs for your CPU, and you get paid when it finishes them.", point: 'list' },
@@ -59,17 +60,17 @@ export const BOARD_TOUR = [
     { say: "Don't worry about reading it yet! In the song, each instruction becomes a note. This counts the notes for each lane.", point: 'notes' },
     { say: 'MEMORY is where the computer keeps its numbers, in numbered spots. The marks show which spots this job reads and writes.', point: 'memory' },
     { say: "This is your workday: 8 hours from 9:00. Each job uses up its time. Press L to log off, and a new day starts with new jobs.", point: 'calendar' },
-    { say: "Pick a job and press ENTER. Your first is a small one, picked so I can show you everything. See you on the next screen!", point: 'list' },
+    { say: "Pick a job and press ENTER. Your first is a small one, picked so I can show you everything. See you on the next screen!", point: 'list', mood: 'happy' },
 ];
 /** Your first day: the first board with real jobs on it, once the tutorial job is done. */
 export const FIRST_DAY_TOUR = [
-    { say: 'Nice work! Now the real jobs arrive, sized to your CPU. EASY jobs leave room for mistakes; FAIR ones leave less.', point: 'list' },
-    { say: "STRETCH jobs pay the most, but they're TIGHT: one sloppy run and you finish late, which pays half.", point: 'list' },
+    { say: 'Nice work! Now the real jobs arrive, sized to your CPU. EASY jobs leave room for mistakes; FAIR ones leave less.', point: 'list', mood: 'cheer' },
+    { say: "STRETCH jobs pay the most, but they're TIGHT: one sloppy run and you finish late, which pays half.", point: 'list', mood: 'worried' },
     { say: 'This bar is your workday: 8 hours from 9:00. The # marks are the hours used; the = marks are what the chosen job would take.', point: 'workday' },
     { say: "Move to a job, or hover over it, to see its = marks. One that won't fit before 5:00 says LATER and waits for tomorrow.", point: 'list' },
     { say: "Each job is due a few hours after you take it, and only stays on the board for a day or two, so don't wait too long.", point: 'time' },
     { say: "When you've done enough, press L to log off. The day's timecard comes up, then a new morning with new jobs.", point: 'calendar' },
-    { say: 'Press C any time to see your calendar: every day so far, and what\'s coming. Have a good first day!' },
+    { say: 'Press C any time to see your calendar: every day so far, and what\'s coming. Have a good first day!', mood: 'happy' },
 ];
 /** The first timecard, as the first day ends. */
 export const TIMECARD_TOUR = [
@@ -96,14 +97,14 @@ export const SONG_TOURS = {
         { say: 'REGISTERS are 8 slots inside the CPU, x0 to x7: tiny, but instant to use. x0 is special: it always holds 0.', point: 'registers' },
         { say: "MEMORY holds far more numbers, but it's slower to reach, like a shelf across the room. LOAD copies from it; STORE copies to it.", point: 'memory' },
         { say: 'Your score is CPI: cycles per instruction. 1.00 is perfect, and every wasted cycle pushes it up.', point: 'stats' },
-        { say: 'This is practice: notes wait for you, so take your time. I\'ll explain each new instruction as it comes.', point: 'line' },
+        { say: 'This is practice: notes wait for you, so take your time. I\'ll explain each new instruction as it comes.', point: 'line', mood: 'happy' },
     ],
     tier2: [
         { say: 'Until now, your CPU finished each instruction before starting the next. Most of its parts sat waiting.', picture: 'laundry' },
         { say: 'A PIPELINE overlaps them, like laundry: wash one load while the last one dries.', picture: 'laundry' },
         { say: 'Each instruction now goes through 5 steps called STAGES, one per beat. Up to 5 instructions are inside at once.', picture: 'stages' },
         { say: 'These rows are the later stages. A played note slides down: EX does the work, MEM reaches memory, WB saves the answer.', point: 'rows' },
-        { say: "One catch: an instruction may need an answer that the one just ahead hasn't worked out yet. Then it has to wait.", picture: 'stall' },
+        { say: "One catch: an instruction may need an answer that the one just ahead hasn't worked out yet. Then it has to wait.", picture: 'stall', mood: 'worried' },
         { say: "When that happens, a LINK joins the note on the line to the one it's waiting for. Press SPACE to wait a beat: a STALL.", point: 'rows' },
         { say: 'No link? Play it straight away. Too early gets it thrown out (FLUSHED), and waiting for nothing wastes a cycle.', point: 'line' },
         { say: 'Each stage is small, so the clock ticks 4x faster. Stalls raise CPI a little, but the pipeline still finishes far sooner.', picture: 'speedup' },
@@ -111,7 +112,7 @@ export const SONG_TOURS = {
     ],
     tier3: [
         { say: 'An answer is ready at the end of EX, but it only reaches its register two stages later. Waiting for that wastes beats.', picture: 'forward' },
-        { say: 'FORWARDING adds wires that hand the answer straight to the instruction that needs it. No waiting!', picture: 'forward' },
+        { say: 'FORWARDING adds wires that hand the answer straight to the instruction that needs it. No waiting!', picture: 'forward', mood: 'happy' },
         { say: "Watch for it down here: a forwarded value jumps up the wire to the note that needs it.", point: 'rows' },
         { say: 'Loads are the one exception. A load gets its number from memory in MEM, one stage too late to hand over in time.', picture: 'loaduse' },
         { say: 'So right after a load, you will still see a link: press SPACE once. Most other links are gone.', point: 'rows' },
@@ -122,7 +123,7 @@ export const SONG_TOURS = {
         { say: 'A BRANCH decides what runs next. bne x1, x2, loop means: if x1 and x2 are different, jump back to loop.', picture: 'branchread' },
         { say: 'Jumping back is TAKEN; carrying on is NOT TAKEN. A loop jumps back every time except the very last.', picture: 'loopend' },
         { say: 'The CPU only learns which way a branch goes in DECODE, but it has already started on the next instruction. So it guesses.', picture: 'fork' },
-        { say: 'A right guess costs nothing. A wrong guess throws out the instruction it started (FLUSHED) and loses a beat.', picture: 'guess' },
+        { say: 'A right guess costs nothing. A wrong guess throws out the instruction it started (FLUSHED) and loses a beat.', picture: 'guess', mood: 'worried' },
         { say: 'Now YOU guess: play a branch with J for NOT TAKEN, or K for TAKEN. The bright key is a hint; the dim one goes against it.', point: 'line' },
         { say: 'Mostly, guess TAKEN. On the last time round, x1 is one below x2 with its +1 still on the way: then guess NOT TAKEN.', picture: 'howguess' },
         { say: 'Watch x1 and x2 here. A value still being worked out is marked <-EX or <-MEM.', point: 'registers' },
@@ -145,10 +146,10 @@ export const SONG_TOURS = {
         { say: 'The listing shows each branch\'s count as N, n, t or T. Capitals mean sure.', point: 'listing' },
         { say: 'It still misses the end of every row. When x1 is one below x2, override it with J.', picture: 'when2' },
         { say: 'Your results compare you with the predictor on its own. Every right override is a beat it would have lost.', picture: 'score2' },
-        { say: 'Practice time!', point: 'line' },
+        { say: 'Practice time!', point: 'line', mood: 'happy' },
     ],
     tier7: [
-        { say: 'Your CPU has a second path through it now: TWO instructions can start in the same beat. That is called SUPERSCALAR.', point: 'lanes' },
+        { say: 'Your CPU has a second path through it now: TWO instructions can start in the same beat. That is called SUPERSCALAR.', point: 'lanes', mood: 'happy' },
         { say: "Think of a shop opening a second till: two customers served at once, as long as they don't need the same counter.", point: 'lanes' },
         { say: 'There is still one of each unit: one ALU, one memory, one branch unit. So two can only go together if they need different units.', point: 'lanes' },
         { say: "And the second can't need the first one's answer: if it reads a register the first is still writing, it waits its turn.", point: 'listing' },
@@ -163,14 +164,14 @@ export const SONG_TOURS = {
         { say: 'In a song, H speeds the clock up 10% and G slows it down. The music follows, since one beat is still one cycle.', picture: 'overclock' },
         { say: 'A faster clock needs more power, and power grows faster than speed: +50% clock costs over 2x the power. It all turns into heat.', picture: 'power' },
         { say: 'At 95°C the chip stops its clock to cool down, and the notes freeze until it reaches 80°C. Stalls use less power, so they run cooler.', picture: 'throttle' },
-        { say: 'Every overheat wears the chip: its top speed drops 10%. The shop can repair it. (Real chips wear far more slowly.)', picture: 'damage' },
-        { say: 'Smoke and flames warn you first. Press G before it gets too hot!', point: 'gauge' },
+        { say: 'Every overheat wears the chip: its top speed drops 10%. The shop can repair it. (Real chips wear far more slowly.)', picture: 'damage', mood: 'worried' },
+        { say: 'Smoke and flames warn you first. Press G before it gets too hot!', point: 'gauge', mood: 'worried' },
     ],
     memwall: [
         { say: 'Memory (RAM) is a separate chip from the CPU. Every trip there takes about 60 ns: 60 billionths of a second.', point: 'memory' },
         { say: 'In 40 years, clocks got thousands of times faster, but RAM only got a few times faster.', picture: 'ramtrip' },
         { say: '60 ns is 1 cycle at 16 MHz, but 240 cycles at 4 GHz. The faster your clock, the more cycles each trip wastes.', picture: 'wallchart' },
-        { say: "So past a point, a faster clock hardly helps: the waits grow just as fast. That's the MEMORY WALL.", picture: 'floor' },
+        { say: "So past a point, a faster clock hardly helps: the waits grow just as fast. That's the MEMORY WALL.", picture: 'floor', mood: 'worried' },
         { say: 'In a song, when a load or store reaches MEM, the notes freeze and a counter rolls up the cycles. Wait for the click.', picture: 'freezeplay' },
         { say: 'A few beats stand in for hundreds of cycles. A CACHE, from the shop, is how real CPUs get past the wall.', point: 'memory' },
     ],
@@ -188,7 +189,7 @@ export const SONG_TOURS = {
     deep: [
         { say: 'Your DEEP PIPELINE splits each instruction into 10 smaller stages instead of 5. Smaller stages are quicker, so the clock ticks 1.5x faster.', picture: 'deep' },
         { say: 'Here is your clock: the same job, more beats a second. The screen still draws 5 rows; the extra stages are squeezed in between.', point: 'gauge' },
-        { say: "The catch: a branch is now decided further from where instructions are fetched. A wrong guess throws away 4 instructions' work, not 1.", picture: 'deep' },
+        { say: "The catch: a branch is now decided further from where instructions are fetched. A wrong guess throws away 4 instructions' work, not 1.", picture: 'deep', mood: 'worried' },
         { say: 'When you guess wrong, the notes freeze while the front of the pipeline refills: 4 cycles lost instead of 1.', point: 'rows' },
         { say: "So it's a trade. Guess badly and it's slower than before. Guess well, or have a good predictor, and the faster clock wins.", picture: 'deeptrade' },
         { say: "At the very top clock there's no faster tick left to gain, only the dearer wrong guesses. Real chips hit that wall too." },

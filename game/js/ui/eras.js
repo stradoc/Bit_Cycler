@@ -41,6 +41,7 @@ const DESKTOP = {
     sound: { whine: true, beep: true },
     motion: { style: 'tween' },
     models: 'lowpoly',
+    tick: 'pixels',
 };
 export const ERAS = [
     {
@@ -57,6 +58,7 @@ export const ERAS = [
         // A phosphor screen: nothing slides, but what goes dark fades over a quarter second.
         motion: { style: 'cut', afterglow: 250 },
         models: 'wire',
+        tick: 'ascii',
     },
     {
         // A late-80s DOS app in text mode on a CRT: blue, the 16-color palette, double-line boxes, drop shadows.
@@ -79,6 +81,7 @@ export const ERAS = [
         // Text mode: redrawn about ten times a second, in whole character cells.
         motion: { style: 'step', fps: 10, cell: { x: 8, y: 16 } },
         models: 'flat',
+        tick: 'cp437',
     },
     {
         ...DESKTOP,
@@ -111,6 +114,7 @@ export const ERAS = [
         sound: { whine: false, beep: false },
         motion: { style: 'ease' },
         models: 'smooth',
+        tick: 'vector',
     },
 ];
 /** An era shown for this session only (?era=N, for previews and testing), in place of the save's. */

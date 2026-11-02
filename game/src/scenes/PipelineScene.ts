@@ -395,7 +395,7 @@ export class PipelineScene extends Screen {
       if (!outcome) return;
       if (outcome !== 'issued' && outcome !== 'stalled') {
         this.buzz();
-        this.guide.say({ say: this.words.mistake(outcome), point: this.where('line'), dim: TIP_DIM, keys: '[ENTER] OK', hold: true });
+        this.guide.say({ say: this.words.mistake(outcome), point: this.where('line'), dim: TIP_DIM, keys: '[ENTER] OK', hold: true, mood: 'worried' });
         return;
       }
       this.guide.quiet();
@@ -421,7 +421,7 @@ export class PipelineScene extends Screen {
     if (this.setup.practice) {
       if (evaluate(this.run.pipeline, { ...decided, also: route }) !== 'paired') {
         this.buzz();
-        this.guide.say({ say: this.words.mistake('wrong-pair'), point: this.where('line'), dim: TIP_DIM, keys: '[ENTER] OK', hold: true });
+        this.guide.say({ say: this.words.mistake('wrong-pair'), point: this.where('line'), dim: TIP_DIM, keys: '[ENTER] OK', hold: true, mood: 'worried' });
         return true;
       }
       beat = this.run.dueBeat;
@@ -823,7 +823,7 @@ export class PipelineScene extends Screen {
         });
       }
       // Every real run is followed by its replay; the results come at the end of it.
-      if (teaching().tips) this.guide.say({ say: 'Run complete! Now watch your replay. Click anything in it to learn what it is.', dim: 0.3, keys: '[ENTER] OK', hold: true });
+      if (teaching().tips) this.guide.say({ say: 'Run complete! Now watch your replay. Click anything in it to learn what it is.', dim: 0.3, keys: '[ENTER] OK', hold: true, mood: 'cheer' });
       const recording: Recording = {
         cycles: this.recording,
         dials: this.dialRecording,

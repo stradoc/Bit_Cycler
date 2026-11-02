@@ -5,8 +5,9 @@
 // own way (ui/eras.ts `motion`): the green CRT jumps but lets fading things
 // glow off like phosphor, DOS moves in whole character cells a few times a
 // second, the 90s desktop slides plainly, the modern era eases. An era can
-// also play any recipe its own way (`variants`). visual/motion.ts plays them;
-// everything here is pure, so the tests check it in Node.
+// also play any recipe its own way (`variants`), and a recipe can move one
+// way in every era (`style`: TICK is smooth everywhere). visual/motion.ts
+// plays them; everything here is pure, so the tests check it in Node.
 export const PROPS = ['x', 'y', 'alpha', 'scale', 'scaleX', 'scaleY', 'angle'];
 /** Every animation, by name. A new one is an entry here; an era's own version goes in its `motion.variants`. */
 export const MOTIONS = {
@@ -14,14 +15,28 @@ export const MOTIONS = {
     'glide-in': { tracks: { alpha: { times: [0, 1] }, y: { by: [14, 0] } }, duration: 260, ease: 'out' },
     /** The list's highlight sliding to the chosen row. */
     'list-select': { tracks: { y: 'goal' }, duration: 160, ease: 'out' },
+    // TICK moves smoothly in every era, not the period's way: easier on the eyes (the user's choice).
+    /** TICK swaying up and down as he waits (keyframes along a sine wave). */
+    'tick-bob': { tracks: { y: { by: [0, -2.1, -3, -2.1, 0, 2.1, 3, 2.1, 0] } }, duration: 2400, ease: 'linear', loop: 'restart', style: 'ease' },
+    /** TICK bobbing faster while he talks. */
+    'tick-bob-talk': { tracks: { y: { by: [0, -2.8, -4, -2.8, 0, 2.8, 4, 2.8, 0] } }, duration: 880, ease: 'linear', loop: 'restart', style: 'ease' },
+    /** TICK walking over to where he'll stand (his feet step while he's on his way). */
+    'tick-walk': { tracks: { x: 'goal', y: 'goal' }, duration: 450, ease: 'out', style: 'ease' },
+    /** The frame around what TICK points at, pulsing. */
+    'tick-spotlight': { tracks: { alpha: [1, 0.6] }, duration: 470, ease: 'inOut', loop: 'yoyo', style: 'ease' },
 };
 /** The recipe `name` as an era plays it (its variant laid over the recipe). */
 export function recipeFor(name, motion) {
     return { ...MOTIONS[name], ...motion.variants?.[name] };
 }
-/** How an era moves, with REDUCED MOTION on: everything jumps (no afterglow), except what gameplay needs. */
+/**
+ * How a recipe moves in an era: the era's way, or the recipe's own `style`.
+ * With REDUCED MOTION on, everything jumps (no afterglow) and nothing loops, except what gameplay needs.
+ */
 export function styleFor(motion, recipe, reduced) {
-    return reduced && !recipe.essential ? { style: 'cut' } : motion;
+    if (reduced && !recipe.essential)
+        return { style: recipe.loop ? 'still' : 'cut' };
+    return recipe.style ? { style: recipe.style } : motion;
 }
 /** Where an easing is at `t` (0-1). */
 export function eased(ease, t) {
@@ -72,6 +87,8 @@ export function valueAt(recipe, track, rest, goal, elapsed, motion, axis) {
     if (passAt(recipe, elapsed).done)
         return frames[segments];
     const { style } = motion;
+    if (style === 'still')
+        return frames[0];
     // DOS draws a few times a second: time moves in steps.
     const fps = style === 'step' ? (motion.fps ?? 10) : 0;
     const time = fps > 0 ? Math.floor(Math.max(0, elapsed) / (1000 / fps)) * (1000 / fps) : elapsed;
