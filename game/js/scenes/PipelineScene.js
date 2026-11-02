@@ -27,9 +27,9 @@ import { jobSeconds, practiceLines, resultCard, runReport } from '../song/result
 import { pipelineOptions, playAgain, songSetup, watch } from '../song/setup.js';
 import { Fades } from '../song/view.js';
 import { SongWords } from '../song/words.js';
+import { drawCard } from '../ui/card.js';
 import { Guide } from '../ui/guide.js';
 import { Screen } from '../ui/screen.js';
-import { cssColor } from '../ui/eras.js';
 import { Box, glideIn } from '../ui/widgets.js';
 import { HEIGHT, WIDTH } from '../visual/display.js';
 import { HeatEffects } from '../visual/heat.js';
@@ -880,36 +880,16 @@ export class PipelineScene extends Screen {
         this.showCard(runReport({ run: this.run, setup, freshCpu: this.freshCpu, dials: setup.replay?.dials ?? this.dialRecording, calls: this.calls }));
     }
     /**
-     * The results card: the verdict as a stamp (late in the warning color),
-     * the job against its deadline, and where the cycles went. TICK explains
-     * the rest when asked ([T]).
+     * The results card, drawn the era's way (ui/card.ts): the verdict as a
+     * stamp, the job against its deadline, and where the cycles went. TICK
+     * explains the rest when asked ([T]), pointing at the card's parts.
      */
     showCard(report) {
         this.report = report;
-        const card = resultCard(report);
-        const depth = RESULTS_DEPTH + 2;
-        // The stamp closes up (no line spacing) so the block letters' half blocks join.
-        const stamp = this.text(0, 0, card.stamp.join('\n'), 15).setLineSpacing(0).setColor(cssColor(card.late ? this.colors.warn : this.era.accent)).setDepth(depth);
-        const lines = this.text(0, 0, card.lines.join('\n'), 15).setAlign('left').setLineSpacing(5).setDepth(depth);
-        const keys = this.text(0, 0, card.keys, 13).setAlpha(0.7).setDepth(depth);
-        const gap = 18;
-        const width = Math.max(stamp.width, lines.width, keys.width) + 56;
-        const height = stamp.height + lines.height + keys.height + gap * 2 + 48;
-        const top = HEIGHT / 2 - height / 2;
-        stamp.setPosition(WIDTH / 2, top + 24 + stamp.height / 2);
-        lines.setPosition(WIDTH / 2, stamp.y + stamp.height / 2 + gap + lines.height / 2);
-        keys.setPosition(WIDTH / 2, lines.y + lines.height / 2 + gap + keys.height / 2);
-        const box = new Box(this, this.era, WIDTH / 2, HEIGHT / 2, width, height).setDepth(RESULTS_DEPTH + 1);
-        // TICK points at the stamp with the job's line, and at the cycles' bar and its key.
-        const jobLines = report.job ? 3 : 1;
-        const lineHeight = lines.height / card.lines.length;
-        const left = WIDTH / 2 - width / 2 + 10;
-        const linesTop = lines.y - lines.height / 2;
-        this.cardAreas = {
-            verdict: { x: left, y: top + 10, w: width - 20, h: linesTop + jobLines * lineHeight + 6 - (top + 10) },
-            cycles: { x: left, y: linesTop + (jobLines + 1) * lineHeight - 4, w: width - 20, h: (card.lines.length - jobLines - 1) * lineHeight + 8 },
-        };
-        glideIn(this, [box.body, stamp, lines, keys]);
+        const card = drawCard(this, this.era, resultCard(report), { x: WIDTH / 2, y: HEIGHT / 2 });
+        card.view.setDepth(RESULTS_DEPTH + 1);
+        this.cardAreas = { verdict: card.areas.verdict, cycles: card.areas.cycles };
+        glideIn(this, [card.view]);
     }
 }
 //# sourceMappingURL=PipelineScene.js.map

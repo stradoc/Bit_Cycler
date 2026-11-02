@@ -1,3 +1,5 @@
+import { VGA } from './pixelArt.ts';
+
 // TICK, the guide, as data. A pose says what his eyes, mouth, arms and feet
 // are doing; poseAt works it out from what he's doing (talking, walking,
 // where he looks, his mood) and the time (blinking, his mouth as he talks,
@@ -157,7 +159,7 @@ export type PixelSheet = {
  * with cyan eyes, a red antenna bulb, and a chest panel of status lights.
  */
 export const PIXEL_TICK: PixelSheet = {
-  palette: { k: 0x000000, w: 0xffffff, l: 0xc0c0c0, g: 0x808080, n: 0x000080, c: 0x00ffff, r: 0xff0000, m: 0x800000, y: 0xffff00, e: 0x008000 },
+  palette: VGA,
   base: [
     '............kk............',
     '...........krrk...........',

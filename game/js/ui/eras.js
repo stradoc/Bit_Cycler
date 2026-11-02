@@ -31,6 +31,8 @@ const DESKTOP = {
     syntax: { op: 0x000080, reg: 0x008080, num: 0x800000, label: 0x800080, punct: 0x606060 },
     taken: 0x0050c8, notTaken: 0xb85c00,
     fire: [0xffff60, 0xff8000, 0xc00000],
+    // Navy like a progress bar's blocks, then the VGA colors that show on a white field.
+    tones: { good: 0x000080, warn: 0x808000, bad: 0xff0000, info: 0x008080, extra: 0x800080 },
     // A thin early-90s PC font, closer to the period's light interface text than DOS's heavy one.
     font: "'IBM XGA', monospace",
     screen: {
@@ -50,6 +52,7 @@ export const ERAS = [
         syntax: { op: 0x39ff14, reg: 0x2ccc10, num: 0x1f9a0b, label: 0x1f9a0b, punct: 0x177508 },
         taken: 0x39ff14, notTaken: 0x26b80d,
         fire: [0xd8ffc8, 0x39ff14, 0x1f9a0b],
+        tones: { good: 0x39ff14, warn: 0x39ff14, bad: 0x39ff14, info: 0x39ff14, extra: 0x39ff14 },
         // The original IBM PC's ROM font, drawn tall as CGA text looked on screen.
         font: "'IBM BIOS', monospace",
         screen: { hires: false, smooth: false, glow: 1.8, bootGlow: 1.2, menuGlow: 0.5, scanlines: 0.4, curve: 0.02, vignette: 0.4, flicker: 0.02, lcd: 0 },
@@ -67,6 +70,8 @@ export const ERAS = [
         syntax: { op: 0xffffff, reg: 0xffff55, num: 0x55ff55, label: 0xff55ff, punct: 0xaaaaaa },
         taken: 0x55ffff, notTaken: 0xffaa00,
         fire: [0xffff55, 0xff5555, 0xaa0000],
+        // The bright text-mode colors, as MS-DOS's tools colored their charts on blue.
+        tones: { good: 0x55ff55, warn: 0xffff55, bad: 0xff5555, info: 0x55ffff, extra: 0xff55ff },
         // DOS's own: the VGA text-mode font.
         font: "'IBM VGA', monospace",
         screen: {
@@ -91,6 +96,7 @@ export const ERAS = [
             fg: 0xe0e0e0, dim: 0x6a6a6a, bg: CLASSIC_DARK.face, accent: 0x7ab8ff,
             syntax: { op: 0x55ffff, reg: 0x55ff55, num: 0xffff55, label: 0xff77ff, punct: 0xa0a0a0 },
             taken: 0x5fb3ff, notTaken: 0xffa040,
+            tones: { good: 0x5fb3ff, warn: 0xffff55, bad: 0xff5555, info: 0x55ffff, extra: 0xff77ff },
             screen: {
                 ...DESKTOP.screen,
                 frame: { style: 'classic', desk: 0x1c2a33, bar: 0x1c2f5e, bar2: 0x4a6aa5, title: 0xf0f0f0, border: CLASSIC_DARK.dark, palette: CLASSIC_DARK },
@@ -104,6 +110,7 @@ export const ERAS = [
         syntax: { op: 0x7ee787, reg: 0x79c0ff, num: 0xffd479, label: 0xd2a8ff, punct: 0x8b949e },
         taken: 0x56b4e9, notTaken: 0xe69f00,
         fire: [0xfff3b0, 0xff8c1a, 0xd62a0a],
+        tones: { good: 0x7ee787, warn: 0xffd479, bad: 0xff7b72, info: 0x79c0ff, extra: 0xd2a8ff },
         // A modern programmer's font, at full resolution.
         font: "'JetBrains Mono', monospace",
         screen: {

@@ -6,6 +6,7 @@ import { assemble } from '../game/src/sim/assembler.ts';
 import { Cpu } from '../game/src/sim/cpu.ts';
 import { unitOf } from '../game/src/sim/isa.ts';
 import { CARD_WIDTH, practiceLines, resultCard, runReport } from '../game/src/song/results.ts';
+import { ASCII, cardLines, CP437 } from '../game/src/visual/asciiChart.ts';
 import { NO_CALLS } from '../game/src/rhythm/skills.ts';
 import { fillBoard, NEW_GAME } from '../game/src/sim/progress.ts';
 import { songSetup, type SongStart } from '../game/src/song/setup.ts';
@@ -77,9 +78,13 @@ test('the results card adds up: every cycle is counted once, and the CPI is the 
   // Not a contract: no stamp of a verdict, and Enter plays again.
   assert.equal(report.verdict, 'done');
   const card = resultCard(report);
-  assert.ok(card.lines.some((line) => line.includes(`WHERE THE ${p.cycles} CYCLES WENT`) && line.endsWith(`CPI ${p.cpi.toFixed(2)}`)));
-  assert.ok(card.keys.startsWith('[ENTER] PLAY AGAIN'));
-  assert.ok(card.lines.every((line) => line.length <= CARD_WIDTH + 1), 'a line runs off the card');
+  assert.ok(card.rows.some((row) => row.kind === 'line' && row.left === `WHERE THE ${p.cycles} CYCLES WENT` && row.right === `CPI ${p.cpi.toFixed(2)}`));
+  assert.ok(card.keys?.startsWith('[ENTER] PLAY AGAIN'));
+  // In characters, in either character set, every line fits the card (a bar running off its end by one).
+  for (const glyphs of [ASCII, CP437]) assert.ok(cardLines(card, glyphs).lines.every((line) => line.text.length <= CARD_WIDTH + 1), 'a line runs off the card');
+  // Every cycle is in the bar: the bar's parts and its empty part (the pipeline filling) add up.
+  const stack = card.rows.find((row) => row.kind === 'stack');
+  assert.ok(stack?.kind === 'stack' && stack.total === p.cycles);
   assert.ok(practiceLines(run, 'board').includes('[ENTER] CONTRACT BOARD'));
 });
 
@@ -92,11 +97,14 @@ test('a paid job\'s card stamps it on time with the full pay, or late with half'
     const pay = setup.contract?.pay ?? 0;
     assert.equal(report.verdict, late ? 'late' : 'on-time');
     assert.equal(report.job?.pay, late ? Math.round(pay / 2) : pay);
-    assert.equal(card.late, late);
-    assert.ok(card.lines[0].endsWith(late ? `HALF PAY: $${Math.round(pay / 2)}` : `PAID $${pay}`));
-    assert.ok(card.keys.startsWith('[ENTER] CONTRACT BOARD'));
-    // The stamp is framed block letters.
-    assert.ok(card.stamp[0].startsWith('+-') && card.stamp.some((line) => line.includes('█')));
+    assert.deepEqual(card.stamp, late ? { word: 'LATE', tone: 'bad', part: 'verdict' } : { word: 'ON TIME', tone: 'good', part: 'verdict' });
+    const first = card.rows[0];
+    assert.ok(first.kind === 'line' && first.right === (late ? `HALF PAY: $${Math.round(pay / 2)}` : `PAID $${pay}`));
+    assert.ok(card.keys?.startsWith('[ENTER] CONTRACT BOARD'));
+    // TICK points at the verdict (the stamp, the pay and the deadline) and at where the cycles went.
+    const parts = cardLines(card).parts;
+    assert.deepEqual(parts.verdict, { first: 0, last: 2 });
+    assert.ok(parts.cycles && parts.cycles.first > 2);
   }
 });
 

@@ -1,8 +1,6 @@
-import { banner } from '../data/menuFiles.js';
 import { formatHours, formatMoney } from '../format.js';
 import { perfectCycles } from '../sim/pipeline.js';
 import { payFor } from '../sim/progress.js';
-import { deadlineBar, frame, spread, stackedBar } from '../visual/asciiChart.js';
 import { callsLine } from '../rhythm/skills.js';
 import { pipelineOptions } from './setup.js';
 /** The whole contract's time at this run's pace: its CPI and the clocks it actually ran at. */
@@ -80,49 +78,57 @@ export function runReport(f) {
             : undefined,
     };
 }
-/** Each use's character in the cycles' bar, and its name in the key under it. */
+/** Each use's mark in the cycles' bar (the pipeline filling is its empty part), and its name in the key under it. */
 const USE_MARKS = {
-    finished: { char: '#', name: 'FINISHED' },
-    stalled: { char: '=', name: 'STALLED' },
-    flushed: { char: 'x', name: 'FLUSHED' },
-    ram: { char: '~', name: 'WAITING ON RAM' },
-    refill: { char: '+', name: 'REFILLING' },
-    fill: { char: '.', name: 'FILLING' },
+    finished: { mark: 'good', name: 'FINISHED' },
+    stalled: { mark: 'warn', name: 'STALLED' },
+    flushed: { mark: 'bad', name: 'FLUSHED' },
+    ram: { mark: 'info', name: 'WAITING ON RAM' },
+    refill: { mark: 'extra', name: 'REFILLING' },
+    fill: { mark: 'empty', name: 'FILLING' },
 };
-/** How wide the card's lines are (characters). */
+/** How wide the card's rows are (characters). */
 export const CARD_WIDTH = 50;
+/** The verdict's word on the stamp, and its tone. */
+const VERDICTS = {
+    'on-time': { word: 'ON TIME', tone: 'good' },
+    late: { word: 'LATE', tone: 'bad' },
+    done: { word: 'DONE', tone: 'info' },
+};
+/**
+ * The results card: the verdict as a stamp, the pay and the job's time
+ * against its deadline (the part TICK calls the verdict), where the cycles
+ * went (the cycles), the right calls, and the keys.
+ */
 export function resultCard(report) {
-    const w = CARD_WIDTH;
-    const word = { 'on-time': 'ON TIME', late: 'LATE', done: 'DONE' }[report.verdict];
-    const lines = [];
+    const rows = [];
     const { job } = report;
     if (job) {
-        lines.push(spread(report.client, report.verdict === 'late' ? `HALF PAY: ${formatMoney(job.pay)}` : `PAID ${formatMoney(job.pay)}`, w), spread(`THE JOB TOOK ${formatHours(job.seconds)}`, `DUE IN ${formatHours(job.deadline)}`, w), deadlineBar(job.seconds, job.deadline, w - 2), '');
+        rows.push({ kind: 'line', left: report.client, right: report.verdict === 'late' ? `HALF PAY: ${formatMoney(job.pay)}` : `PAID ${formatMoney(job.pay)}`, part: 'verdict' }, { kind: 'line', left: `THE JOB TOOK ${formatHours(job.seconds)}`, right: `DUE IN ${formatHours(job.deadline)}`, part: 'verdict' }, { kind: 'deadline', seconds: job.seconds, deadline: job.deadline, part: 'verdict' }, { kind: 'gap' });
     }
     else {
-        lines.push(report.client, '');
+        rows.push({ kind: 'line', left: report.client, part: 'verdict' }, { kind: 'gap' });
     }
     // Where the cycles went: a bar, then its key. A single-cycle CPU's lost cycles are misses, not stalls.
     const name = (use) => (use === 'stalled' && report.singleCycle ? 'MISSED' : USE_MARKS[use].name);
-    lines.push(spread(`WHERE THE ${report.cycles} CYCLES WENT`, `CPI ${report.cpi.toFixed(2)}`, w));
-    lines.push(`[${stackedBar(report.uses.filter((u) => u.use !== 'fill').map((u) => ({ value: u.cycles, char: USE_MARKS[u.use].char })), report.cycles, w - 2)}]`);
-    let key = '';
-    for (const { use, cycles } of report.uses) {
-        const pairs = use === 'finished' && report.pairs > 0 ? `, ${report.pairs} AS PAIRS` : '';
-        const entry = `${USE_MARKS[use].char} ${cycles} ${name(use)}${pairs}`;
-        if (key && key.length + 3 + entry.length > w) {
-            lines.push(key);
-            key = entry;
-        }
-        else
-            key = key ? `${key}   ${entry}` : entry;
-    }
-    lines.push(key);
+    rows.push({ kind: 'line', left: `WHERE THE ${report.cycles} CYCLES WENT`, right: `CPI ${report.cpi.toFixed(2)}`, part: 'cycles' }, {
+        kind: 'stack',
+        segments: report.uses.flatMap(({ use, cycles }) => {
+            const { mark } = USE_MARKS[use];
+            return mark === 'empty' ? [] : [{ value: cycles, tone: mark }];
+        }),
+        total: report.cycles,
+        part: 'cycles',
+    }, {
+        kind: 'legend',
+        entries: report.uses.map(({ use, cycles }) => ({ mark: USE_MARKS[use].mark, text: `${cycles} ${name(use)}${use === 'finished' && report.pairs > 0 ? `, ${report.pairs} AS PAIRS` : ''}` })),
+        part: 'cycles',
+    });
     const calls = callsLine(report.calls);
     if (calls)
-        lines.push('', calls);
+        rows.push({ kind: 'gap' }, { kind: 'line', left: calls });
     // A paid contract goes back to the board; any other run plays again.
     const next = report.job ? '[ENTER] CONTRACT BOARD' : '[ENTER] PLAY AGAIN';
-    return { stamp: frame(banner(word)), late: report.verdict === 'late', lines, keys: `${next}   [W] WATCH AGAIN   [T] ASK TICK   [Q] MENU` };
+    return { stamp: { ...VERDICTS[report.verdict], part: 'verdict' }, rows, keys: `${next}   [W] WATCH AGAIN   [T] ASK TICK   [Q] MENU`, width: CARD_WIDTH };
 }
 //# sourceMappingURL=results.js.map

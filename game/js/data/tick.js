@@ -1,12 +1,4 @@
-// TICK, the guide, as data. A pose says what his eyes, mouth, arms and feet
-// are doing; poseAt works it out from what he's doing (talking, walking,
-// where he looks, his mood) and the time (blinking, his mouth as he talks,
-// his feet as he walks). Each era draws the same poses its own way, as the
-// computers of its time drew characters (TICK_LOOKS; the era names its look
-// in ui/eras.ts): the 8-bit era in plain characters, DOS in the PC's own
-// characters (boxes, blocks, bullets), the 90s desktop as a 16-color pixel
-// sprite, the modern era in smooth vector shapes. visual/tickFigure.ts draws
-// them; everything here is pure, so the tests check it in Node.
+import { VGA } from './pixelArt.js';
 export const EYES = ['ahead', 'left', 'right', 'blink', 'happy', 'worried'];
 export const MOUTHS = ['shut', 'open', 'wide', 'mid', 'smile', 'frown'];
 export const ARMS = ['down', 'up'];
@@ -90,7 +82,7 @@ export function characterLayers(sheet, pose) {
  * with cyan eyes, a red antenna bulb, and a chest panel of status lights.
  */
 export const PIXEL_TICK = {
-    palette: { k: 0x000000, w: 0xffffff, l: 0xc0c0c0, g: 0x808080, n: 0x000080, c: 0x00ffff, r: 0xff0000, m: 0x800000, y: 0xffff00, e: 0x008000 },
+    palette: VGA,
     base: [
         '............kk............',
         '...........krrk...........',

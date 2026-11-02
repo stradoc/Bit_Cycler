@@ -1,5 +1,6 @@
 import { AT_REST, characterFrame, characterLayers, pixelFrame, POSES, poseKey, TICK_LOOKS, vectorPose, type CharacterSheet, type PixelSheet, type Pose, type VectorPose } from '../data/tick.ts';
 import { cssColor, type Era } from '../ui/eras.ts';
+import { drawPixels } from './pixels.ts';
 import { TEXT } from '../ui/theme.ts';
 import { eraText } from '../ui/widgets.ts';
 
@@ -96,7 +97,7 @@ class CharacterFigure implements TickFigure {
 
 // ---- pixels ----
 
-/** TICK as a pixel sprite (the 90s desktop): each pixel a `scale`-sized square, one rectangle per run of a color. */
+/** TICK as a pixel sprite (the 90s desktop), redrawn when his pose changes. */
 class PixelFigure implements TickFigure {
   readonly view: Phaser.GameObjects.Container;
   readonly width: number;
@@ -120,16 +121,7 @@ class PixelFigure implements TickFigure {
     const key = poseKey(pose);
     if (key === this.shown) return;
     this.shown = key;
-    const { g, scale, sheet } = this;
-    g.clear();
-    pixelFrame(sheet, pose).forEach((row, y) => {
-      for (let x = 0; x < row.length; ) {
-        let end = x + 1;
-        while (end < row.length && row[end] === row[x]) end++;
-        if (row[x] !== '.') g.fillStyle(sheet.palette[row[x]], 1).fillRect(x * scale, y * scale, (end - x) * scale, scale);
-        x = end;
-      }
-    });
+    drawPixels(this.g.clear(), pixelFrame(this.sheet, pose), this.sheet.palette, 0, 0, this.scale);
   }
 }
 

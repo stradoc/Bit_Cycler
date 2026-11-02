@@ -204,7 +204,7 @@ export class BoardScene extends Screen {
     const progress = getProgress();
     const used = Math.min(DAY_SECONDS, progress.worked);
     const job = contract && !isTutorial(contract) ? contractSeconds(contract, progress) : 0;
-    const hours = stackedBar([{ value: used, char: '#' }, { value: job, char: '=' }], DAY_SECONDS, 30);
+    const hours = stackedBar([{ value: used, tone: 'good' }, { value: job, tone: 'warn' }], DAY_SECONDS, 30).text;
     const day = `${formatClock(DAY_START)} [${hours}] ${formatClock(DAY_END)}`;
     const words = job > 0 ? `THIS JOB: ${formatHours(job)}, DONE BY ${formatClock(clockSeconds(progress) + job)}` : `${formatHours(timeLeft(progress))} LEFT TODAY`;
     this.dayBar.setText(`${day}   ${words}`);
@@ -329,7 +329,7 @@ export class BoardScene extends Screen {
     });
 
     // The time against the deadline, what that means, and when it would be done.
-    centered(SHEET_ROWS.bar, deadlineBar(seconds, contract.deadline, 40), TEXT.small).setColor(color);
+    centered(SHEET_ROWS.bar, deadlineBar(seconds, contract.deadline, 40).text, TEXT.small).setColor(color);
     const lastDay = contract.expires <= progress.day;
     const verdict = {
       ready: 'YOUR CPU HAS TIME TO SPARE.',

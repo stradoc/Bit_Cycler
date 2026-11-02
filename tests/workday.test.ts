@@ -138,6 +138,6 @@ test('the month grid has a box per day under the weekdays, and the workday bar c
   assert.match(lines[0], /MON .* SUN/);
   assert.equal(lines.length, 2 + 5 * 3, 'November: 5 weeks of 2-line boxes and their rules');
   assert.ok(lines[3].includes('|TODAY   |'), 'day 3 shows its words in its box');
-  assert.equal(stackedBar([{ value: 2, char: '#' }, { value: 3, char: '=' }], 8, 8), '##===...');
-  assert.equal(stackedBar([{ value: 6, char: '#' }, { value: 4, char: '=' }], 8, 8), '######==>', 'past the end of the day');
+  assert.equal(stackedBar([{ value: 2, tone: 'good' }, { value: 3, tone: 'warn' }], 8, 8).text, '##===...');
+  assert.equal(stackedBar([{ value: 6, tone: 'good' }, { value: 4, tone: 'warn' }], 8, 8).text, '######==>', 'past the end of the day');
 });
