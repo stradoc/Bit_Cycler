@@ -1,7 +1,25 @@
 // RISC-V inspired instruction set: same mnemonics and operand order as RISC-V,
-// sized to whatever word width the current CPU tier has.
+// sized to the width of the job's data: loads and stores move 1, 2, 4 or 8 bytes.
 /** Functional units an instruction can be routed to. */
 export const UNITS = ['ALU', 'MEM', 'BRANCH'];
+/** Loads and stores by how much they move: a byte, a halfword (2 bytes), a word (4) or a doubleword (8), as in RISC-V. */
+export const LOADS = { lb: 1, lh: 2, lw: 4, ld: 8 };
+export const STORES = { sb: 1, sh: 2, sw: 4, sd: 8 };
+/** Each size's name, for the words that describe them. */
+export const SIZE_NAMES = { 1: 'BYTE', 2: 'HALFWORD', 4: 'WORD', 8: 'DOUBLEWORD' };
+export const isLoad = (instr) => instr.op in LOADS;
+export const isBranch = (instr) => instr?.op === 'beq' || instr?.op === 'bne';
+export const isStore = (instr) => instr.op in STORES;
+/** How many bytes a load or store moves (0 for anything else). */
+export function accessBytes(instr) {
+    return isLoad(instr) ? LOADS[instr.op] : isStore(instr) ? STORES[instr.op] : 0;
+}
+/** The load and the store that move `bytes` at a time (lb / sb for 1, lw / sw for 4, ...). */
+export function memoryOps(bytes) {
+    const load = Object.keys(LOADS).find((op) => LOADS[op] === bytes) ?? 'lb';
+    const store = Object.keys(STORES).find((op) => STORES[op] === bytes) ?? 'sb';
+    return { load, store };
+}
 /** What each unit does, in plain words (for tutorials). */
 export const UNIT_ROLES = {
     ALU: 'Math or logic',
@@ -25,35 +43,36 @@ export function describe(instr) {
         case 'addi':
             return `ADD IMMEDIATE: ${x(instr.rd)} = ${x(instr.rs1)} + ${instr.imm}`;
         case 'lb':
-            return `LOAD BYTE: copy memory[${x(instr.rs1)} + ${instr.imm}] into ${x(instr.rd)}`;
+        case 'lh':
+        case 'lw':
+        case 'ld':
+            return `LOAD ${sized(LOADS[instr.op])}: copy memory[${x(instr.rs1)} + ${instr.imm}] into ${x(instr.rd)}`;
         case 'sb':
-            return `STORE BYTE: copy ${x(instr.rs2)} into memory[${x(instr.rs1)} + ${instr.imm}]`;
+        case 'sh':
+        case 'sw':
+        case 'sd':
+            return `STORE ${sized(STORES[instr.op])}: copy ${x(instr.rs2)} into memory[${x(instr.rs1)} + ${instr.imm}]`;
         case 'beq':
             return `BRANCH IF EQUAL: if ${x(instr.rs1)} = ${x(instr.rs2)} go to ${instr.label}`;
         case 'bne':
             return `BRANCH IF NOT EQUAL: if ${x(instr.rs1)} ≠ ${x(instr.rs2)} go to ${instr.label}`;
     }
 }
+/** A size's name, and how many bytes when it's more than one ("WORD (4 BYTES)"). */
+function sized(bytes) {
+    return bytes === 1 ? SIZE_NAMES[1] : `${SIZE_NAMES[bytes]} (${bytes} BYTES)`;
+}
 /** Registers an instruction reads. */
 export function sourceRegs(instr) {
-    switch (instr.op) {
-        case 'addi':
-        case 'lb':
-            return [instr.rs1];
-        default:
-            return [instr.rs1, instr.rs2];
-    }
+    if (instr.op === 'addi' || isLoad(instr))
+        return [instr.rs1];
+    return [instr.rs1, instr.rs2];
 }
 /** Register an instruction writes, if any (stores and branches write none). */
 export function destReg(instr) {
-    switch (instr.op) {
-        case 'sb':
-        case 'beq':
-        case 'bne':
-            return undefined;
-        default:
-            return instr.rd;
-    }
+    if (isStore(instr) || isBranch(instr))
+        return undefined;
+    return instr.rd;
 }
 /**
  * The instruction at `pc` keeps a running total: it adds into its own
@@ -71,16 +90,9 @@ export function keepsTotal(program, pc) {
     return program.instructions.slice(target, loop + 1).every((other, i) => target + i === pc || destReg(other) !== instr.rd);
 }
 export function unitOf(instr) {
-    switch (instr.op) {
-        case 'lb':
-        case 'sb':
-            return 'MEM';
-        case 'beq':
-        case 'bne':
-            return 'BRANCH';
-        default:
-            return 'ALU';
-    }
+    if (isLoad(instr) || isStore(instr))
+        return 'MEM';
+    return instr.op === 'beq' || instr.op === 'bne' ? 'BRANCH' : 'ALU';
 }
 /** An instruction split into syntax tokens (for highlighting); `compact` drops spaces after commas. */
 export function tokens(instr, compact = false) {
@@ -90,13 +102,13 @@ export function tokens(instr, compact = false) {
     const reg = (r) => ({ text: `x${r}`, kind: 'reg' });
     const num = (n) => ({ text: String(n), kind: 'num' });
     const punct = (text) => ({ text, kind: 'punct' });
+    if (isLoad(instr))
+        return [op, space, reg(instr.rd), sep, num(instr.imm), punct('('), reg(instr.rs1), punct(')')];
+    if (isStore(instr))
+        return [op, space, reg(instr.rs2), sep, num(instr.imm), punct('('), reg(instr.rs1), punct(')')];
     switch (instr.op) {
         case 'addi':
             return [op, space, reg(instr.rd), sep, reg(instr.rs1), sep, num(instr.imm)];
-        case 'lb':
-            return [op, space, reg(instr.rd), sep, num(instr.imm), punct('('), reg(instr.rs1), punct(')')];
-        case 'sb':
-            return [op, space, reg(instr.rs2), sep, num(instr.imm), punct('('), reg(instr.rs1), punct(')')];
         case 'beq':
         case 'bne':
             return [op, space, reg(instr.rs1), sep, reg(instr.rs2), sep, { text: instr.label, kind: 'label' }];

@@ -1,4 +1,5 @@
 import { GLOSSARY } from '../data/glossary.js';
+import { itemAt } from '../sim/cpu.js';
 import { unitOf } from '../sim/isa.js';
 import { motionOf } from '../visual/motion.js';
 import { alongPath, BOX_X, BUS_X, LANE_X0, LANES_W, laneCenter, NOTE_H, NOTE_W } from './layout.js';
@@ -58,7 +59,7 @@ export class Bus extends Part {
         const address = store?.step?.stored;
         if (store && address !== undefined && !this.storesSent.has(store.seq)) {
             this.storesSent.add(store.seq);
-            const value = run.pipeline.cpu.memory[address];
+            const value = itemAt(run.pipeline.cpu.memory, address, setup.dataBits);
             const from = setup.singleCycle ? setup.rows.WB : setup.rows.MEM;
             this.carry(store, from, `[${address}]=${value}`, this.panel.storeY(address), beatSeconds, () => this.panel.landStore(address, value));
         }

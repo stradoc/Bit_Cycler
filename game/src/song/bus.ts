@@ -1,4 +1,5 @@
 import { GLOSSARY } from '../data/glossary.ts';
+import { itemAt } from '../sim/cpu.ts';
 import { unitOf } from '../sim/isa.ts';
 import type { Slot } from '../sim/pipeline.ts';
 import type { Highway } from './highway.ts';
@@ -66,7 +67,7 @@ export class Bus extends Part {
     const address = store?.step?.stored;
     if (store && address !== undefined && !this.storesSent.has(store.seq)) {
       this.storesSent.add(store.seq);
-      const value = run.pipeline.cpu.memory[address];
+      const value = itemAt(run.pipeline.cpu.memory, address, setup.dataBits);
       const from = setup.singleCycle ? setup.rows.WB : setup.rows.MEM;
       this.carry(store, from, `[${address}]=${value}`, this.panel.storeY(address), beatSeconds, () => this.panel.landStore(address, value));
     }

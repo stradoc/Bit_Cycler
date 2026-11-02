@@ -23,7 +23,11 @@ export const MEMORY_TIMING = {
 
 export const CACHE_LINES = 4;
 export const BLOCK_BYTES = 4;
-/** Memory the panel shows (and programs use): two cache-fulls, so blocks can compete for a line. */
+/**
+ * Memory a byte job uses and the panel shows at once (4 rows of 8): two
+ * cache-fulls, so blocks can compete for a line. A job's data fits in this many
+ * items, so wider data uses more bytes (up to 256), shown through a window.
+ */
 export const SHOWN_BYTES = 32;
 
 /** Cycles an access taking `ns` occupies at `mhz`: the whole access, at least the 1 the MEMORY stage has anyway. */
@@ -118,6 +122,8 @@ export class Cache {
 export type Access = {
   readonly kind: 'load' | 'store';
   readonly address: number;
+  /** How many bytes it moved (an item of the job's data). */
+  readonly size: number;
   /** Where it was served: the L1 cache, RAM, or (stores with a cache) the write buffer. */
   readonly level: 'L1' | 'RAM' | 'BUFFER';
   /** The whole access in cycles: 1 fits in the MEMORY stage, more freezes the pipeline. */
@@ -127,6 +133,8 @@ export type Access = {
   readonly missKind?: MissKind;
   /** Block number pushed out of the line by this miss, if one was there. */
   readonly evicted?: number;
+  /** A load that missed: the blocks it brought into the cache (more than one for an item wider than a block). */
+  readonly fills?: readonly number[];
 };
 
 /** The data memory side of the CPU: RAM, and the L1 cache once it's bought. */
@@ -145,28 +153,46 @@ export class MemorySystem {
   }
 
   /**
-   * A load or store at `address` on a clock of `mhz`. Without a clock the
-   * memory keeps up with anything (every access fits in the MEMORY stage).
+   * A load or store of `size` bytes at `address` on a clock of `mhz`. Without
+   * a clock the memory keeps up with anything (every access fits in the
+   * MEMORY stage). An item wider than a cache block spans several: each one
+   * missing is its own trip to RAM (a 64-bit number in 4-byte blocks can take
+   * two). Without a cache, RAM hands over the whole item in one trip, as wide
+   * as the chip's bus.
    */
-  access(kind: 'load' | 'store', address: number, mhz: number | undefined): Access {
+  access(kind: 'load' | 'store', address: number, mhz: number | undefined, size = 1): Access {
     const ram = mhz === undefined ? 1 : ramCycles(mhz, this.cache !== undefined);
     if (kind === 'store') this.stores++;
     else this.loads++;
     let access: Access;
-    if (!this.cache) {
-      access = { kind, address, level: 'RAM', cycles: ram };
+    const cache = this.cache;
+    const blocks = Array.from({ length: blockOf(address + size - 1) - blockOf(address) + 1 }, (_, i) => blockOf(address) + i);
+    if (!cache) {
+      access = { kind, address, size, level: 'RAM', cycles: ram };
     } else if (kind === 'store') {
-      access = { kind, address, level: 'BUFFER', cycles: 1, hit: this.cache.write(address).hit };
+      access = { kind, address, size, level: 'BUFFER', cycles: 1, hit: blocks.every((block) => cache.write(block * BLOCK_BYTES).hit) };
     } else {
-      const result = this.cache.read(address);
-      if (result.hit) this.hits++;
+      const results = blocks.map((block) => ({ block, ...cache.read(block * BLOCK_BYTES) }));
+      const missed = results.filter((result) => !result.hit);
+      if (missed.length === 0) this.hits++;
       else {
         this.misses++;
-        if (result.missKind) this.missKinds[result.missKind]++;
+        if (missed[0].missKind) this.missKinds[missed[0].missKind]++;
       }
-      access = result.hit
-        ? { kind, address, level: 'L1', cycles: 1, hit: true }
-        : { kind, address, level: 'RAM', cycles: ram, hit: false, missKind: result.missKind, evicted: result.evicted };
+      access =
+        missed.length === 0
+          ? { kind, address, size, level: 'L1', cycles: 1, hit: true }
+          : {
+              kind,
+              address,
+              size,
+              level: 'RAM',
+              cycles: ram * missed.length,
+              hit: false,
+              missKind: missed[0].missKind,
+              evicted: missed.find((result) => result.evicted !== undefined)?.evicted,
+              fills: missed.map((result) => result.block),
+            };
     }
     if (access.cycles > 1) this.ramTrips++;
     return access;

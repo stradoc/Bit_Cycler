@@ -30,7 +30,7 @@ export const GLOSSARY = {
   },
   MEMORY_UNIT: {
     title: 'MEMORY UNIT',
-    body: 'Moves bytes between registers and memory: lb loads a byte into a register, sb stores one back.',
+    body: 'Moves numbers between registers and memory: lb loads a byte into a register, sb stores one back. Wider data moves more at once: lh / sh 2 bytes, lw / sw 4 (a WORD), ld / sd 8.',
   },
   BRANCH: {
     title: 'BRANCH UNIT',

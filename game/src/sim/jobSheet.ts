@@ -1,6 +1,6 @@
 import { programByName } from '../data/programs.ts';
 import { assemble } from './assembler.ts';
-import { Cpu, trace } from './cpu.ts';
+import { cpuFor, trace } from './cpu.ts';
 import { format, UNITS, unitOf, type Unit } from './isa.ts';
 import { SHOWN_BYTES } from './memory.ts';
 
@@ -16,16 +16,18 @@ export type JobSheet = {
   readonly loopRuns: number;
   /** Notes the song sends down each lane: one per instruction run. */
   readonly notes: Readonly<Record<Unit, number>>;
-  /** Of the memory the song shows, which addresses the program reads and which it writes. */
+  /** Of the memory the song shows, which items the program reads and which it writes: one mark an item (a byte, or a wider number). */
   readonly reads: readonly boolean[];
   readonly writes: readonly boolean[];
+  /** How many bytes each mark stands for (the data's width in bytes). */
+  readonly itemBytes: number;
 };
 
 /** The job sheet for a program, by name (a contract's `program`). */
 export function jobSheet(programName: string): JobSheet {
   const spec = programByName(programName);
   const program = assemble(spec.source, 8);
-  const steps = trace(new Cpu(program, 8, spec.memory));
+  const steps = trace(cpuFor(spec));
 
   // The main loop: the backward branch that reaches furthest back (the outer loop of a loop inside a loop).
   let start = 0;
@@ -44,12 +46,15 @@ export function jobSheet(programName: string): JobSheet {
   });
 
   const notes = Object.fromEntries(UNITS.map((unit) => [unit, 0])) as Record<Unit, number>;
+  // A job's data fits in SHOWN_BYTES items: bytes, or numbers as wide as its data.
+  const itemBytes = (spec.dataBits ?? 8) / 8;
   const reads = new Array<boolean>(SHOWN_BYTES).fill(false);
   const writes = new Array<boolean>(SHOWN_BYTES).fill(false);
+  const item = (address: number) => Math.floor(address / itemBytes);
   for (const step of steps) {
     notes[unitOf(step.instr)]++;
-    if (step.loaded !== undefined && step.loaded < SHOWN_BYTES) reads[step.loaded] = true;
-    if (step.stored !== undefined && step.stored < SHOWN_BYTES) writes[step.stored] = true;
+    if (step.loaded !== undefined && item(step.loaded) < SHOWN_BYTES) reads[item(step.loaded)] = true;
+    if (step.stored !== undefined && item(step.stored) < SHOWN_BYTES) writes[item(step.stored)] = true;
   }
-  return { loop, loopRuns: steps.filter((step) => step.pc === start).length, notes, reads, writes };
+  return { loop, loopRuns: steps.filter((step) => step.pc === start).length, notes, reads, writes, itemBytes };
 }

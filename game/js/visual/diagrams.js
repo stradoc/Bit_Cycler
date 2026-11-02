@@ -2,7 +2,7 @@ import { DEEP_PIPELINE } from '../data/economy.js';
 import { PROGRAMS } from '../data/programs.js';
 import { formatMhz } from '../format.js';
 import { assemble } from '../sim/assembler.js';
-import { Cpu } from '../sim/cpu.js';
+import { cpuFor } from '../sim/cpu.js';
 import { tokens } from '../sim/isa.js';
 import { Cache, MEMORY_TIMING, ramCycles } from '../sim/memory.js';
 import { perfectRun } from '../sim/pipeline.js';
@@ -651,7 +651,7 @@ const DIAGRAMS = {
         const spec = PROGRAMS[0];
         const clocks = [32, 64, 128, 256, 1000, 4000];
         const ns = clocks.map((mhz) => {
-            const run = perfectRun(new Cpu(assemble(spec.source), 8, spec.memory), { forwarding: true, mhz });
+            const run = perfectRun(cpuFor(spec), { forwarding: true, mhz });
             return (run.cpi / mhz) * 1000;
         });
         const scale = 300 / Math.max(...ns);
@@ -790,7 +790,7 @@ const DIAGRAMS = {
     // SUM ARRAY at 4 GHz with and without the cache (the game's own runs)
     cachescore(s, cx, cy) {
         const spec = PROGRAMS[0];
-        const run = (cache) => perfectRun(new Cpu(assemble(spec.source), 8, spec.memory), { forwarding: true, mhz: 4000, cache });
+        const run = (cache) => perfectRun(cpuFor(spec), { forwarding: true, mhz: 4000, cache });
         const [plain, cached] = [run(false), run(true)];
         const ns = (cpi) => (cpi * 0.25 * plain.instructions).toFixed(0);
         s.box(cx, cy - 56, 640, 46, true);
@@ -828,7 +828,7 @@ const DIAGRAMS = {
     // The trade-off on SUM GRID, from the game's own model: the job's time with 5 stages and with 10 (at a faster clock)
     deeptrade(s, cx, cy) {
         const spec = PROGRAMS[1];
-        const cycles = (options, guesses) => perfectRun(new Cpu(assemble(spec.source, 8), 8, spec.memory), { forwarding: true, ...options }, guesses).cycles;
+        const cycles = (options, guesses) => perfectRun(cpuFor(spec), { forwarding: true, ...options }, guesses).cycles;
         const rows = [
             { label: 'ALWAYS GUESSING NOT TAKEN', options: {}, guesses: 'hardware' },
             { label: '2-BIT PREDICTOR', options: { predictor: '2-bit' }, guesses: 'hardware' },

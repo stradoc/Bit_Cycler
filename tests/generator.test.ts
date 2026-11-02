@@ -2,8 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { programByName } from '../game/src/data/programs.ts';
 import { assemble } from '../game/src/sim/assembler.ts';
-import { Cpu, trace } from '../game/src/sim/cpu.ts';
-import { generateProgram, kindOf, seedOf } from '../game/src/sim/generator.ts';
+import { Cpu, cpuFor, itemAt, trace } from '../game/src/sim/cpu.ts';
+import { bitsOf, generateProgram, kindOf, seedOf } from '../game/src/sim/generator.ts';
 import { SHOWN_BYTES } from '../game/src/sim/memory.ts';
 import { perfectRun } from '../game/src/sim/pipeline.ts';
 
@@ -105,4 +105,63 @@ test("a stored program is rebuilt as the kind its name says, whatever kind its s
     assert.equal(seedOf(other.name), seed);
   }
   assert.equal(kindOf('GRID SUM #4821'), 'GRID SUM');
+});
+
+// Wide data (word size as the width of a job's numbers): the same programs on 16-, 32- and 64-bit items.
+const WIDE = [16, 32, 64] as const;
+
+test('wide data: every kind at every width finishes, leaves the right answer, and stays within its 32 items', () => {
+  for (const bits of WIDE) {
+    const size = bits / 8;
+    for (const seed of SEEDS.slice(0, 600)) {
+      const spec = generateProgram(seed, undefined, bits);
+      assert.equal(spec.dataBits, bits);
+      const cpu = cpuFor(spec);
+      const steps = trace(cpu, 400);
+      while (!cpu.halted) cpu.step();
+      // The loop is the same length as on bytes: the same seed's byte program runs as many instructions.
+      assert.equal(steps.length, trace(cpuFor(generateProgram(seed))).length, `${spec.name}: not the byte program's loop`);
+      assert.ok(spec.memory.length <= SHOWN_BYTES * size, spec.name);
+      for (const step of steps) {
+        const address = step.loaded ?? step.stored;
+        if (address === undefined) continue;
+        assert.equal(step.size, size, `${spec.name}: moves ${step.size} bytes at a time`);
+        assert.equal(address % size, 0, `${spec.name}: an item out of line at ${address}`);
+        assert.ok(address + size <= SHOWN_BYTES * size, `${spec.name}: memory past its 32 items`);
+      }
+      for (const { address, value } of spec.answer) assert.equal(itemAt(cpu.memory, address, bits), value, `${spec.name}: address ${address}`);
+    }
+  }
+});
+
+test('wide data: the same answers on every CPU, and names that rebuild the program at its width', () => {
+  for (const bits of WIDE) {
+    for (const seed of SEEDS.slice(0, 100)) {
+      const spec = generateProgram(seed, undefined, bits);
+      assert.match(spec.name, new RegExp(`^${bits}-BIT [A-Z ]+ #${seed}$`));
+      assert.equal(bitsOf(spec.name), bits);
+      assert.equal(kindOf(spec.name), kindOf(generateProgram(seed).name));
+      assert.equal(programByName(spec.name).source, spec.source);
+      assert.match(spec.unit, new RegExp(`^${bits}-BIT `));
+      for (const options of [{ forwarding: false, singleCycle: true }, { forwarding: true }, { forwarding: true, predictor: '2-bit' as const, cache: true, mhz: 4000 }]) {
+        const run = perfectRun(cpuFor(spec), options);
+        for (const { address, value } of spec.answer) assert.equal(itemAt(run.cpu.memory, address, bits), value, `${spec.name} ${JSON.stringify(options)}`);
+      }
+    }
+  }
+  // 64-bit numbers really need 64 bits: a sum past what 32 bits hold.
+  assert.ok(generateProgram(7, 'SUM', 64).answer[0].value > 2 ** 32);
+});
+
+test('wide data fills the cache faster: a 32-bit item takes a whole 4-byte block, so a pass over the data misses on every load', () => {
+  const spec = (bits: 8 | 32) => generateProgram(1, 'SUM', bits);
+  const misses = (bits: 8 | 32) => perfectRun(cpuFor(spec(bits)), { forwarding: true, cache: true, mhz: 4000 }).memory;
+  const bytes = misses(8);
+  const words = misses(32);
+  assert.equal(bytes.loads, words.loads);
+  assert.ok(bytes.hits > bytes.misses, 'bytes: one miss per four');
+  assert.equal(words.hits, 0, '32-bit: every load a first-use miss');
+  // A 64-bit item spans two 4-byte blocks: each one missing is its own trip to RAM.
+  const run = perfectRun(cpuFor(generateProgram(1, 'SUM', 64)), { forwarding: true, cache: true, mhz: 4000 });
+  assert.ok(run.memoryCycles >= 2 * bytes.loads * 200, `${run.memoryCycles} cycles waiting`);
 });

@@ -3,7 +3,7 @@ import type { DiagramId } from '../data/lessons.ts';
 import { PROGRAMS } from '../data/programs.ts';
 import { formatMhz } from '../format.ts';
 import { assemble } from '../sim/assembler.ts';
-import { Cpu } from '../sim/cpu.ts';
+import { cpuFor } from '../sim/cpu.ts';
 import { tokens } from '../sim/isa.ts';
 import { Cache, MEMORY_TIMING, ramCycles } from '../sim/memory.ts';
 import { perfectRun, type PipelineOptions } from '../sim/pipeline.ts';
@@ -703,7 +703,7 @@ const DIAGRAMS: Record<DiagramId, (s: Sketch, cx: number, cy: number) => void> =
     const spec = PROGRAMS[0];
     const clocks = [32, 64, 128, 256, 1000, 4000];
     const ns = clocks.map((mhz) => {
-      const run = perfectRun(new Cpu(assemble(spec.source), 8, spec.memory), { forwarding: true, mhz });
+      const run = perfectRun(cpuFor(spec), { forwarding: true, mhz });
       return (run.cpi / mhz) * 1000;
     });
     const scale = 300 / Math.max(...ns);
@@ -853,7 +853,7 @@ const DIAGRAMS: Record<DiagramId, (s: Sketch, cx: number, cy: number) => void> =
   // SUM ARRAY at 4 GHz with and without the cache (the game's own runs)
   cachescore(s, cx, cy) {
     const spec = PROGRAMS[0];
-    const run = (cache: boolean) => perfectRun(new Cpu(assemble(spec.source), 8, spec.memory), { forwarding: true, mhz: 4000, cache });
+    const run = (cache: boolean) => perfectRun(cpuFor(spec), { forwarding: true, mhz: 4000, cache });
     const [plain, cached] = [run(false), run(true)];
     const ns = (cpi: number) => (cpi * 0.25 * plain.instructions).toFixed(0);
     s.box(cx, cy - 56, 640, 46, true);
@@ -895,7 +895,7 @@ const DIAGRAMS: Record<DiagramId, (s: Sketch, cx: number, cy: number) => void> =
   deeptrade(s, cx, cy) {
     const spec = PROGRAMS[1];
     const cycles = (options: Omit<PipelineOptions, 'forwarding'>, guesses: 'hardware' | 'perfect') =>
-      perfectRun(new Cpu(assemble(spec.source, 8), 8, spec.memory), { forwarding: true, ...options }, guesses).cycles;
+      perfectRun(cpuFor(spec), { forwarding: true, ...options }, guesses).cycles;
     const rows = [
       { label: 'ALWAYS GUESSING NOT TAKEN', options: {}, guesses: 'hardware' as const },
       { label: '2-BIT PREDICTOR', options: { predictor: '2-bit' as const }, guesses: 'hardware' as const },

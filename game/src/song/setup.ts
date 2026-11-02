@@ -5,6 +5,7 @@ import type { TierOptions } from '../data/tiers.ts';
 import type { Judgment } from '../rhythm/judge.ts';
 import type { Action, Outcome } from '../rhythm/pipelineRun.ts';
 import { DEFAULT_DIFFICULTY, DIFFICULTIES, isDifficulty, type Difficulty, type Pace } from '../rhythm/tempo.ts';
+import type { WordBits } from '../sim/cpu.ts';
 import type { PipelineOptions, Predictor } from '../sim/pipeline.ts';
 import { deepActive, hasCache, ratedMhzFor, type Contract, type Progress } from '../sim/progress.ts';
 import { THERMAL } from '../sim/thermal.ts';
@@ -62,6 +63,8 @@ export type SongStart = TierOptions & {
 export type SongSetup = {
   readonly program: string;
   readonly spec: ProgramSpec;
+  /** How wide the program's data is (8 unless it's a wider contract): its registers and memory are shown that wide. */
+  readonly dataBits: WordBits;
   /** The music: the program's own song (data/songs.ts), so a job always sounds the same. */
   readonly song: Song;
   /** Tier 1: every instruction does all five steps in one long beat. */
@@ -131,6 +134,7 @@ export function songSetup(start: SongStart, progress: Progress, params: URLSearc
   return {
     program,
     spec: programByName(program),
+    dataBits: programByName(program).dataBits ?? 8,
     song: songFor(program),
     singleCycle,
     forwarding: start.forwarding ?? params.has('forwarding'),

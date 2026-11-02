@@ -29,6 +29,7 @@ export function songSetup(start, progress, params) {
     return {
         program,
         spec: programByName(program),
+        dataBits: programByName(program).dataBits ?? 8,
         song: songFor(program),
         singleCycle,
         forwarding: start.forwarding ?? params.has('forwarding'),

@@ -5,6 +5,7 @@
 import {
   BASE_MHZ,
   CHIPS,
+  DATA_WIDTHS,
   CLOCK,
   CONTRACTS_PER_GRADE,
   COOLING,
@@ -28,8 +29,7 @@ import { generateProgram } from './generator.ts';
 import type { SkillJob } from '../rhythm/skills.ts';
 import { formatDuration, formatMhz } from '../format.ts';
 import { tierByNumber, type Tier } from '../data/tiers.ts';
-import { assemble } from './assembler.ts';
-import { Cpu, trace } from './cpu.ts';
+import { cpuFor, trace } from './cpu.ts';
 import { ramCycles } from './memory.ts';
 import { perfectRun } from './pipeline.ts';
 import { THERMAL, type ThermalConfig } from './thermal.ts';
@@ -256,7 +256,7 @@ export function cpiFor(programName: string, progress: Progress): number {
   const cached = cpiCache.get(key);
   if (cached !== undefined) return cached;
   const spec = programByName(programName);
-  const cpu = new Cpu(assemble(spec.source, 8), 8, spec.memory);
+  const cpu = cpuFor(spec);
   const run = perfectRun(cpu, {
     singleCycle: !isPipelined(progress),
     forwarding: tier.options?.forwarding ?? false,
@@ -299,7 +299,7 @@ export function payFor(contract: Contract, late: boolean): number {
 /** How many items (e.g. bytes) the job works through, from its program's instructions per item. */
 export function jobItems(contract: Contract): number {
   const spec = programByName(contract.program);
-  const executed = trace(new Cpu(assemble(spec.source, 8), 8, spec.memory)).length;
+  const executed = trace(cpuFor(spec)).length;
   return contract.instructions / (executed / spec.elements);
 }
 
@@ -345,10 +345,11 @@ export function payPerHour(progress: Progress): number {
 export function newContract(grade: GradeId, id: number, random: Random, progress: Progress, busyClients: ReadonlySet<string> = new Set()): Contract {
   const spec = GRADES.find((g) => g.id === grade) ?? GRADES[0];
   // Each contract gets its own randomly generated program (sim/generator.ts), named after its seed,
-  // for a client who isn't already on the board (if one turns up within a few tries).
-  let generated = generateProgram(Math.floor(random() * 1_000_000));
+  // for a client who isn't already on the board (if one turns up within a few tries), on data as wide as your chip allows.
+  const width = dataWidth(progress, random);
+  let generated = generateProgram(Math.floor(random() * 1_000_000), undefined, width.bits);
   for (let tries = 0; tries < 10 && busyClients.has(generated.client ?? ''); tries++) {
-    generated = generateProgram(Math.floor(random() * 1_000_000));
+    generated = generateProgram(Math.floor(random() * 1_000_000), undefined, width.bits);
   }
   // Due on the half hour.
   const deadline = Math.round(lerp(WORKDAY.deadlineHours[0], WORKDAY.deadlineHours[1], random()) * 2) * 1800;
@@ -356,9 +357,21 @@ export function newContract(grade: GradeId, id: number, random: Random, progress
   const secondsPerInstruction = cpiFor(generated.name, progress) / (ratedMhz(progress) * 1e6);
   // Three figures, so rounding never moves a job out of its grade.
   const instructions = Number((seconds / secondsPerInstruction).toPrecision(3));
-  const pay = Math.max(5, Math.round((payPerHour(progress) * (seconds / 3600) * spec.payBonus) / 5) * 5);
+  const pay = Math.max(5, Math.round((payPerHour(progress) * (seconds / 3600) * spec.payBonus * width.pay) / 5) * 5);
   const days = WORKDAY.offerDays[0] + Math.floor(random() * (WORKDAY.offerDays[1] - WORKDAY.offerDays[0] + 1));
   return { id, grade, program: generated.name, instructions, deadline, pay, expires: progress.day + days - 1 };
+}
+
+/**
+ * How wide a new contract's data is: one of the widths your chip can take
+ * (DATA_WIDTHS), the newest most often. An 8-bit chip only gets bytes, and
+ * draws nothing for it.
+ */
+export function dataWidth(progress: Progress, random: Random): (typeof DATA_WIDTHS)[number] {
+  const open = DATA_WIDTHS.filter((width) => width.bits <= progress.wordBits);
+  if (open.length === 1) return open[0];
+  let pick = random() * open.reduce((sum, width) => sum + width.weight, 0);
+  return open.find((width) => (pick -= width.weight) < 0) ?? open[open.length - 1];
 }
 
 /** Tops the board up to CONTRACTS_PER_GRADE in every grade, sized to your CPU now (not while the tutorial job is on it). */
@@ -379,7 +392,7 @@ export function fillBoard(progress: Progress, random: Random): Progress {
 /** The tutorial job (a new game's first): the whole program, played once. */
 export function tutorialContract(id: number): Contract {
   const spec = programByName(TUTORIAL_PROGRAM);
-  const instructions = trace(new Cpu(assemble(spec.source, 8), 8, spec.memory)).length;
+  const instructions = trace(cpuFor(spec)).length;
   // It never expires: it waits for the new player.
   return { id, grade: 'easy', program: TUTORIAL_PROGRAM, instructions, ...TUTORIAL_JOB, expires: Number.MAX_SAFE_INTEGER };
 }

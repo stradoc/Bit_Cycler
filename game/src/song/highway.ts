@@ -321,6 +321,8 @@ export class Highway extends Part {
         // In WB the note shows what the instruction did.
         block.label.setVisible(false);
         block.result = this.text(block.box.x, block.box.y, words.result(slot), 15).setOrigin(0.5);
+        // A long one (a 64-bit number) shrinks to fit its note.
+        block.result.setScale(Math.min(1, (NOTE_W - 8) / block.result.width));
         moved = true;
       }
       // Down to its row (or on with it, the result just written).

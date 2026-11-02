@@ -1,4 +1,5 @@
-import { generateProgram, kindOf, seedOf } from '../sim/generator.ts';
+import type { WordBits } from '../sim/cpu.ts';
+import { bitsOf, generateProgram, kindOf, seedOf } from '../sim/generator.ts';
 
 export type ProgramSpec = {
   readonly name: string;
@@ -18,6 +19,8 @@ export type ProgramSpec = {
   readonly client?: string;
   /** The loop's key registers (next address, end), tagged in the panel and introduced in the count-in. */
   readonly keys?: readonly KeyRegister[];
+  /** How wide its data items are, and so its registers (8 unless given): a contract's data width (sim/generator.ts). */
+  readonly dataBits?: WordBits;
 };
 
 /** A register the player should keep an eye on: a short tag (up to 4 letters) and one line on what it does. */
@@ -171,7 +174,7 @@ export function programByName(name: string): ProgramSpec {
   let spec = generated.get(name);
   if (!spec) {
     try {
-      spec = generateProgram(seed, kindOf(name));
+      spec = generateProgram(seed, kindOf(name), bitsOf(name));
     } catch {
       spec = PROGRAMS[0]; // never expected (tests check thousands of seeds), but a song must never hang
     }

@@ -1,13 +1,13 @@
 import { programByName } from '../data/programs.js';
 import { assemble } from './assembler.js';
-import { Cpu, trace } from './cpu.js';
+import { cpuFor, trace } from './cpu.js';
 import { format, UNITS, unitOf } from './isa.js';
 import { SHOWN_BYTES } from './memory.js';
 /** The job sheet for a program, by name (a contract's `program`). */
 export function jobSheet(programName) {
     const spec = programByName(programName);
     const program = assemble(spec.source, 8);
-    const steps = trace(new Cpu(program, 8, spec.memory));
+    const steps = trace(cpuFor(spec));
     // The main loop: the backward branch that reaches furthest back (the outer loop of a loop inside a loop).
     let start = 0;
     let end = program.instructions.length - 1;
@@ -24,15 +24,18 @@ export function jobSheet(programName) {
         return (label ? `${label}:` : '').padEnd(7) + format(instr);
     });
     const notes = Object.fromEntries(UNITS.map((unit) => [unit, 0]));
+    // A job's data fits in SHOWN_BYTES items: bytes, or numbers as wide as its data.
+    const itemBytes = (spec.dataBits ?? 8) / 8;
     const reads = new Array(SHOWN_BYTES).fill(false);
     const writes = new Array(SHOWN_BYTES).fill(false);
+    const item = (address) => Math.floor(address / itemBytes);
     for (const step of steps) {
         notes[unitOf(step.instr)]++;
-        if (step.loaded !== undefined && step.loaded < SHOWN_BYTES)
-            reads[step.loaded] = true;
-        if (step.stored !== undefined && step.stored < SHOWN_BYTES)
-            writes[step.stored] = true;
+        if (step.loaded !== undefined && item(step.loaded) < SHOWN_BYTES)
+            reads[item(step.loaded)] = true;
+        if (step.stored !== undefined && item(step.stored) < SHOWN_BYTES)
+            writes[item(step.stored)] = true;
     }
-    return { loop, loopRuns: steps.filter((step) => step.pc === start).length, notes, reads, writes };
+    return { loop, loopRuns: steps.filter((step) => step.pc === start).length, notes, reads, writes, itemBytes };
 }
 //# sourceMappingURL=jobSheet.js.map

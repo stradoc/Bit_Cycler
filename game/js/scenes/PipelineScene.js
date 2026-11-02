@@ -8,9 +8,8 @@ import { evaluate, PipelineRun } from '../rhythm/pipelineRun.js';
 import { tempoForClock } from '../rhythm/tempo.js';
 import { getProgress, updateProgress } from '../save.js';
 import { getSettings, teaching } from '../settings.js';
-import { assemble } from '../sim/assembler.js';
-import { addressOf, Cpu } from '../sim/cpu.js';
-import { keepsTotal, unitOf } from '../sim/isa.js';
+import { addressOf, cpuFor, itemAt } from '../sim/cpu.js';
+import { isLoad, keepsTotal, unitOf } from '../sim/isa.js';
 import { CACHE_LINES, freezeBeats } from '../sim/memory.js';
 import { thermalConfig, tierOf, withSeen, withTipSeen } from '../sim/progress.js';
 import { logJob, NO_CALLS, tallyCycle } from '../rhythm/skills.js';
@@ -177,8 +176,7 @@ export class PipelineScene extends Screen {
         // The song's tempo follows the rated clock, so clock upgrades speed it up; the difficulty speeds it up or slows it down.
         const bpm = tempoForClock(setup.ratedMhz, setup.pace.speed);
         this.baseBpm = bpm;
-        const program = assemble(spec.source, REGISTER_COUNT);
-        const cpu = new Cpu(program, 8, spec.memory, REGISTER_COUNT);
+        const cpu = cpuFor(spec, REGISTER_COUNT);
         this.freshCpu = cpu.clone();
         const chip = new Chip(setup.ratedMhz, setup.maxDial, thermalConfig(getProgress()), setup.canOverclock);
         if (setup.startDial)
@@ -205,7 +203,7 @@ export class PipelineScene extends Screen {
         this.highway = new Highway(this.view);
         this.heat = new HeatEffects(this, this.era, { x: LANE_X0, y: 0, width: LANES_W, height: setup.rows.WB + ROW_GAP / 2 });
         this.gauge = new Gauge(this.view, setup.canOverclock && setup.maxDial > 1);
-        this.panel = new Panel(this.view, program, this.firstBeat > FIRST_BEAT ? 60000 / this.tempo() : undefined);
+        this.panel = new Panel(this.view, cpu.program, this.firstBeat > FIRST_BEAT ? 60000 / this.tempo() : undefined);
         this.bus = new Bus(this.view, this.panel, this.highway);
         this.guide = new Guide(this, this.era, setup.practice ? GUIDE_HOME : undefined);
         if (setup.watching)
@@ -628,7 +626,7 @@ export class PipelineScene extends Screen {
         // The single-cycle CPU runs it as its beat ends, so the registers and memory still hold what it will read.
         const { regs, memory } = this.run.pipeline.cpu;
         const b = 'rs2' in instr ? regs[instr.rs2] : 0;
-        const byte = instr.op === 'lb' ? memory[addressOf(regs[instr.rs1], instr.imm)] : 0;
+        const byte = isLoad(instr) ? itemAt(memory, addressOf(regs[instr.rs1], instr.imm), this.setup.dataBits) : 0;
         const reads = { a: regs[instr.rs1], b, byte, total: keepsTotal(this.run.pipeline.cpu.program, slot.pc) };
         this.explained.add(instr.op);
         this.closeLook = { seq: slot.seq, reads };
@@ -738,7 +736,7 @@ export class PipelineScene extends Screen {
         const block = this.highway.showWaiting(view.slot.seq, this.words.waitingTag(access));
         if (block) {
             const rowY = this.panel.memoryY(access.address) ?? this.setup.rows.MEM;
-            this.bus.trip(block.box, rowY, t, this.words.trip(access, t >= 0.5, this.view.shown.memory[access.address]));
+            this.bus.trip(block.box, rowY, t, this.words.trip(access, t >= 0.5, itemAt(this.view.shown.memory, access.address, this.setup.dataBits)));
         }
         if (this.run.chip.halted)
             return; // the overheat message wins

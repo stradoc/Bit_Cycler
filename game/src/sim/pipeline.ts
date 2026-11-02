@@ -1,5 +1,5 @@
 import type { Cpu, Step } from './cpu.ts';
-import { destReg, sourceRegs, unitOf, type Branch, type Instruction } from './isa.ts';
+import { destReg, isBranch, isLoad, sourceRegs, unitOf, type Instruction } from './isa.ts';
 import { MemorySystem, type Access } from './memory.ts';
 
 // The classic 5-stage in-order pipeline from Patterson & Hennessy:
@@ -89,7 +89,6 @@ export type Guess = { readonly taken: boolean; readonly sure: boolean };
 
 const INITIAL_COUNTER: Record<Predictor, number> = { '1-bit': 0, '2-bit': 1 };
 
-const isBranch = (instr: Instruction | undefined): instr is Branch => instr?.op === 'beq' || instr?.op === 'bne';
 
 export type Hazard = {
   /** The register the instruction in ID needs. */
@@ -145,7 +144,7 @@ export function stallsNeeded(
 ): number {
   // Without forwarding, a value is only readable once its producer reaches WB.
   if (!forwarding) return 3 - distance;
-  const load = producer.op === 'lb';
+  const load = isLoad(producer);
   // Branches compare in ID, so they need their operands a stage earlier.
   if (consumer.op === 'beq' || consumer.op === 'bne') return load ? 3 - distance : 2 - distance;
   // A load's data only exists after MEM: the load-use hazard.
@@ -663,7 +662,7 @@ export class Pipeline {
   private reachMemory(slot: Slot | null): CycleResult['access'] {
     const address = slot?.step?.loaded ?? slot?.step?.stored;
     if (!slot || address === undefined) return undefined;
-    const access = this.memory.access(slot.step?.loaded !== undefined ? 'load' : 'store', address, this.clockMhz);
+    const access = this.memory.access(slot.step?.loaded !== undefined ? 'load' : 'store', address, this.clockMhz, slot.step?.size ?? 1);
     this.memoryWait = access.cycles - 1;
     this.lastAccess = { slot, access };
     return this.lastAccess;

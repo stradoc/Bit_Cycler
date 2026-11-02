@@ -1,6 +1,7 @@
 import { GLOSSARY } from '../data/glossary.ts';
 import { tokens, type Instruction, type Program } from '../sim/isa.ts';
-import { BLOCK_BYTES, blockOf, CACHE_LINES, lineOf, tagOf, type Access } from '../sim/memory.ts';
+import { itemAt, writeItem } from '../sim/cpu.ts';
+import { BLOCK_BYTES, blockOf, CACHE_LINES, lineOf, SHOWN_BYTES, tagOf, type Access } from '../sim/memory.ts';
 import { STAGES, type Stage } from '../sim/pipeline.ts';
 import { cssColor } from '../ui/eras.ts';
 import type { Rect } from '../ui/guide.ts';
@@ -14,6 +15,12 @@ import { Part, type SongView } from './view.ts';
 
 /** A line of the program listing: a label, or an instruction at a pc. */
 type ListingLine = { label: string } | { pc: number; instr: Instruction };
+
+/** A row of the memory box: its text, and where each byte or number in it is (its bytes, and its characters). */
+type MemoryRow = { readonly text: string; readonly cells: readonly { readonly from: number; readonly to: number; readonly at: number; readonly len: number }[] };
+
+/** How wide each number is drawn in the memory box, by the data's width: a row is always 8 bytes. */
+const CELL_CHARS: Readonly<Record<16 | 32 | 64, number>> = { 16: 5, 32: 9, 64: 13 };
 
 /**
  * The panel on the right: the program listing (scrolling with the
@@ -29,7 +36,9 @@ export class Panel extends Part {
   /** The listing's lines live in a layer that the modern era slides when it scrolls (clipped to its box). */
   private readonly listingLayer: Phaser.GameObjects.Container;
   private listingStart = 0;
-  /** How far the lines are still sliding (px): eased to 0 each frame. */
+  /** The memory box is a window of MEMORY_ROWS rows of 8 bytes, from this row: wider data needs more rows than fit (byte jobs: all of them). */
+  private memStart = 0;
+  private readonly memRowCount: number;
   private readonly lookupText: Phaser.GameObjects.Text;
   private readonly statsText: Phaser.GameObjects.Text;
   private readonly throughputText: Phaser.GameObjects.Text;
@@ -43,6 +52,8 @@ export class Panel extends Part {
   constructor(view: SongView, program: Program, countInBeatMs: number | undefined) {
     super(view);
     const { setup, clickable, words } = view;
+    // A job's data fits in 32 items: 32 bytes for bytes, up to 256 for 64-bit numbers.
+    this.memRowCount = (SHOWN_BYTES * (setup.dataBits / 8)) / 8;
     const { spec } = setup;
     this.listing = listingOf(program);
     const mode = setup.watching ? '   REPLAY' : '';
@@ -57,7 +68,8 @@ export class Panel extends Part {
     let y = LISTING_TOP + LISTING_ROWS * LISTING_LINE + 16;
     const listingArea = { x: BOX_X, y: LISTING_TOP - 10, w: BOX_W, h: LISTING_ROWS * LISTING_LINE + 16 };
     const registersArea = { x: BOX_X, y, w: BOX_W, h: 4 * LINE + 20 };
-    clickable(panel(this.scene, this.era, BOX_X, y, BOX_W, 4 * LINE + 20, 'REGISTERS  (<- STILL COMPUTING)'), () => GLOSSARY.REGISTERS);
+    const wide = setup.dataBits === 8 ? '' : ` ${setup.dataBits}-BIT`;
+    clickable(panel(this.scene, this.era, BOX_X, y, BOX_W, 4 * LINE + 20, `REGISTERS${wide}  (<- STILL COMPUTING)`), () => GLOSSARY.REGISTERS);
     y += 12;
     // A size smaller than the rest of the panel, so a key register's tag fits beside "<-MEM".
     const keyRegs = new Set((spec.keys ?? []).map((key) => key.reg));
@@ -134,13 +146,49 @@ export class Panel extends Part {
   }
 
   storeY(address: number): number {
-    return this.memTexts[Math.floor(address / 8)].y + 9;
+    return this.memRow(address).y + 9;
   }
 
-  /** The middle of the memory row holding `address` (undefined past the rows shown). */
+  /** The middle of the memory row holding `address` (the window moves to show it). */
   memoryY(address: number): number | undefined {
-    const row = this.memTexts[Math.floor(address / 8)];
-    return row && row.y + row.height / 2;
+    const row = this.memRow(address);
+    return row.y + row.height / 2;
+  }
+
+  /** The memory box's row holding `address`, moving the window to show it (byte jobs never move: all their rows fit). */
+  private memRow(address: number): Phaser.GameObjects.Text {
+    const row = Math.floor(address / 8);
+    if (row < this.memStart || row >= this.memStart + MEMORY_ROWS) {
+      this.memStart = Math.max(0, Math.min(this.memRowCount - MEMORY_ROWS, row - 1));
+      this.refresh();
+    }
+    return this.memTexts[row - this.memStart];
+  }
+
+  /**
+   * Row `row` of memory (8 bytes) as the memory box shows it: bytes in hex,
+   * a gap between its two cache blocks; wider data as its numbers, in decimal.
+   */
+  private memoryRow(row: number): MemoryRow {
+    const { shown, setup } = this.view;
+    const base = row * 8;
+    const head = `${hex(base)}: `;
+    const cells: { from: number; to: number; at: number; len: number }[] = [];
+    if (setup.dataBits === 8) {
+      for (let i = 0; i < 8; i++) cells.push({ from: base + i, to: base + i + 1, at: head.length + i * 3 + (i >= BLOCK_BYTES ? 1 : 0), len: 2 });
+      const bytes = (from: number) => Array.from(shown.memory.subarray(from, from + BLOCK_BYTES), hex).join(' ');
+      return { text: `${head}${bytes(base)}  ${bytes(base + BLOCK_BYTES)}`, cells };
+    }
+    const size = setup.dataBits / 8;
+    const width = CELL_CHARS[setup.dataBits];
+    const gap = setup.dataBits === 16 ? 1 : 2;
+    const numbers: string[] = [];
+    for (let i = 0; i < 8 / size; i++) {
+      const from = base + i * size;
+      cells.push({ from, to: from + size, at: head.length + i * (width + gap), len: width });
+      numbers.push(String(itemAt(shown.memory, from, setup.dataBits)).padStart(width));
+    }
+    return { text: head + numbers.join(' '.repeat(gap)), cells };
   }
 
   // ---- the count-in ----
@@ -182,13 +230,13 @@ export class Panel extends Part {
     this.highlight(this.regTexts[r]);
   }
 
-  /** A stored byte has arrived in memory: its row lights up and the byte is outlined. */
+  /** A stored item has arrived in memory: its row lights up and the item is outlined. */
   landStore(address: number, value: number): void {
-    this.view.shown.memory[address] = value;
+    writeItem(this.view.shown.memory, address, this.view.setup.dataBits / 8, value);
+    const row = this.memRow(address);
     this.refresh();
-    const row = this.memTexts[Math.floor(address / 8)];
     this.highlight(row);
-    this.markByte(row, address % 8);
+    this.markBytes(address, address + this.view.setup.dataBits / 8, PACE.linger);
   }
 
   /** A load or store reached memory: the lookup line says what it did; a hit lights its cache line. */
@@ -198,12 +246,14 @@ export class Panel extends Part {
     if (access.level === 'L1' || (access.kind === 'store' && access.hit)) this.flashCacheLine(lineOf(access.address));
   }
 
-  /** A load that missed brings its block into its line (what the panel shows once it has arrived). */
+  /** A load that missed brings its blocks into their lines (what the panel shows once they've arrived). */
   fillLine(access: Access): void {
     if (!this.view.setup.l1 || access.kind !== 'load' || access.hit) return;
-    const line = lineOf(access.address);
-    this.view.shown.lines[line] = { valid: true, tag: tagOf(access.address) };
-    this.flashCacheLine(line);
+    for (const block of access.fills ?? [blockOf(access.address)]) {
+      const address = block * BLOCK_BYTES;
+      this.view.shown.lines[lineOf(address)] = { valid: true, tag: tagOf(address) };
+      this.flashCacheLine(lineOf(address));
+    }
   }
 
   /** Redraws the listing, registers, memory and cache as they've arrived, plus throughput and stats. */
@@ -223,12 +273,11 @@ export class Panel extends Part {
       const where = pending.get(r);
       const tag = tags.get(r);
       this.regTexts[r]
-        .setText(`x${r}`.padEnd(4) + `0x${hex(value)} ${String(value).padStart(3)}` + (tag ? ` ${tag}` : '') + (where ? ` <-${where}` : ''))
+        .setText(`x${r}`.padEnd(4) + registerValue(value, setup.dataBits) + (tag ? ` ${tag}` : '') + (where ? ` <-${where}` : ''))
         .setAlpha(where || tag ? 1 : 0.8);
     });
     const bytes = (block: number) => Array.from(shown.memory.subarray(block * BLOCK_BYTES, (block + 1) * BLOCK_BYTES), hex).join(' ');
-    // A gap between each row's two blocks.
-    this.memTexts.forEach((row, i) => row.setText(`${hex(i * 8)}: ${bytes(2 * i)}  ${bytes(2 * i + 1)}`));
+    this.memTexts.forEach((row, i) => row.setText(this.memoryRow(this.memStart + i).text));
     shown.lines.forEach((line, i) => {
       // Write-through keeps a cached block the same as memory, so its bytes are memory's.
       const data = line.valid ? bytes(line.tag * CACHE_LINES + i) : '-- -- -- --';
@@ -333,22 +382,26 @@ export class Panel extends Part {
 
   /** Outlines the 4-byte block holding `address` in the MEMORY box while it's fetched (`seconds` at least). */
   markBlock(address: number, seconds: number): void {
-    const row = this.memTexts[Math.floor(address / 8)];
-    if (!row?.text) return;
-    const charW = row.width / row.text.length;
-    const first = blockOf(address) % 2 === 0 ? 4 : 17; // "00: " then 4 bytes and the gap
-    const mark = this.scene.add.rectangle(row.x + first * charW - 3, row.y + row.height / 2, 11 * charW + 6, row.height + 2).setOrigin(0, 0.5);
-    mark.setStrokeStyle(1, this.era.fg).setDepth(690);
-    motionOf(this.scene).play('mark-fade', mark, { remove: true, duration: Math.max(PACE.linger, seconds * 1000) });
+    const from = blockOf(address) * BLOCK_BYTES;
+    this.markBytes(from, from + BLOCK_BYTES, Math.max(PACE.linger, seconds * 1000));
   }
 
-  /** Outlines the byte a store just wrote in a memory row, fading out. */
-  private markByte(row: Phaser.GameObjects.Text, column: number): void {
-    const charW = row.width / Math.max(1, row.text.length);
-    // "00: " then 3 characters per byte, and a gap after the first block.
-    const x = row.x + (4 + column * 3 + (column >= BLOCK_BYTES ? 1 : 0) + 1) * charW;
-    const mark = this.scene.add.rectangle(x, row.y + row.height / 2, 3 * charW, row.height + 2).setStrokeStyle(1, this.era.fg).setDepth(690);
-    motionOf(this.scene).play('mark-fade', mark, { remove: true });
+  /**
+   * Outlines bytes `from` to `to` (not included) in the MEMORY box, fading
+   * out over `ms`: the bytes, or the numbers they're part of. Bytes past the
+   * row (a 64-bit number in 4-byte blocks spans one) are outlined up to its end.
+   */
+  private markBytes(from: number, to: number, ms: number): void {
+    const text = this.memRow(from);
+    const { cells } = this.memoryRow(Math.floor(from / 8));
+    const touched = cells.filter((cell) => cell.from < to && cell.to > from);
+    if (touched.length === 0 || !text.text) return;
+    const charW = text.width / text.text.length;
+    const start = touched[0].at * charW - 3;
+    const end = (touched[touched.length - 1].at + touched[touched.length - 1].len) * charW + 3;
+    const mark = this.scene.add.rectangle(text.x + start, text.y + text.height / 2, end - start, text.height + 2).setOrigin(0, 0.5);
+    mark.setStrokeStyle(1, this.era.fg).setDepth(690);
+    motionOf(this.scene).play('mark-fade', mark, { remove: true, duration: ms });
   }
 
   private highlight(text: Phaser.GameObjects.Text | undefined): void {
@@ -370,4 +423,9 @@ function listingOf(program: Program): ListingLine[] {
     lines.push({ pc, instr });
   });
   return lines;
+}
+
+/** A register's value as the panel shows it: a byte in hex and decimal; wider data in decimal only, like the memory box (hex wouldn't leave room for the tags). */
+function registerValue(value: number, bits: number): string {
+  return bits === 8 ? `0x${hex(value)} ${String(value).padStart(3)}` : String(value).padStart(6);
 }

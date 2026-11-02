@@ -179,6 +179,19 @@ export const CONTRACTS_PER_GRADE = 2;
  * money running away. About $15 an hour at a million instructions a second.
  */
 export const PAY = { perHourAtOneMips: 15, exponent: 0.35 };
+/**
+ * How wide a contract's data is (word size, as the width of the job's
+ * numbers: sim/generator.ts): offered once your chip is that wide, `weight`
+ * how often among the widths your chip can take (the newest most often), and
+ * `pay` a multiplier on the job's pay (wider data comes from bigger clients).
+ * Weights and pay to be tuned by playing.
+ */
+export const DATA_WIDTHS = [
+    { bits: 8, weight: 1, pay: 1 },
+    { bits: 16, weight: 2, pay: 1.2 },
+    { bits: 32, weight: 3, pay: 1.45 },
+    { bits: 64, weight: 4, pay: 1.75 },
+];
 /** A new game's first job, the only one on the board until it's done (data/programs.ts TUTORIAL_PROGRAM): what it pays, and how soon it's needed. */
 export const TUTORIAL_JOB = { pay: 50, deadline: 2 * HOUR };
 /** Finishing after the deadline pays this much of the pay. */

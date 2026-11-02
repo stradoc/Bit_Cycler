@@ -348,13 +348,14 @@ export class BoardScene extends Screen {
     // Each column is drawn at x = 0, measured, then both are moved so they sit centered together.
     const left = [heading(0, top, `THE LOOP, RUN ${job.loopRuns} TIMES`), ...job.loop.map((code, i) => detail(0, top + (i + 1) * DETAIL_LINE, code))];
     const total = UNITS.reduce((sum, unit) => sum + job.notes[unit], 0);
-    // Which memory it reads and writes: one character per address.
+    // Which memory it reads and writes: one character per address (per number, for wider data).
     const memory = top + MEMORY_ROW * DETAIL_LINE;
     const strip = (marks: readonly boolean[]) => marks.map((on) => (on ? '#' : '.')).join('');
     const right = [
       heading(0, top, `${total} NOTES IN THE SONG`),
       ...UNITS.map((unit, i) => detail(0, top + (i + 1) * DETAIL_LINE, `${unit.padEnd(6)} ${bar(job.notes[unit], total, 8)} ${job.notes[unit]}`)),
-      heading(0, memory, `MEMORY IT USES: ADDRESSES 0-${job.reads.length - 1}`),
+      // No wider than the marks under it (39 characters), so the columns stay inside the sheet.
+      heading(0, memory, job.itemBytes > 1 ? `MEMORY: ADDRESSES 0-${job.reads.length * job.itemBytes - 1}, ${job.itemBytes} BYTES A MARK` : `MEMORY IT USES: ADDRESSES 0-${job.reads.length - 1}`),
       detail(0, memory + DETAIL_LINE, `READS  ${strip(job.reads)}`),
       detail(0, memory + 2 * DETAIL_LINE, `WRITES ${strip(job.writes)}`),
     ];

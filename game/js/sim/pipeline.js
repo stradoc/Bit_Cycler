@@ -1,4 +1,4 @@
-import { destReg, sourceRegs, unitOf } from './isa.js';
+import { destReg, isBranch, isLoad, sourceRegs, unitOf } from './isa.js';
 import { MemorySystem } from './memory.js';
 // The classic 5-stage in-order pipeline from Patterson & Hennessy:
 //   IF  fetch   ID  decode + read registers (branches resolve here)
@@ -18,7 +18,6 @@ import { MemorySystem } from './memory.js';
 // ALU-or-branch with one load-or-store).
 export const STAGES = ['IF', 'ID', 'EX', 'MEM', 'WB'];
 const INITIAL_COUNTER = { '1-bit': 0, '2-bit': 1 };
-const isBranch = (instr) => instr?.op === 'beq' || instr?.op === 'bne';
 /**
  * Bubbles needed between a producer and a consumer that is `distance`
  * instructions behind it (1 = producer now in EX, 2 = in MEM).
@@ -27,7 +26,7 @@ export function stallsNeeded(producer, consumer, distance, forwarding) {
     // Without forwarding, a value is only readable once its producer reaches WB.
     if (!forwarding)
         return 3 - distance;
-    const load = producer.op === 'lb';
+    const load = isLoad(producer);
     // Branches compare in ID, so they need their operands a stage earlier.
     if (consumer.op === 'beq' || consumer.op === 'bne')
         return load ? 3 - distance : 2 - distance;
@@ -563,7 +562,7 @@ export class Pipeline {
         const address = slot?.step?.loaded ?? slot?.step?.stored;
         if (!slot || address === undefined)
             return undefined;
-        const access = this.memory.access(slot.step?.loaded !== undefined ? 'load' : 'store', address, this.clockMhz);
+        const access = this.memory.access(slot.step?.loaded !== undefined ? 'load' : 'store', address, this.clockMhz, slot.step?.size ?? 1);
         this.memoryWait = access.cycles - 1;
         this.lastAccess = { slot, access };
         return this.lastAccess;

@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CHIPS, CLOCK, GRADES, WORKDAY } from '../game/src/data/economy.ts';
+import { CHIPS, CLOCK, DATA_WIDTHS, GRADES, WORKDAY } from '../game/src/data/economy.ts';
+import { bitsOf } from '../game/src/sim/generator.ts';
 import { programByName } from '../game/src/data/programs.ts';
 import { formatCount, formatDuration, formatMhz, formatMoney } from '../game/src/format.ts';
 import {
@@ -26,6 +27,7 @@ import {
   tierOf,
   withTier,
   withWordBits,
+  dataWidth,
   type Contract,
   type Progress,
 } from '../game/src/sim/progress.ts';
@@ -251,4 +253,28 @@ test('withTier gives exactly the parts for a tier (for testing)', () => {
   assert.deepEqual(withTier(NEW_GAME, 3).parts, ['pipeline', 'forwarding']);
   assert.equal(tierOf(withTier(withTier(NEW_GAME, 6), 1)).number, 1);
   assert.equal(tierOf(withTier(NEW_GAME, 99)).number, 7);
+});
+
+test("a contract's data is as wide as your chip allows, the newest width most often, and wider data pays more", () => {
+  // An 8-bit chip: bytes only, and no random number spent on it.
+  let draws = 0;
+  assert.equal(dataWidth(NEW_GAME, () => (draws++, 0.5)).bits, 8);
+  assert.equal(draws, 0);
+  const sixtyFour = withWordBits(withTier(NEW_GAME, 7), 64);
+  const seen = new Map<number, number>();
+  let x = 1;
+  const random = () => ((x = (x * 48271) % 2147483647) / 2147483647);
+  for (let i = 0; i < 2000; i++) {
+    const bits = dataWidth(sixtyFour, random).bits;
+    seen.set(bits, (seen.get(bits) ?? 0) + 1);
+  }
+  assert.deepEqual([...seen.keys()].sort((a, b) => a - b), [8, 16, 32, 64]);
+  assert.ok((seen.get(64) ?? 0) > (seen.get(8) ?? 0) * 2, JSON.stringify([...seen]));
+  // A 16-bit chip never gets 32-bit data; the board's jobs say their width.
+  const sixteen = withWordBits(withTier(NEW_GAME, 2), 16);
+  for (let i = 0; i < 200; i++) assert.ok(dataWidth(sixteen, random).bits <= 16);
+  const board = fillBoard({ ...sixtyFour, board: [] }, random).board;
+  for (const contract of board) assert.equal(programByName(contract.program).dataBits ?? 8, bitsOf(contract.program));
+  assert.deepEqual(DATA_WIDTHS.map((width) => width.bits), [8, 16, 32, 64]);
+  for (let i = 1; i < DATA_WIDTHS.length; i++) assert.ok(DATA_WIDTHS[i].pay > DATA_WIDTHS[i - 1].pay);
 });

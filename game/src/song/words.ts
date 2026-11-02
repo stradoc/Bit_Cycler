@@ -3,7 +3,7 @@ import { GLOSSARY, type Entry } from '../data/glossary.ts';
 import type { SongTarget, TourStep } from '../data/tours.ts';
 import { formatDuration, formatHours, formatMhz, formatMoney } from '../format.ts';
 import type { Decision, Outcome, PipelineRun } from '../rhythm/pipelineRun.ts';
-import { addressOf } from '../sim/cpu.ts';
+import { addressOf, itemAt } from '../sim/cpu.ts';
 import { describe, format, UNIT_ROLES, unitOf, type Instruction, type RType, type Unit } from '../sim/isa.ts';
 import { BLOCK_BYTES, blockOf, CACHE_LINES, lineOf, MEMORY_TIMING, tagOf, type Access, type MissKind } from '../sim/memory.ts';
 import type { Hazard, PairBlock, Slot, Stage } from '../sim/pipeline.ts';
@@ -35,7 +35,13 @@ const PLAIN: Readonly<Record<Instruction['op'], string>> = {
   xor: 'It keeps the bits where the two registers differ.',
   addi: 'It adds a number, written right in it, to a register.',
   lb: 'It copies a number from memory into a register.',
+  lh: 'It copies a number 2 bytes long from memory into a register.',
+  lw: 'It copies a number 4 bytes long from memory into a register.',
+  ld: 'It copies a number 8 bytes long from memory into a register.',
   sb: 'It copies a register into memory.',
+  sh: 'It copies a register into 2 bytes of memory.',
+  sw: 'It copies a register into 4 bytes of memory.',
+  sd: 'It copies a register into 8 bytes of memory.',
   beq: 'It jumps to another instruction if two registers match.',
   bne: 'It jumps back (to repeat) if two registers differ.',
 };
@@ -232,7 +238,7 @@ export class SongWords {
   result(slot: Slot): string {
     const step = slot.step;
     if (step?.wrote !== undefined) return `x${step.wrote} = ${slot.value}`;
-    if (step?.stored !== undefined) return `mem[${step.stored}] = ${this.run.pipeline.cpu.memory[step.stored]}`;
+    if (step?.stored !== undefined) return `mem[${step.stored}] = ${itemAt(this.run.pipeline.cpu.memory, step.stored, this.setup.dataBits)}`;
     if (step?.taken !== undefined) return step.taken ? 'BRANCH TAKEN' : 'NOT TAKEN';
     return 'x0 stays 0';
   }
@@ -352,7 +358,11 @@ export class SongWords {
           },
           lane('ALU', reg(instr.rd)),
         ];
-      case 'lb': {
+      // Lesson 1 runs byte programs; a wider load or store would be talked through the same way.
+      case 'lb':
+      case 'lh':
+      case 'lw':
+      case 'ld': {
         const address = addressOf(reads.a, instr.imm);
         return [
           intro(`It LOADS: it copies a byte from memory into ${reg(instr.rd)}. The ADDRESS to read is ${reg(instr.rs1)} + ${instr.imm}.`),
@@ -361,7 +371,10 @@ export class SongWords {
           lane('MEM', reg(instr.rd)),
         ];
       }
-      case 'sb': {
+      case 'sb':
+      case 'sh':
+      case 'sw':
+      case 'sd': {
         const address = addressOf(reads.a, instr.imm);
         return [
           intro(`It STORES: it copies ${reg(instr.rs2)} into memory. The ADDRESS to write is ${reg(instr.rs1)} + ${instr.imm}.`),
@@ -416,8 +429,14 @@ export class SongWords {
         return steps;
       }
       case 'lb':
+      case 'lh':
+      case 'lw':
+      case 'ld':
         return [{ say: `See! The ${reads.byte} from address ${addressOf(reads.a, instr.imm)} was copied into ${reg(instr.rd)}. Memory still has its own copy.`, point: reg(instr.rd) }];
       case 'sb':
+      case 'sh':
+      case 'sw':
+      case 'sd':
         return [{ say: `See! ${reads.b & 0xff} was copied into memory at address ${addressOf(reads.a, instr.imm)}. ${reg(instr.rs2)} still holds it too.`, point: 'memory' }];
       case 'beq':
       case 'bne': {
@@ -619,6 +638,9 @@ export class SongWords {
   }
 
   memory(): Entry {
-    return { title: GLOSSARY.MEMORY.title, body: `${GLOSSARY.MEMORY.body} ${this.setup.spec.memoryNote ?? ''}` };
+    const bits = this.setup.dataBits;
+    // Wider data: what the box shows instead of bytes.
+    const wide = bits === 8 ? '' : ` This job's data is ${bits}-bit numbers (${bits / 8} bytes each), so each row shows them in ordinary numbers, and the box scrolls to the one in use.`;
+    return { title: GLOSSARY.MEMORY.title, body: `${GLOSSARY.MEMORY.body}${wide} ${this.setup.spec.memoryNote ?? ''}` };
   }
 }
