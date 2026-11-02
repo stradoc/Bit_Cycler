@@ -2,14 +2,18 @@ import { GLOSSARY } from '../data/glossary.js';
 import { tokens, UNITS, unitOf } from '../sim/isa.js';
 import { cssColor } from '../ui/eras.js';
 import { dropShadow, PressButton } from '../ui/widgets.js';
-import { branchHint } from '../visual/branchHint.js';
+import { branchHint, hintColor } from '../visual/branchHint.js';
 import { codeLine } from '../visual/codeLine.js';
-import { FLASH_MS, HIT_Y, LANE_KEYS, LANE_W, LANE_X0, laneCenter, LANES_W, LOOKAHEAD, NOTE_H, NOTE_W, noteKey, PX_PER_BEAT, ROW_GAP, STAGE_NAMES, } from './layout.js';
+import { motionOf } from '../visual/motion.js';
+import { FLUSH_SHIFT, HIT_Y, LANE_KEYS, LANE_W, LANE_X0, laneCenter, LANES_W, LOOKAHEAD, NOTE_H, NOTE_W, noteKey, PX_PER_BEAT, ROW_GAP, STAGE_NAMES, } from './layout.js';
 import { Part } from './view.js';
 /**
  * The highway: lanes for the units, notes falling to the hit line (ID), and
  * once issued, stepping down the EX / MEM / WB rows; the keys under the lanes;
- * the link from a note waiting on a hazard to the note computing its value.
+ * the link from a note waiting on a hazard to the note computing its value;
+ * flushed notes, and a branch's callout when it sends fetch elsewhere. Where a
+ * falling note is stays on the beat here; everything else moves by recipes
+ * (data/motions.ts, the `song` group).
  */
 export class Highway extends Part {
     /** Upcoming notes (IF and later, plus the one in ID), keyed by seq:pc. */
@@ -17,7 +21,6 @@ export class Highway extends Part {
     /** Notes already issued, in the EX / MEM / WB rows, keyed by seq. */
     inFlight = new Map();
     laneFlash = {};
-    flashAt = { ALU: -Infinity, MEM: -Infinity, BRANCH: -Infinity, STALL: -Infinity };
     /** The 90s desktop's key buttons under the lanes: pressed in while their key's flash lasts. */
     keyButtons = {};
     hazardLink;
@@ -28,8 +31,14 @@ export class Highway extends Part {
     guessTag;
     guessNot;
     guessTaken;
+    /** The pulsing frames around a note waiting on a hazard (in ID) and one waiting for memory (in the rows). */
+    hazardFrame;
+    waitFrame;
+    redirects = [];
+    motion;
     constructor(view) {
         super(view);
+        this.motion = motionOf(this.scene);
         const { fg, dim } = this.era;
         const { setup, clickable, words } = view;
         const { rows } = setup;
@@ -93,6 +102,9 @@ export class Highway extends Part {
         this.guessNot.setX(-(this.guessNot.width + 10 + this.guessTaken.width) / 2);
         this.guessTaken.setX(this.guessNot.x + this.guessNot.width + 10);
         this.guessTag = this.scene.add.container(0, 0, [this.guessNot, this.guessTaken]).setDepth(21).setVisible(false);
+        const frame = () => this.scene.add.rectangle(0, 0, NOTE_W, NOTE_H).setStrokeStyle(2, fg).setDepth(11).setVisible(false);
+        this.hazardFrame = frame();
+        this.waitFrame = frame();
     }
     /** The 90s desktop: a raised button behind a key's label, centered on (x, y) (nothing in the other eras). */
     keyButton(x, y, w) {
@@ -116,16 +128,52 @@ export class Highway extends Part {
         return parts;
     }
     /** A key was pressed: its lane lights up (and its 90s button presses in) for a moment. */
-    flash(key, now) {
-        this.flashAt[key] = now;
+    flash(key) {
+        const button = this.keyButtons[key];
+        button?.press(true);
+        this.motion.play('lane-flash', this.laneFlash[key], { done: () => button?.press(false) });
     }
-    /** Every frame: the lanes' flashes fade, and the key buttons come back up. */
-    update(now) {
-        for (const key of [...UNITS, 'STALL']) {
-            const fade = 1 - (now - this.flashAt[key]) / FLASH_MS;
-            this.laneFlash[key]?.setAlpha(0.35 * Math.max(0, fade));
-            this.keyButtons[key]?.press(now - this.flashAt[key] < FLASH_MS);
+    /** Every frame: a branch's callouts follow the notes they link. */
+    update() {
+        for (const { branchSeq, toKey, tag, link, color } of this.redirects) {
+            link.clear();
+            const branch = this.inFlight.get(branchSeq)?.box;
+            const to = toKey === undefined ? undefined : (this.notes.get(toKey)?.box ?? [...this.inFlight.values()].find((block) => block.key === toKey)?.box);
+            const over = to ?? branch;
+            if (!over) {
+                tag.setVisible(false);
+                continue;
+            }
+            // Over the note fetch went to, kept inside the lanes.
+            const x = Phaser.Math.Clamp(over.x, LANE_X0 + tag.width / 2, LANE_X0 + LANES_W - tag.width / 2);
+            tag.setPosition(x, over.y - NOTE_H / 2 - 6).setVisible(true);
+            if (!branch || !to)
+                continue;
+            // From the branch's note up to the note it sent fetch to, an arrowhead at the end.
+            const from = { x: branch.x - NOTE_W / 2 + 12, y: branch.y - NOTE_H / 2 };
+            const end = { x: to.x + (to.x < branch.x ? NOTE_W / 2 - 12 : -NOTE_W / 2 + 12), y: to.y + NOTE_H / 2 };
+            link.lineStyle(2, color, 1).lineBetween(from.x, from.y, end.x, end.y);
+            const angle = Math.atan2(end.y - from.y, end.x - from.x);
+            const head = (turn) => ({ x: end.x - 9 * Math.cos(angle + turn), y: end.y - 9 * Math.sin(angle + turn) });
+            const [a, b] = [head(0.45), head(-0.45)];
+            link.fillStyle(color, 1).fillTriangle(end.x, end.y, a.x, a.y, b.x, b.y);
         }
+    }
+    /**
+     * A branch went the way fetch didn't expect, so the branch unit sent fetch
+     * somewhere else: a callout says so over the new path's first note (`to`),
+     * linked to the branch, for a moment.
+     */
+    redirect(branch, to) {
+        const taken = branch.step?.taken ?? false;
+        const color = hintColor(this.era, taken);
+        const tag = this.text(0, 0, this.view.words.redirectTag(taken), 13).setOrigin(0.5, 1).setAlign('center').setDepth(22).setColor(cssColor(color));
+        tag.setBackgroundColor(cssColor(this.era.bg)).setPadding(4, 2, 4, 2).setLineSpacing(2);
+        const link = this.scene.add.graphics().setDepth(21);
+        const entry = { branchSeq: branch.seq, toKey: to ? noteKey(to) : undefined, tag, link, color };
+        this.redirects.push(entry);
+        this.update();
+        this.motion.play('callout', [tag, link], { remove: true, done: () => this.redirects.splice(this.redirects.indexOf(entry), 1) });
     }
     // ---- notes ----
     /** The falling note for `slot`, if there is one. */
@@ -156,11 +204,18 @@ export class Highway extends Part {
         if (IF)
             wanted.push({ slot: IF, k: 1 - chord });
         pipeline.upcoming(LOOKAHEAD).forEach((slot, i) => wanted.push({ slot, k: 2 + i - chord }));
+        // A note whose instruction is still coming keeps its place when it's numbered again (fetched again after a flush).
+        const gone = [...this.notes].filter(([key]) => !wanted.some(({ slot }) => noteKey(slot) === key));
         const keep = new Set();
         for (const { slot, k } of wanted) {
             const key = noteKey(slot);
             keep.add(key);
             const target = due + k;
+            const same = this.notes.has(key) ? -1 : gone.findIndex(([, old]) => old.pc === slot.pc);
+            if (same >= 0) {
+                this.notes.set(key, { ...gone[same][1], key });
+                gone.splice(same, 1);
+            }
             const view = this.notes.get(key) ?? this.createNote(key, slot, target);
             view.target = target;
             view.due += (view.target - view.due) * Math.min(1, elapsed / 60);
@@ -171,13 +226,12 @@ export class Highway extends Part {
             view.label.setY(y);
             this.syncHint(view, slot);
         }
-        // Predictions that will never be fetched (a branch redirected fetch) disappear quietly.
+        // Notes that will never be fetched after all (a branch sent fetch elsewhere, or the guess changed) slide out of their lanes.
         for (const [key, view] of this.notes) {
             if (keep.has(key))
                 continue;
             this.notes.delete(key);
-            view.box.destroy();
-            view.label.destroy();
+            this.motion.play('note-drop', [view.box, view.label], { remove: true });
         }
     }
     /** Moves issued notes down to the row of the stage they're in; drops notes that left WB. */
@@ -196,59 +250,61 @@ export class Highway extends Part {
                 const key = noteKey(slot);
                 const note = this.notes.get(key);
                 this.notes.delete(key);
-                block = { ...(note ?? this.createBlock(slot, HIT_Y)), rowY: setup.rows[stage] };
+                block = { ...(note ?? this.createBlock(slot, HIT_Y, key)), rowY: setup.rows[stage] };
                 // Decided: the branch's hint has done its job, and a 90s button stays pressed in.
                 block.hint?.view.destroy();
                 block.hint = undefined;
                 block.button?.press(true);
+                this.motion.stop(block.label, ['alpha']);
                 block.box.setY(HIT_Y);
                 block.label.setY(HIT_Y).setAlpha(0.85);
                 this.inFlight.set(slot.seq, block);
+                block.rowY = Number.NaN;
             }
+            let moved = block.rowY !== setup.rows[stage];
             block.rowY = setup.rows[stage];
             if (stage === 'WB' && !block.result) {
                 // In WB the note shows what the instruction did.
                 block.label.setVisible(false);
                 block.result = this.text(block.box.x, block.box.y, words.result(slot), 15).setOrigin(0.5);
+                moved = true;
             }
+            // Down to its row (or on with it, the result just written).
+            if (moved)
+                this.motion.play('row-step', parts(block), { goal: { y: block.rowY } });
         }
         for (const [seq, block] of this.inFlight) {
             if (present.has(seq))
                 continue;
             this.inFlight.delete(seq);
-            this.view.fades.add([block.box, block.label, ...(block.result ? [block.result] : [])], 200);
-        }
-    }
-    /**
-     * Every frame: slides issued notes toward their rows. Driven by real elapsed
-     * time rather than tweens, so a slow frame snaps them into place instead of leaving them behind.
-     */
-    easeRows(elapsed) {
-        const t = Math.min(1, elapsed / 50);
-        for (const block of this.inFlight.values()) {
-            const y = block.box.y + (block.rowY - block.box.y) * t;
-            block.box.setY(y);
-            block.label.setY(y);
-            block.result?.setY(y);
+            this.motion.play('note-leave', parts(block), { remove: true });
         }
     }
     /** The song is over: the last notes fade out of the rows. */
     empty() {
         for (const [seq, block] of this.inFlight) {
             this.inFlight.delete(seq);
-            this.view.fades.add([block.box, block.label, ...(block.result ? [block.result] : [])], 200);
+            this.motion.play('note-leave', parts(block), { remove: true });
         }
     }
-    /** A flushed instruction's note: struck through, then faded out. */
+    /**
+     * A flushed instruction's note: struck through and stamped FLUSHED, it's
+     * pushed out of its slot toward the middle of the highway (the right
+     * instruction arrives where it was) and fades out.
+     */
     strike(slot) {
         const view = this.notes.get(noteKey(slot));
         if (!view)
             return;
         this.notes.delete(noteKey(slot));
-        const strike = this.scene.add.rectangle(view.box.x, view.box.y, NOTE_W + 6, 2, this.era.fg).setDepth(10);
-        this.view.fades.add([view.box, view.label, strike], 600);
+        const { x, y } = view.box;
+        const strike = this.scene.add.rectangle(x, y, NOTE_W + 6, 2, this.era.fg).setDepth(10);
+        const stamp = this.text(x, y, ` ${this.view.words.flushedTag()} `, 13).setOrigin(0.5).setDepth(11).setBackgroundColor(cssColor(this.era.bg));
+        const toward = x < LANE_X0 + LANES_W / 2 ? 1 : -1;
+        this.motion.play('strike-draw', strike);
+        this.motion.play('note-flush', [view.box, view.label, strike, stamp], { goal: { x: x + toward * FLUSH_SHIFT }, remove: true });
     }
-    createBlock(slot, y) {
+    createBlock(slot, y, key) {
         const { fg, bg, syntax, kind } = this.era;
         const x = laneCenter(unitOf(slot.instr));
         const box = this.scene.add.rectangle(x, y, NOTE_W, NOTE_H, bg).setStrokeStyle(1, fg, 0.6);
@@ -260,13 +316,15 @@ export class Highway extends Part {
         // The 90s desktop: a button, raised until it's played.
         const button = PressButton.create(this.scene, this.era, -NOTE_W / 2, -NOTE_H / 2, NOTE_W, NOTE_H, null);
         if (!button)
-            return { box, label };
+            return { key, pc: slot.pc, box, label };
         label.addAt(button.edges, 0);
-        return { box, label, button };
+        return { key, pc: slot.pc, box, label, button };
     }
+    /** A note for an instruction fetch will bring in; it fades in, in case it arrives mid-highway (fetch went somewhere new). */
     createNote(key, slot, due) {
-        const view = { ...this.createBlock(slot, -40), due, target: due, pinned: false };
+        const view = { ...this.createBlock(slot, -40, key), due, target: due, pinned: false };
         this.notes.set(key, view);
+        this.motion.play('note-arrive', [view.box, view.label]);
         return view;
     }
     /**
@@ -298,7 +356,7 @@ export class Highway extends Part {
      * computed, link it to the instruction below that's computing it, and pulse
      * the waiting note. Tier 4: a branch on the line asks for a guess.
      */
-    drawHazard(now) {
+    drawHazard() {
         this.hazardLink.clear();
         const { fg } = this.era;
         const { run, setup } = this.view;
@@ -320,10 +378,11 @@ export class Highway extends Part {
                 styleGuess(this.guessTaken, hinted === true);
             }
             waiting?.box.setStrokeStyle(1, fg, 0.6);
+            this.pulse(this.hazardFrame, undefined);
             return;
         }
         this.guessTag.setVisible(false);
-        waiting.box.setStrokeStyle(2, fg, 0.55 + 0.45 * Math.sin(now / 90));
+        this.pulse(this.hazardFrame, waiting.box);
         this.hazardTag
             .setText(`x${hazard.reg} NOT READY`)
             .setPosition(waiting.box.x, waiting.box.y - NOTE_H / 2 - (waiting.hint ? 20 : 12)) // clear of a hint's badge
@@ -338,26 +397,46 @@ export class Highway extends Part {
     hideHazard() {
         this.hazardLink.clear();
         this.hazardTag.setVisible(false);
+        this.pulse(this.hazardFrame, undefined);
     }
-    /** Every frame of a memory wait: the waiting note pulses under its tag, its result held back. Returns the note. */
-    showWaiting(seq, tag, now) {
+    /** Every frame of a memory wait: the waiting note pulses under its tag, its result held back. Returns the note (none: nothing shown). */
+    showWaiting(seq, tag) {
         const block = this.inFlight.get(seq);
-        if (!block)
+        if (!block) {
+            this.hideWaiting();
             return undefined;
-        block.box.setStrokeStyle(2, this.era.fg, 0.55 + 0.45 * Math.sin(now / 90));
+        }
+        this.pulse(this.waitFrame, block.box);
         // Tier 1: the finished load waits in the DONE row; its result only counts once the data arrives.
         block.result?.setVisible(false);
         this.memTag.setText(tag).setPosition(block.box.x, block.box.y - NOTE_H / 2 - 10).setVisible(true);
         return block;
     }
-    /** The tag over a waiting note goes (every frame, before it's shown again if the wait goes on). */
+    /** No memory wait to show: the tag and the pulse go. */
     hideWaiting() {
         this.memTag.setVisible(false);
+        this.pulse(this.waitFrame, undefined);
+    }
+    /** Every frame: a pulsing frame follows the note it's around (`over`), or stops and hides (none). */
+    pulse(frame, over) {
+        if (!over) {
+            if (frame.visible)
+                this.motion.stop(frame);
+            frame.setVisible(false);
+            return;
+        }
+        frame.setPosition(over.x, over.y).setVisible(true);
+        if (!this.motion.moving(frame))
+            this.motion.play('wait-pulse', frame);
     }
     /** The wait is over: the note shows its result again. */
     endWaiting(seq) {
         this.inFlight.get(seq)?.result?.setVisible(true);
     }
+}
+/** Everything drawn for a note in the rows, which moves together. */
+function parts(block) {
+    return [block.box, block.label, ...(block.result ? [block.result] : [])];
 }
 /** A guess key's label: bright and glowing when it's the hinted guess, dim when not. */
 function styleGuess(text, hinted) {

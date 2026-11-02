@@ -19,8 +19,8 @@ export const NOTE_W = LANE_W - 8;
 export const NOTE_H = 26;
 /** How many instructions past IF get falling notes. */
 export const LOOKAHEAD = 6;
-/** How long a key's lane lights up (and its 90s button stays pressed in), ms. */
-export const FLASH_MS = 120;
+/** How far a flushed note is pushed out of its slot, toward the middle of the highway. */
+export const FLUSH_SHIFT = 56;
 export const LANE_KEYS = { ALU: 'D', MEM: 'F', BRANCH: 'J' };
 export const STAGE_NAMES = { IF: 'FETCH', ID: 'DECODE', EX: 'EXECUTE', MEM: 'MEMORY', WB: 'WRITE BACK' };
 // ---- the clock and temperature gauge, top left above the stage names ----

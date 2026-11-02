@@ -1,5 +1,4 @@
 import { textBase } from '../visual/display.ts';
-import { motionOf } from '../visual/motion.ts';
 import { cssColor, palette, type Era } from './eras.ts';
 import { TEXT } from './theme.ts';
 
@@ -7,8 +6,6 @@ import { TEXT } from './theme.ts';
 // drew it (era.kind): text, framed boxes, titled panels and buttons. Screens
 // ask for a box or a button; how the green terminal, DOS, the 90s desktop or
 // the modern terminal draws one is decided here, not in each screen.
-
-type Faded = Phaser.GameObjects.GameObject & { alpha: number; y: number };
 
 /** Text in the era's font and color (and its size; Phaser's default origin, top-left). */
 export function eraText(scene: Phaser.Scene, era: Era, x: number, y: number, content: string, size: number = TEXT.body): Phaser.GameObjects.Text {
@@ -162,9 +159,4 @@ export class Box {
     this.button.texts = [...texts];
     this.button.press(down);
   }
-}
-
-/** Things arriving on the screen, the era's way (the 'glide-in' recipe, data/motions.ts). Phase 2 of the animation plan moves its callers onto the recipe. */
-export function glideIn(scene: Phaser.Scene, targets: readonly Faded[]): void {
-  motionOf(scene).play('glide-in', targets);
 }

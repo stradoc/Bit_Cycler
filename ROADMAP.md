@@ -24,14 +24,18 @@ The latest handoff (what's done, what's unchecked, what's next) is the top entry
 Upgrades follow microprocessor history and stay with the CPU and its control logic (decided 2026-10-31; the reasoning and sources are in the design doc's "Eras and upgrade order").
 
 0. **Animations as data** (decided 2026-11-01; Decisions table). Phases, each playable, each deleting what it replaces:
-   - [x] **1. Foundation** (done; `glideIn` still wraps the recipe until its callers on the song screen move in phase 2): `data/motions.ts` (recipes: tracks of keyframes, duration, easing, delay, stagger, loops; the pure maths of easing, sampling and each era's style), `motion` in each `ERAS` entry (style: cut, step, tween, ease; fps; character cell; afterglow; variants), `visual/motion.ts` (one player per screen, `motionOf(scene)`, updated by `Screen.update`), REDUCED MOTION in the settings; the first recipes: gliding in, the list's sliding bar
-   - [ ] **2. One-shots and loops**: fades, flashes, the highlight settling, the beat light, pulses (count-in, pictures, standby), shakes (shop, hazard), cursor blinks
-   - [x] **3. TICK** (done): drawn the era's way (`data/tick.ts`: poses, and four looks: ASCII, code page 437, a VGA pixel sprite, vector shapes; drawn by `visual/tickFigure.ts`), his bob, walk and the spotlight's pulse as recipes (smooth in every era, the user's choice: `style` on a recipe), walking feet, moods (happy, cheer, worried) on tour lines. His typing speed and his blink, mouth and step timings are data in `TICK` (they change what he shows, not where he is)
-   - [ ] **Charts and cards in each era's style** (user: "keep it in the style of the era, for 16 bit, keep it similar to MS-DOS, 32-bit, late 90s, and 64 bit, modern day"): the results card is done (`ui/card.ts`). Next, the same kit for the board (the job sheet's deadline bar and notes per lane, the workday bar, the block-digit clock, the calendar page, the timecard) and the calendar screen (its month grid and the day's timecard). REPORT.TXT is a text file, so it stays in characters (the era's character set)
-   - [ ] **4. Gameplay feel**: notes and rows easing, the listing scroll, bus paths, the hazard pulse (positions stay locked to the beat in the song code: only the feel moves)
+   - [x] **1. Foundation** (done): `data/motions.ts` (recipes: tracks of keyframes, duration, easing, delay, stagger, loops; the pure maths of easing, sampling and each era's style), `motion` in each `ERAS` entry (style: cut, step, tween, ease; fps; character cell; afterglow; variants), `visual/motion.ts` (one player per screen, `motionOf(scene)`, updated by `Screen.update`), REDUCED MOTION in the settings; the first recipes: gliding in, the list's sliding bar
+   - [ ] **2. One-shots and loops**: the song screen's are done (2026-11-02: fades, flashes, the highlight settling, the count-in, the waiting notes' pulse, the timing mistake's jolt). Left on other screens: the settings' beat light (`SettingsScene`), a picture's pulsing light (`visual/diagrams.ts`), the main menu's and the boot's (phase 5), the shop's, cursor blinks
+   - [x] **3. TICK** (done): drawn the era's way (`data/tick.ts`: poses, and four looks: ASCII, code page 437, a VGA pixel sprite, vector shapes; drawn by `visual/tickFigure.ts`), his bob, walk and the spotlight's pulse as recipes (smooth in every era, the user's choice: the `tick` group in `GROUP_STYLES`), walking feet, moods (happy, cheer, worried) on tour lines. His typing speed and his blink, mouth and step timings are data in `TICK` (they change what he shows, not where he is)
+   - [ ] **Charts and cards in each era's style, last** (user: "keep it in the style of the era, for 16 bit, keep it similar to MS-DOS, 32-bit, late 90s, and 64 bit, modern day"; then: "For now lets stop changing the era styles, we'll do that last. Because we might want to add more features"): the results card is done (`ui/card.ts`). Once the features are in, the same kit for the board (the job sheet's deadline bar and notes per lane, the workday bar, the block-digit clock, the calendar page, the timecard) and the calendar screen (its month grid and the day's timecard). REPORT.TXT is a text file, so it stays in characters (the era's character set)
+   - [x] **4. Gameplay feel** (done 2026-11-02): every song-screen animation is a `song` recipe, smooth in every era (the user's choice), lasting one of the lengths in `PACE`; notes stepping down the rows, the listing's slide (now in every era), values on the bus (fitted to the beat), the hazard and memory pulses; a test fails on tweens, camera effects or hand-timed waves in `song/` and `PipelineScene`. Positions on the beat stay in `Highway.syncNotes`. Branches made clear on it: a flushed note is struck, stamped FLUSHED and pushed out of its slot; notes fetch won't reach slide out of their lanes; a callout (REDIRECTED BY BRANCH UNIT, taken or not) over the note fetch was sent to, with an arrow from the branch. Still to judge in a real browser: how they feel at full frame rate and speed
    - [ ] **5. Transitions**: power on and off (CRT beam or LCD fade as era variants), the title's arrival, the boot's typing
-   - [ ] **6. Motion lab and docs**: `?scene=motions` and a developer screen row (every recipe and TICK pose, in any era, frozen at a time for screenshots); "An animation" in `CLAUDE.md`
+   - [ ] **6. Motion lab and docs**: done for recipes (2026-11-02: `?scene=motions`, the developer screen's MOTION LAB: every recipe on a sample, in any era, frozen at a time; "An animation" in `CLAUDE.md`). Left: TICK's poses in the lab
    - Not yet: the heat particles, the 3D models' motion
+0. **From the user's notes (2026-11-02)** (the branch animations are done: item 0, phase 4):
+   - [ ] Practice: after the first practice, notes still wait for you, but TICK doesn't stop you over a note missed by half a second; he teaches the new idea and gets out of the way
+   - [ ] TICK's full tutorial of every instruction moves to the first contract, where he asks whether you want it: FULL, SHORT or NO TUTORIAL
+   - [ ] Superscalar: make chords easier to see (FETCH higher up, or the chords shown at the top)
 0. **From the user's notes (2026-11-01)**: all four done (results card, job sheet, difficulty, 12 songs and 13 kinds of program). Left from them:
    - [ ] Listen to the 12 songs and the music's reactions (`sound-export/music/`, `music/reactions/`), and play a song with sound (missed beats, stalls, wrong guesses): nothing here can hear them
    - [ ] Later: each era's own music style (DOS, 90s desktop, modern), added to the songs' table as data
@@ -55,7 +59,7 @@ Upgrades follow microprocessor history and stay with the CPU and its control log
 - [ ] Relaxed mode: the pipeline waits for input instead of stalling
 - [ ] Full-length songs (~60 s): tier 1 contract songs run 30–64 cycles (median 46, about 37 s at 75 BPM), tier 2 about 65 s; longer needs more memory
 - [ ] Event notes for the wide-arithmetic chain (with word size)
-- [ ] Run logic that accepts several presses per beat (for superscalar chords later)
+- [x] Run logic that accepts several presses per beat (done with superscalar's chords, tier 7)
 - [ ] Pay: better pay when overclocked? (the streak multiplier of item 1 rewards accuracy; pay is flat for now)
 - [ ] Generator: data bigger than the cache that's read more than once (capacity misses never happen yet)
 - [ ] Later: choosing the cache's shape (block size, associativity)
@@ -71,7 +75,7 @@ Upgrades follow microprocessor history and stay with the CPU and its control log
 - [ ] Decide with the team: the guide's name (TICK). His look: one per era (decided 2026-11-01)
 - [ ] Sounds for branch flushes (a wrong guess is silent)
 - [ ] Decide: let the game play an edited sound file in place of a synthesized sound when one exists (the recorded keys already work this way); the music stays synthesized
-- [ ] Decide whether sprites are needed (the art is the four era looks and the 3D chip)
+- [x] Sprites: TICK has a look per era (a VGA sprite on the 90s desktop, vector shapes in the modern era) and the results card stamps with 90s icons (2026-11-01); the rest of the era styling comes last (item 0)
 
 **Code** (from the modularity review, 2026-10-31: where the code doesn't yet match `CLAUDE.md`'s "one place per thing"; move each, or make the doc say what's true)
 - [ ] Song text outside `song/words.ts`: about 25 labels in `song/panel.ts`, `gauge.ts`, `replay.ts`, `highway.ts`, `layout.ts` and `PipelineScene`

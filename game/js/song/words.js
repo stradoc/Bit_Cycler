@@ -151,6 +151,14 @@ export class SongWords {
     waitingTag(access) {
         return this.setup.l1 ? 'MISS -> RAM' : access.kind === 'store' ? 'WRITING TO RAM' : 'WAITING ON RAM';
     }
+    /** The tag over a note thrown out of the pipeline. */
+    flushedTag() {
+        return 'FLUSHED';
+    }
+    /** The callout over the note fetch was sent to after a branch went the way it didn't expect (`taken`: to the branch's target). */
+    redirectTag(taken) {
+        return `REDIRECTED BY BRANCH UNIT\n${taken ? 'TAKEN: JUMPS TO ITS LABEL' : 'NOT TAKEN: ON TO THE NEXT LINE'}`;
+    }
     /** The value on the bus during a wait: the address asked for, then what came back (`back`). */
     trip(access, back, value) {
         if (access.kind === 'store')

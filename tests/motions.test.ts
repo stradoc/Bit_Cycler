@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { eased, keyframes, MOTIONS, passAt, recipeFor, styleFor, valueAt, type EraMotion, type MotionName, type Recipe } from '../game/src/data/motions.ts';
+import { readdirSync, readFileSync } from 'node:fs';
+import { eased, keyframes, MOTIONS, PACE, passAt, recipeFor, styleFor, timed, valueAt, type EraMotion, type MotionName, type Recipe } from '../game/src/data/motions.ts';
 import { ERAS } from '../game/src/ui/eras.ts';
 
 // Animations as data (data/motions.ts): the recipes, the maths that plays
@@ -77,9 +78,22 @@ test("an era's variant replaces the recipe it names; REDUCED MOTION jumps, excep
   const still = styleFor(EASE, bob, true);
   assert.deepEqual(still, { style: 'still' });
   for (const ms of [0, 300, 1000, 5000]) assert.equal(valueAt(bob, bob.tracks.y, 40, undefined, ms, still, 'y'), 40);
+  // A fade the player needs to see (a key heard, a cache line used) still fades: jumping to its end would hide it.
+  for (const name of ['lane-flash', 'mark-fade'] as const) {
+    const fade = MOTIONS[name];
+    const at = valueAt(fade, fade.tracks.alpha, 1, undefined, fade.duration / 2, styleFor(ERAS[0].motion, fade, true));
+    assert.ok(at > 0 && at < fade.tracks.alpha[0], `${name}: ${at}`);
+  }
 });
 
-test("a recipe with its own style moves that way in every era: TICK is smooth everywhere", () => {
+test("a group moves one way in every era: TICK and the song's gameplay are smooth everywhere", () => {
+  for (const name of Object.keys(MOTIONS) as MotionName[]) {
+    const recipe: Recipe = MOTIONS[name];
+    for (const era of ERAS) {
+      const expected = recipe.group === 'tick' || recipe.group === 'song' ? { style: 'ease' } : era.motion;
+      assert.deepEqual(styleFor(era.motion, recipe, false), expected, `${name} in ${era.name}`);
+    }
+  }
   const walk = MOTIONS['tick-walk'];
   for (const era of ERAS) {
     assert.deepEqual(styleFor(era.motion, walk, false), { style: 'ease' }, era.name);
@@ -89,7 +103,7 @@ test("a recipe with its own style moves that way in every era: TICK is smooth ev
   }
   // REDUCED MOTION still wins.
   assert.deepEqual(styleFor(EASE, walk, true), { style: 'cut' });
-  // Recipes without a style keep their era's way.
+  // Recipes without a group are the screens': they keep their era's way.
   assert.equal(styleFor(ERAS[0].motion, MOTIONS['glide-in'], false), ERAS[0].motion);
 });
 
@@ -108,6 +122,42 @@ test('every era moves its own way, and every recipe plays to its end in every er
         const last = keyframes(track, 10, 20).at(-1);
         if (!recipe.loop) assert.equal(valueAt(recipe, track, 10, 20, recipe.duration, motion), last, `${era.name} ${name} ends where it should`);
       }
+    }
+  }
+});
+
+test("the song's recipes keep one rhythm: every one lasts a length from PACE", () => {
+  const lengths = new Set<number>(Object.values(PACE));
+  const song = (Object.keys(MOTIONS) as MotionName[]).filter((name) => (MOTIONS[name] as Recipe).group === 'song');
+  assert.ok(song.length >= 10);
+  for (const name of song) assert.ok(lengths.has(MOTIONS[name].duration), `${name}: ${MOTIONS[name].duration} ms is not in PACE`);
+});
+
+test('a recipe fitted to the beat lasts its share of one, never longer than its own length; a length the game sets wins', () => {
+  const carry = MOTIONS['bus-carry'];
+  // 75 BPM: 800 ms a beat, 0.8 of it is 640, so its own 600 holds. 150 BPM: 400 ms a beat, 320.
+  assert.equal(timed(carry, { beatMs: 800 }).duration, 600);
+  assert.equal(timed(carry, { beatMs: 400 }).duration, 320);
+  assert.equal(timed(carry, {}).duration, 600);
+  // Not fitted to the beat: unchanged. A memory wait's length replaces it.
+  assert.equal(timed(MOTIONS['mark-fade'], { beatMs: 100 }).duration, PACE.linger);
+  assert.equal(timed(MOTIONS['mark-fade'], { duration: 2400 }).duration, 2400);
+  // The count-in pulses dim and back once a beat.
+  assert.equal(timed(MOTIONS['count-in-pulse'], { beatMs: 800 }).duration * 2, 800);
+  // Along a wire: progress runs 0 to 1, eased, in every era.
+  const at = valueAt(carry, carry.tracks.progress, 0, undefined, 300, styleFor(ERAS[1].motion, carry, false));
+  assert.ok(at > 0.5 && at < 1, `${at}`);
+});
+
+test('the song screen moves only by recipes: no tweens, camera effects or hand-timed motion', () => {
+  const root = new URL('../game/src/', import.meta.url);
+  const parts = readdirSync(new URL('song/', root)).map((file) => `song/${file}`);
+  // The scene keeps the beat on the real clock; its parts never time anything themselves.
+  const banned = (file: string) => ['tweens.', 'cameras.main.', 'Math.sin(now', ...(file.startsWith('song/') ? ['performance.now('] : [])];
+  for (const file of [...parts, 'scenes/PipelineScene.ts']) {
+    const lines = readFileSync(new URL(file, root), 'utf8').split('\n');
+    for (const word of banned(file)) {
+      assert.deepEqual(lines.filter((line) => line.includes(word)), [], `${file} uses ${word}: play a recipe from data/motions.ts instead`);
     }
   }
 });

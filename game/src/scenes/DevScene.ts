@@ -15,12 +15,12 @@ import { LAYOUT } from '../ui/theme.ts';
 
 type Row =
   | 'chip' | 'tier' | 'clock' | 'deep' | 'cooling' | 'cache' | 'overclock' | 'money' | 'time' | 'endday' | 'board' | 'everything'
-  | 'lesson' | 'seen' | 'play' | 'practice' | 'autoplay' | 'reset';
+  | 'lesson' | 'seen' | 'play' | 'practice' | 'autoplay' | 'motions' | 'reset';
 
 /** The rows in their groups (the first named after the save being changed), each with the line shown about it. */
 const GROUPS: readonly { readonly name: (slot: string) => string; readonly rows: readonly Row[] }[] = [
   { name: (slot) => `YOUR SAVE (${slot}): CPU, MONEY AND DAY`, rows: ['chip', 'tier', 'clock', 'deep', 'cooling', 'cache', 'overclock', 'money', 'time', 'endday', 'board', 'everything'] },
-  { name: () => 'LESSONS AND PLAY', rows: ['lesson', 'seen', 'play', 'practice', 'autoplay'] },
+  { name: () => 'LESSONS AND PLAY', rows: ['lesson', 'seen', 'play', 'practice', 'autoplay', 'motions'] },
   { name: () => 'START OVER', rows: ['reset'] },
 ];
 const ROWS: readonly Row[] = GROUPS.flatMap((group) => group.rows);
@@ -43,6 +43,7 @@ const ABOUT: Readonly<Record<Row, string>> = {
   play: 'THE CONTRACT BOARD, WITH YOUR SAVE AS IT IS NOW.',
   practice: 'A PRACTICE SONG ON THIS TIER: NOTES WAIT FOR YOU.',
   autoplay: 'SONGS PLAY THEMSELVES, UNTIL THE PAGE IS RELOADED.',
+  motions: 'EVERY ANIMATION PLAYED ON A SAMPLE, IN ANY ERA: TO SEE A NEW OR CHANGED ONE BESIDE THE OTHERS.',
   reset: 'ERASES THIS SAVE AND STARTS IT OVER AS A NEW GAME. TO KEEP IT, EXPORT IT FIRST (SAVES, ON THE MAIN MENU).',
 };
 
@@ -124,6 +125,7 @@ export class DevScene extends Screen {
       play: ['PLAY: CONTRACT BOARD'],
       practice: ['PRACTICE THIS TIER'],
       autoplay: ['AUTOPLAY SONGS', onOff(cheatFlags.autoplay)],
+      motions: ['MOTION LAB'],
       reset: [this.confirmReset ? `ERASE ${slotName(activeSlot())}: PRESS ENTER AGAIN` : 'START THIS SAVE OVER'],
     };
     const firsts = new Map(GROUPS.map((group) => [group.rows[0], group.name(slotName(activeSlot()))]));
@@ -248,6 +250,9 @@ export class DevScene extends Screen {
         return;
       case 'play':
         this.scene.start('board');
+        return;
+      case 'motions':
+        this.scene.start('motions');
         return;
       case 'reset':
         if (!this.confirmReset) {

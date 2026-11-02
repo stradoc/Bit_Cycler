@@ -1,7 +1,10 @@
 import { textBase } from '../visual/display.js';
-import { motionOf } from '../visual/motion.js';
 import { cssColor, palette } from './eras.js';
 import { TEXT } from './theme.js';
+// The pieces screens are built from, each drawn the way its era's computer
+// drew it (era.kind): text, framed boxes, titled panels and buttons. Screens
+// ask for a box or a button; how the green terminal, DOS, the 90s desktop or
+// the modern terminal draws one is decided here, not in each screen.
 /** Text in the era's font and color (and its size; Phaser's default origin, top-left). */
 export function eraText(scene, era, x, y, content, size = TEXT.body) {
     return scene.add.text(x, y, content, { ...textBase(), fontSize: `${size}px`, color: cssColor(era.fg) });
@@ -141,9 +144,5 @@ export class Box {
         this.button.texts = [...texts];
         this.button.press(down);
     }
-}
-/** Things arriving on the screen, the era's way (the 'glide-in' recipe, data/motions.ts). Phase 2 of the animation plan moves its callers onto the recipe. */
-export function glideIn(scene, targets) {
-    motionOf(scene).play('glide-in', targets);
 }
 //# sourceMappingURL=widgets.js.map

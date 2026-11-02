@@ -1,24 +1,4 @@
 import { eraText } from '../ui/widgets.js';
-/** Things fading out on the real clock, then destroyed (so slow frames can't leave them stuck on screen). */
-export class Fades {
-    fading = [];
-    add(parts, duration) {
-        this.fading.push({ parts, start: performance.now(), duration });
-    }
-    update(now) {
-        this.fading = this.fading.filter(({ parts, start, duration }) => {
-            const t = (now - start) / duration;
-            if (t >= 1) {
-                for (const part of parts)
-                    part.destroy();
-                return false;
-            }
-            for (const part of parts)
-                part.setAlpha(1 - t);
-            return true;
-        });
-    }
-}
 /** A part of the song screen. */
 export class Part {
     view;

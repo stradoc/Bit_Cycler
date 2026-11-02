@@ -1,5 +1,6 @@
 import { GLOSSARY } from '../data/glossary.js';
 import { unitOf } from '../sim/isa.js';
+import { motionOf } from '../visual/motion.js';
 import { alongPath, BOX_X, BUS_X, LANE_X0, LANES_W, laneCenter, NOTE_H, NOTE_W } from './layout.js';
 import { Part } from './view.js';
 /**
@@ -73,8 +74,19 @@ export class Bus extends Part {
         // The label rides up and to the left of the moving point, outside the panel.
         const text = this.text(startX, rowY, label, 14).setOrigin(1, 1).setDepth(700);
         // Fits inside one beat, so values never pile up on the bus.
-        const duration = Math.min(600, beatSeconds * 1000 * 0.8);
-        this.transfers.push({ text, path, start: performance.now(), duration, land });
+        this.travel('bus-carry', { text, path, progress: 0 }, beatSeconds, land);
+    }
+    /** Sends a value on its way, by `recipe`; once there, it goes and `land` says it has arrived. */
+    travel(recipe, transfer, beatSeconds, land) {
+        this.transfers.push(transfer);
+        motionOf(this.scene).play(recipe, transfer, {
+            beatMs: beatSeconds * 1000,
+            done: () => {
+                this.transfers.splice(this.transfers.indexOf(transfer), 1);
+                transfer.text.destroy();
+                land();
+            },
+        });
     }
     /**
      * Tier 3: when an instruction issues with a value forwarded from EX or MEM,
@@ -99,29 +111,22 @@ export class Bus extends Part {
                 [x, note.box.y + NOTE_H / 2],
             ];
             const text = this.text(path[0][0], path[0][1], `x${reg}=${producer.value}`, 14).setOrigin(1, 1).setDepth(700);
-            const duration = Math.min(350, beatSeconds * 1000 * 0.45);
-            this.transfers.push({ text, path, start: performance.now(), duration, land: () => { } });
+            this.travel('bus-forward', { text, path, progress: 0 }, beatSeconds, () => { });
         }
         return forwarded[0];
     }
-    /** Every frame: moves values along on the real clock, lighting the wire behind them. */
-    update(now) {
+    /** Every frame: draws each value where its recipe has got it to, lighting the wire behind it. */
+    update() {
         this.glow.clear();
         this.tripLabel.setVisible(false);
-        this.transfers = this.transfers.filter((transfer) => {
-            const t = Math.min(1, (now - transfer.start) / transfer.duration);
-            const travelled = alongPath(transfer.path, 1 - (1 - t) ** 2);
-            const [x, y] = travelled.at(-1) ?? transfer.path[0];
+        for (const { text, path, progress } of this.transfers) {
+            const travelled = alongPath(path, progress);
+            const [x, y] = travelled.at(-1) ?? path[0];
             // Hidden until it has left its note, so it doesn't sit on top of the note's result.
-            transfer.text.setPosition(x - 4, y - 2).setVisible(t > 0.15);
-            this.glow.lineStyle(2, this.era.fg, 0.9 * (1 - t * 0.5));
+            text.setPosition(x - 4, y - 2).setVisible(progress > 0.15);
+            this.glow.lineStyle(2, this.era.fg, 0.9 * (1 - progress * 0.5));
             this.glow.strokePoints(travelled.map(([px, py]) => new Phaser.Math.Vector2(px, py)));
-            if (t < 1)
-                return true;
-            transfer.text.destroy();
-            transfer.land();
-            return false;
-        });
+        }
     }
     /**
      * A memory wait `t` (0-1) of the way through: the request runs up the bus

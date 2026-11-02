@@ -25,12 +25,12 @@ import { Panel } from '../song/panel.js';
 import { ReplayControls } from '../song/replay.js';
 import { jobSeconds, practiceLines, resultCard, runReport } from '../song/results.js';
 import { pipelineOptions, playAgain, songSetup, watch } from '../song/setup.js';
-import { Fades } from '../song/view.js';
+import { motionOf, viewOf } from '../visual/motion.js';
 import { SongWords } from '../song/words.js';
 import { drawCard } from '../ui/card.js';
 import { Guide } from '../ui/guide.js';
 import { Screen } from '../ui/screen.js';
-import { Box, glideIn } from '../ui/widgets.js';
+import { Box } from '../ui/widgets.js';
 import { HEIGHT, WIDTH } from '../visual/display.js';
 import { HeatEffects } from '../visual/heat.js';
 // The song: a program played as a rhythm game, each beat one clock cycle. This
@@ -200,12 +200,12 @@ export class PipelineScene extends Screen {
             playing: () => !this.finished,
         });
         const words = new SongWords(this.run, setup, shown);
-        this.view = { scene: this, era: this.era, run: this.run, setup, shown, words, clickable: this.replayControls.clickable, fades: new Fades(), openMenu: () => this.openPauseMenu() };
+        this.view = { scene: this, era: this.era, run: this.run, setup, shown, words, clickable: this.replayControls.clickable, openMenu: () => this.openPauseMenu() };
         // Back to front, as they overlap.
         this.highway = new Highway(this.view);
         this.heat = new HeatEffects(this, this.era, { x: LANE_X0, y: 0, width: LANES_W, height: setup.rows.WB + ROW_GAP / 2 });
         this.gauge = new Gauge(this.view, setup.canOverclock && setup.maxDial > 1);
-        this.panel = new Panel(this.view, program, this.firstBeat > FIRST_BEAT ? 30000 / this.tempo() : undefined);
+        this.panel = new Panel(this.view, program, this.firstBeat > FIRST_BEAT ? 60000 / this.tempo() : undefined);
         this.bus = new Bus(this.view, this.panel, this.highway);
         this.guide = new Guide(this, this.era, setup.practice ? GUIDE_HOME : undefined);
         if (setup.watching)
@@ -255,9 +255,8 @@ export class PipelineScene extends Screen {
             return; // no Web Audio, or the guide's tour is still on
         const elapsed = now - this.lastFrameMs;
         this.lastFrameMs = now;
-        this.highway.update(now);
-        this.view.fades.update(now);
-        this.bus.update(now);
+        this.highway.update();
+        this.bus.update();
         if (this.setup.watching)
             this.replayControls.updateHover();
         if (this.finished)
@@ -275,10 +274,8 @@ export class PipelineScene extends Screen {
             this.playItself(beat);
         this.advanceTo(beat);
         this.highway.syncNotes(beat, elapsed, this.frozenBeats(beat));
-        this.highway.easeRows(elapsed);
-        this.panel.easeListing(elapsed);
-        this.highway.drawHazard(now);
-        this.updateFreeze(beat, now);
+        this.highway.drawHazard();
+        this.updateFreeze(beat);
         this.updateHeat(now);
         // Practice ends once TICK has finished saying what the last instruction did.
         if (this.run.done && !(this.setup.practice && (this.landing || this.closeLook || this.guide.waiting)))
@@ -395,7 +392,7 @@ export class PipelineScene extends Screen {
     act(action, beat) {
         if (!this.conductor || this.finished)
             return;
-        this.highway.flash(action.kind === 'stall' ? 'STALL' : action.unit, performance.now());
+        this.highway.flash(action.kind === 'stall' ? 'STALL' : action.unit);
         if (this.chord(action, beat))
             return;
         if (this.setup.practice) {
@@ -539,7 +536,7 @@ export class PipelineScene extends Screen {
         else if (d.outcome !== 'missed')
             this.buzz();
         if (d.outcome === 'violation')
-            this.cameras.main.shake(120, 0.004);
+            motionOf(this).play('jolt', viewOf(this));
         const said = this.words.decision(d, this.run.streak + 1);
         if (said)
             this.panel.say(said);
@@ -566,6 +563,10 @@ export class PipelineScene extends Screen {
         }
         for (const slot of report.flushed)
             this.highway.strike(slot);
+        // A branch that went the way fetch didn't expect: the branch unit sends fetch to the right instruction, and a callout says so.
+        const branch = report.event.kind === 'paired' ? report.event.partner : report.event.kind === 'issued' ? report.event.slot : undefined;
+        if (report.mispredicted && branch)
+            this.highway.redirect(branch, this.run.pipeline.stages.IF);
         // A deep pipeline's wrong guess: its front refills, drawn like a memory wait.
         if (report.mispredicted && this.run.refilling && !this.freezeView) {
             const total = this.run.pipeline.refillWait;
@@ -701,8 +702,7 @@ export class PipelineScene extends Screen {
      * up the bus to memory and the data comes back, and a counter rolls up the
      * real cycles. When it's over, a missed block fills its cache line.
      */
-    updateFreeze(beat, now) {
-        this.highway.hideWaiting();
+    updateFreeze(beat) {
         const refill = this.refillView;
         if (refill) {
             if (!this.run.frozen && beat >= refill.start + refill.beats)
@@ -713,15 +713,15 @@ export class PipelineScene extends Screen {
             }
         }
         const view = this.freezeView;
-        if (!view)
-            return;
-        if (!this.run.frozen && beat >= view.start + view.beats) {
+        if (view && !this.run.frozen && beat >= view.start + view.beats)
             this.endFreeze(view);
+        if (!view || !this.freezeView) {
+            this.highway.hideWaiting();
             return;
         }
         const t = Phaser.Math.Clamp((beat - view.start) / view.beats, 0, 1);
         const { access } = view;
-        const block = this.highway.showWaiting(view.slot.seq, this.words.waitingTag(access), now);
+        const block = this.highway.showWaiting(view.slot.seq, this.words.waitingTag(access));
         if (block) {
             const rowY = this.panel.memoryY(access.address) ?? this.setup.rows.MEM;
             this.bus.trip(block.box, rowY, t, this.words.trip(access, t >= 0.5, this.view.shown.memory[access.address]));
@@ -874,7 +874,7 @@ export class PipelineScene extends Screen {
             const lines = practiceLines(this.run, setup.returnTo);
             const box = new Box(this, this.era, WIDTH / 2, HEIGHT / 2, 820, lines.length * 21 + 36).setDepth(RESULTS_DEPTH + 1);
             const text = this.text(WIDTH / 2, HEIGHT / 2, lines.join('\n'), 15).setAlign('left').setDepth(RESULTS_DEPTH + 2).setLineSpacing(4);
-            glideIn(this, [box.body, text]);
+            motionOf(this).play('glide-in', [box.body, text]);
             return;
         }
         this.showCard(runReport({ run: this.run, setup, freshCpu: this.freshCpu, dials: setup.replay?.dials ?? this.dialRecording, calls: this.calls }));
@@ -889,7 +889,7 @@ export class PipelineScene extends Screen {
         const card = drawCard(this, this.era, resultCard(report), { x: WIDTH / 2, y: HEIGHT / 2 });
         card.view.setDepth(RESULTS_DEPTH + 1);
         this.cardAreas = { verdict: card.areas.verdict, cycles: card.areas.cycles };
-        glideIn(this, [card.view]);
+        motionOf(this).play('glide-in', card.view);
     }
 }
 //# sourceMappingURL=PipelineScene.js.map

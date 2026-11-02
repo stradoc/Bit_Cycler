@@ -8,31 +8,12 @@ import type { SongWords } from './words.ts';
 
 // What every part of the song screen shares (song/highway.ts, panel.ts,
 // bus.ts, gauge.ts): the scene and its era, the run, how this song is set up
-// (song/setup.ts), what the panel shows, the replay's click-to-learn, and fades.
+// (song/setup.ts), what the panel shows, and the replay's click-to-learn.
+// What moves is played by recipes (data/motions.ts, the `song` group) through
+// the scene's motion player (visual/motion.ts).
 
 /** What the panel shows: values change when they arrive over the bus, a cache line when its block arrives. */
 export type Shown = { readonly regs: number[]; readonly memory: Uint8Array; readonly lines: CacheLine[] };
-
-/** Things fading out on the real clock, then destroyed (so slow frames can't leave them stuck on screen). */
-export class Fades {
-  private fading: { parts: { setAlpha(alpha: number): unknown; destroy(): void }[]; start: number; duration: number }[] = [];
-
-  add(parts: { setAlpha(alpha: number): unknown; destroy(): void }[], duration: number): void {
-    this.fading.push({ parts, start: performance.now(), duration });
-  }
-
-  update(now: number): void {
-    this.fading = this.fading.filter(({ parts, start, duration }) => {
-      const t = (now - start) / duration;
-      if (t >= 1) {
-        for (const part of parts) part.destroy();
-        return false;
-      }
-      for (const part of parts) part.setAlpha(1 - t);
-      return true;
-    });
-  }
-}
 
 export type SongView = {
   readonly scene: Phaser.Scene;
@@ -42,7 +23,6 @@ export type SongView = {
   readonly shown: Shown;
   readonly words: SongWords;
   readonly clickable: Clickable;
-  readonly fades: Fades;
   /** Opens the pause menu (its hint can be clicked). */
   readonly openMenu: () => void;
 };

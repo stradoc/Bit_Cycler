@@ -6,7 +6,8 @@ import { cssColor } from '../ui/eras.js';
 import { panel } from '../ui/widgets.js';
 import { hintColor } from '../visual/branchHint.js';
 import { codeLine } from '../visual/codeLine.js';
-import { isSmooth } from '../visual/display.js';
+import { PACE } from '../data/motions.js';
+import { motionOf } from '../visual/motion.js';
 import { bin, BOX_W, BOX_X, hex, LINE, LISTING_LINE, LISTING_ROWS, LISTING_TOP, MEMORY_ROWS, MEMORY_W_CACHED, PANEL_X, REGISTER_COUNT } from './layout.js';
 import { Part } from './view.js';
 /**
@@ -24,7 +25,6 @@ export class Panel extends Part {
     listingLayer;
     listingStart = 0;
     /** How far the lines are still sliding (px): eased to 0 each frame. */
-    listingScroll = 0;
     lookupText;
     statsText;
     throughputText;
@@ -33,8 +33,8 @@ export class Panel extends Part {
     countIn;
     /** Where its boxes are, for the guide to point at (the cache's only once it's bought). */
     areas;
-    /** `countInPulse`: the song opens with a count-in, the key registers pulsing this slowly (ms); undefined: no count-in. */
-    constructor(view, program, countInPulse) {
+    /** `countInBeatMs`: the song opens with a count-in, the key registers pulsing with its beats (ms each); undefined: no count-in. */
+    constructor(view, program, countInBeatMs) {
         super(view);
         const { setup, clickable, words } = view;
         const { spec } = setup;
@@ -45,10 +45,9 @@ export class Panel extends Part {
         const listingTitle = spec.client ? `PROGRAM: ${spec.name}` : 'PROGRAM';
         clickable(panel(this.scene, this.era, BOX_X, LISTING_TOP - 10, BOX_W, LISTING_ROWS * LISTING_LINE + 16, listingTitle), () => GLOSSARY.PROGRAM);
         this.listingLayer = this.scene.add.container(0, 0);
-        if (isSmooth()) {
-            const window = this.scene.make.graphics({}, false).fillRect(BOX_X, LISTING_TOP - 1, BOX_W, LISTING_ROWS * LISTING_LINE);
-            this.listingLayer.setMask(window.createGeometryMask());
-        }
+        // Lines slide to their new place, so only the listing's window shows them.
+        const window = this.scene.make.graphics({}, false).fillRect(BOX_X, LISTING_TOP - 1, BOX_W, LISTING_ROWS * LISTING_LINE);
+        this.listingLayer.setMask(window.createGeometryMask());
         let y = LISTING_TOP + LISTING_ROWS * LISTING_LINE + 16;
         const listingArea = { x: BOX_X, y: LISTING_TOP - 10, w: BOX_W, h: LISTING_ROWS * LISTING_LINE + 16 };
         const registersArea = { x: BOX_X, y, w: BOX_W, h: 4 * LINE + 20 };
@@ -91,13 +90,11 @@ export class Panel extends Part {
         y += 22;
         const intro = setup.watching ? 'WATCHING YOUR RUN' : setup.practice ? 'PRACTICE:\nNOTES WAIT FOR YOU' : 'GET READY...';
         this.feedback = this.text(PANEL_X, y, intro, 18).setLineSpacing(4);
-        if (countInPulse !== undefined) {
+        if (countInBeatMs !== undefined) {
             // The count-in: the key registers pulse in the panel while the text says what they do.
             this.feedback.setVisible(false);
             this.countIn = this.text(PANEL_X, y, this.countInText(view.run.firstBeat), 14).setLineSpacing(4);
-            for (const { reg } of spec.keys ?? []) {
-                this.scene.tweens.add({ targets: this.regTexts[reg], alpha: 0.35, duration: countInPulse, yoyo: true, repeat: -1 });
-            }
+            motionOf(this.scene).play('count-in-pulse', (spec.keys ?? []).map(({ reg }) => this.regTexts[reg]), { beatMs: countInBeatMs });
         }
         if (setup.watching) {
             // The program listing as one click target; the replay's controls go where the menu's hint is.
@@ -155,7 +152,7 @@ export class Panel extends Part {
         countIn.destroy();
         this.countIn = undefined;
         for (const { reg } of this.view.setup.spec.keys ?? []) {
-            this.scene.tweens.killTweensOf(this.regTexts[reg]);
+            motionOf(this.scene).stop(this.regTexts[reg]);
             this.regTexts[reg].setAlpha(1);
         }
         if (!this.view.setup.practice)
@@ -247,12 +244,13 @@ export class Panel extends Part {
         const focusLine = Math.max(0, this.listing.findIndex((line) => 'pc' in line && line.pc === focusPc));
         const start = Phaser.Math.Clamp(focusLine - 2, 0, Math.max(0, this.listing.length - LISTING_ROWS));
         const { syntax } = this.era;
-        // The modern era slides the lines to their new place; while they move, it also draws one line above and below the window.
-        if (isSmooth())
-            this.listingScroll += (start - this.listingStart) * LISTING_LINE;
+        // The lines slide to their new place; while they move, one line above and below the window is drawn too.
+        if (start !== this.listingStart) {
+            this.listingLayer.setY(this.listingLayer.y + (start - this.listingStart) * LISTING_LINE);
+            motionOf(this.scene).play('listing-scroll', this.listingLayer, { goal: { y: 0 } });
+        }
         this.listingStart = start;
-        this.listingLayer.setY(this.listingScroll);
-        const sliding = this.listingScroll !== 0;
+        const sliding = this.listingLayer.y !== 0;
         const first = sliding ? Math.max(0, start - 1) : start;
         this.listing.slice(first, start + LISTING_ROWS + (sliding ? 1 : 0)).forEach((line, i) => {
             const y = LISTING_TOP + (first + i - start) * LISTING_LINE;
@@ -280,15 +278,6 @@ export class Panel extends Part {
         if (start + LISTING_ROWS < this.listing.length) {
             this.listingParts.push(this.text(PANEL_X + 380, LISTING_TOP + (LISTING_ROWS - 1) * LISTING_LINE, 'v', 14).setAlpha(0.6));
         }
-    }
-    /** Every frame: slides the listing's lines the rest of the way to where they belong. */
-    easeListing(elapsed) {
-        if (this.listingScroll === 0)
-            return;
-        this.listingScroll *= Math.exp(-elapsed / 70);
-        if (Math.abs(this.listingScroll) < 0.2)
-            this.listingScroll = 0;
-        this.listingLayer.setY(this.listingScroll);
     }
     /** Tier 4: after a branch in the listing, its last 4 outcomes (T taken, N not taken), oldest first. */
     drawHistory(pc, y) {
@@ -323,7 +312,7 @@ export class Panel extends Part {
         this.highlight(text);
         const mark = this.scene.add.rectangle(text.x - 4, text.y + text.height / 2, text.width + 8, text.height + 2).setOrigin(0, 0.5);
         mark.setStrokeStyle(1, this.era.fg).setDepth(690);
-        this.view.fades.add([mark], 700);
+        motionOf(this.scene).play('mark-fade', mark, { remove: true });
     }
     /** Outlines the 4-byte block holding `address` in the MEMORY box while it's fetched (`seconds` at least). */
     markBlock(address, seconds) {
@@ -334,7 +323,7 @@ export class Panel extends Part {
         const first = blockOf(address) % 2 === 0 ? 4 : 17; // "00: " then 4 bytes and the gap
         const mark = this.scene.add.rectangle(row.x + first * charW - 3, row.y + row.height / 2, 11 * charW + 6, row.height + 2).setOrigin(0, 0.5);
         mark.setStrokeStyle(1, this.era.fg).setDepth(690);
-        this.view.fades.add([mark], Math.max(700, seconds * 1000));
+        motionOf(this.scene).play('mark-fade', mark, { remove: true, duration: Math.max(PACE.linger, seconds * 1000) });
     }
     /** Outlines the byte a store just wrote in a memory row, fading out. */
     markByte(row, column) {
@@ -342,17 +331,18 @@ export class Panel extends Part {
         // "00: " then 3 characters per byte, and a gap after the first block.
         const x = row.x + (4 + column * 3 + (column >= BLOCK_BYTES ? 1 : 0) + 1) * charW;
         const mark = this.scene.add.rectangle(x, row.y + row.height / 2, 3 * charW, row.height + 2).setStrokeStyle(1, this.era.fg).setDepth(690);
-        this.view.fades.add([mark], 700);
+        motionOf(this.scene).play('mark-fade', mark, { remove: true });
     }
     highlight(text) {
         if (!text)
             return;
-        this.scene.tweens.killTweensOf(text);
+        const motion = motionOf(this.scene);
+        motion.stop(text);
         text.setAlpha(1);
         // Key registers stay bright; everything else settles back to dim.
         const keyRow = this.view.setup.spec.keys?.some(({ reg }) => this.regTexts[reg] === text);
         if (!keyRow)
-            this.scene.tweens.add({ targets: text, alpha: 0.8, duration: 400 });
+            motion.play('value-settle', text);
     }
 }
 /** The program as the listing shows it: each label on its own line before its instruction. */
