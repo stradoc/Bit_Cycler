@@ -1,8 +1,9 @@
-import { DEEP_PIPELINE } from '../data/economy.js';
+import { CACHE_UPGRADES, DEEP_PIPELINE } from '../data/economy.js';
 import { programByName } from '../data/programs.js';
 import { songFor } from '../data/songs.js';
 import { DEFAULT_DIFFICULTY, DIFFICULTIES, isDifficulty } from '../rhythm/tempo.js';
-import { deepActive, hasCache, ratedMhzFor } from '../sim/progress.js';
+import { cacheShape } from '../sim/memory.js';
+import { cacheOf, deepActive, ratedMhzFor } from '../sim/progress.js';
 import { THERMAL } from '../sim/thermal.js';
 import { ROWS, SINGLE_CYCLE_ROWS } from './layout.js';
 /**
@@ -17,7 +18,8 @@ export function songSetup(start, progress, params) {
     const practice = start.practice ?? params.has('practice');
     // ?contract=fair plays the board's first contract of that grade (easy, fair or stretch).
     const contract = start.contract ?? progress.board.find((c) => c.grade === params.get('contract'));
-    const program = start.program ?? contract?.program ?? (predictor ? 'SUM GRID' : 'SUM ARRAY');
+    // ?program=SUM WORDS plays a program by name (data/programs.ts, or a contract's: "32-BIT SUM #4821").
+    const program = start.program ?? contract?.program ?? params.get('program') ?? (predictor ? 'SUM GRID' : 'SUM ARRAY');
     const { replay } = start;
     const guessing = start.guessing ?? params.has('guessing');
     // ?deep fits the deep pipeline (on a pipelined CPU); from the save, only where branches are guessed.
@@ -35,8 +37,8 @@ export function songSetup(start, progress, params) {
         forwarding: start.forwarding ?? params.has('forwarding'),
         guessing,
         predictor,
-        // ?cache fits the L1 cache.
-        l1: start.l1 ?? (hasCache(progress) || params.has('cache')),
+        // ?cache fits the L1 cache; ?cache=lines,ways,blocks with those upgrades.
+        l1: start.l1 ?? cacheOf(progress) ?? cacheParam(params),
         deep,
         // ?superscalar lets two start together (a tier's options pass it in, like its other hardware).
         superscalar: !singleCycle && (start.superscalar ?? params.has('superscalar')),
@@ -60,10 +62,17 @@ export function songSetup(start, progress, params) {
         rows: singleCycle ? SINGLE_CYCLE_ROWS : ROWS,
     };
 }
+/** The L1 the URL asks for: ?cache for the first one, ?cache=lines,ways with those upgrades (CACHE_UPGRADES' ids). */
+function cacheParam(params) {
+    if (!params.has('cache'))
+        return false;
+    const asked = (params.get('cache') ?? '').split(',');
+    return cacheShape(CACHE_UPGRADES.filter((upgrade) => asked.includes(upgrade.id)).map((upgrade) => upgrade.id));
+}
 /** The hardware the simulator runs for this song, at a clock (MHz). */
 export function pipelineOptions(setup, mhz) {
     const { forwarding, predictor, singleCycle, l1, deep, superscalar } = setup;
-    return { forwarding, predictor, singleCycle, cache: l1, mhz, wrongGuessCycles: deep ? DEEP_PIPELINE.wrongGuessCycles : 1, superscalar };
+    return { forwarding, predictor, singleCycle, cache: l1 || undefined, mhz, wrongGuessCycles: deep ? DEEP_PIPELINE.wrongGuessCycles : 1, superscalar };
 }
 // Starting the song again passes its whole setup on. songSetup reads only what
 // SongStart names and works out the rest again, so the chip's wear is the save's

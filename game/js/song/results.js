@@ -1,4 +1,5 @@
 import { formatHours, formatMoney } from '../format.js';
+import { L1_BASE, sameShape } from '../sim/memory.js';
 import { perfectCycles } from '../sim/pipeline.js';
 import { payFor } from '../sim/progress.js';
 import { callsLine } from '../rhythm/skills.js';
@@ -49,7 +50,10 @@ export function runReport(f) {
     else if (setup.forwarding)
         compare.push({ cpu: 'no-forwarding', time: best({ ...rated, forwarding: false }) });
     if (setup.l1)
-        compare.push({ cpu: 'no-cache', time: best({ ...rated, cache: false }) });
+        compare.push({ cpu: 'no-cache', time: best({ ...rated, cache: undefined }) });
+    // An upgraded L1 against the first one: what the upgrades bought.
+    if (setup.l1 && !sameShape(setup.l1, L1_BASE))
+        compare.push({ cpu: 'first-l1', time: best({ ...rated, cache: L1_BASE }) });
     if (!setup.singleCycle) {
         // A single-cycle CPU's clock is a quarter of a pipelined one's (its cycle is all five stages long).
         const singleMhz = ratedMhz / 4;

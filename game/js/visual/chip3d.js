@@ -1,6 +1,7 @@
 import { CLOCK, COOLING } from '../data/economy.js';
 import { formatMhz } from '../format.js';
-import { ratedMhz, tierOf } from '../sim/progress.js';
+import { setsOf } from '../sim/memory.js';
+import { cacheOf, ratedMhz, tierOf } from '../sim/progress.js';
 import { THERMAL } from '../sim/thermal.js';
 import { box, ModelView, turnedBox, UPPER_LEFT_LIGHT } from './model3d.js';
 /** Model units: the board is 120 x 120, y is up. */
@@ -53,12 +54,18 @@ export function buildChip(progress) {
                 parts.push(box([-27 + bit * 9, PART_TOP + 1, 10], [-20 + bit * 9, PART_TOP + 5, 18], 'predictor'));
         }
     }
-    // The L1 cache: 4 lines of 4 bytes, a little grid of memory cells.
-    if (progress.cacheLevels > 0) {
-        for (let line = 0; line < 4; line++) {
-            for (let byte = 0; byte < 4; byte++) {
-                const [x, z] = [6 + byte * 6.5, 4 + line * 6.5];
-                parts.push(box([x, DIE_TOP, z], [x + 5, DIE_TOP + 3, z + 5], 'cache'));
+    // The L1 cache as it's built: a row of memory cells per line, a cell per byte of its block (4 lines of 4 at
+    // first), in the same patch of the die however many there are. The lines of a 2-way set sit together, a gap between sets.
+    const l1 = cacheOf(progress);
+    if (l1) {
+        const ways = l1.ways;
+        const rows = l1.lines + (ways > 1 ? (setsOf(l1) - 1) * 0.5 : 0);
+        const [pitchX, pitchZ] = [26.5 / l1.blockBytes, 26.5 / rows];
+        for (let line = 0; line < l1.lines; line++) {
+            const z = 4 + (line + (ways > 1 ? Math.floor(line / ways) * 0.5 : 0)) * pitchZ;
+            for (let byte = 0; byte < l1.blockBytes; byte++) {
+                const x = 6 + byte * pitchX;
+                parts.push(box([x, DIE_TOP, z], [x + pitchX * 0.77, DIE_TOP + 3, z + pitchZ * 0.77], 'cache'));
             }
         }
     }

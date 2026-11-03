@@ -141,6 +141,48 @@ export const MEMORY_PARTS = [
   },
 ] as const;
 
+/**
+ * Upgrades to the L1 cache, on sale once it's bought, in any order. Each
+ * changes one thing about its shape (sim/memory.ts `cacheShape`) and fixes one
+ * kind of miss the game names (Patterson & Hennessy 5.3-5.4): more lines hold
+ * more blocks (fewer TOO SMALL), two lines per set let two blocks share a place
+ * (fewer CONFLICT; the same 16 bytes, so only the placement rule changes),
+ * bigger blocks bring in more neighbours per miss (fewer FIRST USE) at a
+ * slightly longer miss. Lines and blocks each double the cache. Prices are
+ * provisional until the balance pass.
+ */
+export const CACHE_UPGRADES = [
+  {
+    id: 'lines',
+    name: 'L1: 8 LINES',
+    price: 600,
+    field: 'lines',
+    value: 8,
+    lessonId: 'morelines',
+    about: 'Twice the lines, so twice the blocks fit: data you come back to is still there. Fewer TOO SMALL misses.',
+  },
+  {
+    id: 'ways',
+    name: 'L1: 2-WAY SETS',
+    price: 800,
+    field: 'ways',
+    value: 2,
+    lessonId: 'twoway',
+    about: 'Pairs the lines into sets: a block can go in either line of its set, so two blocks no longer push each other out. Fewer CONFLICT misses.',
+  },
+  {
+    id: 'blocks',
+    name: 'L1: 8-BYTE BLOCKS',
+    price: 700,
+    field: 'blockBytes',
+    value: 8,
+    lessonId: 'bigblocks',
+    about: 'Each miss brings in 8 bytes instead of 4, so more of the next data is already there. Fewer FIRST USE misses; each miss takes 5 ns longer.',
+  },
+] as const;
+
+export type CacheUpgradeId = (typeof CACHE_UPGRADES)[number]['id'];
+
 /** Unlocks H (overclocking past the rated clock) in songs. Underclocking (G) is always allowed. */
 export const OVERCLOCKING_PRICE = 400;
 

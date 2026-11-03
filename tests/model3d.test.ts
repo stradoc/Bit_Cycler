@@ -54,6 +54,19 @@ test('no two parts of a fully upgraded chip overlap, with the fan at any angle',
   }
 });
 
+test("the L1 drawn on the chip as it's built: a cell per byte of each line, none overlapping", () => {
+  const cached = { ...withEverything(NEW_GAME), cooling: 0 };
+  for (const upgrades of [[], ['lines'], ['ways'], ['blocks'], ['lines', 'ways', 'blocks']] as const) {
+    const shapes = shapesAt(buildChip({ ...cached, cacheUpgrades: upgrades }), 0);
+    for (let i = 0; i < shapes.length; i++) {
+      for (let j = i + 1; j < shapes.length; j++) assert.notEqual(behind(shapes[i], shapes[j], cameraAt(0)), undefined, `${upgrades.join()}: parts ${i} and ${j} overlap`);
+    }
+  }
+  // 4 lines of 4 cells at first; all three upgrades: 8 lines of 8.
+  const cells = (upgrades: readonly ('lines' | 'ways' | 'blocks')[]) => buildChip({ ...cached, cacheUpgrades: upgrades }).length;
+  assert.equal(cells(['lines', 'ways', 'blocks']) - cells([]), 64 - 16);
+});
+
 test('as the chip turns, every part is drawn after every part it can hide', () => {
   const parts = buildChip(withEverything(NEW_GAME));
   for (let step = 0; step < 48; step++) {

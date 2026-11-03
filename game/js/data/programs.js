@@ -1,4 +1,11 @@
+import { writeItem } from '../sim/cpu.js';
 import { bitsOf, generateProgram, kindOf, seedOf } from '../sim/generator.js';
+/** Numbers `bits` wide laid out in memory as their bytes, lowest first (as the CPU reads them). */
+function asBytes(bits, values) {
+    const memory = new Uint8Array(values.length * (bits / 8));
+    values.forEach((value, i) => writeItem(memory, i * (bits / 8), bits / 8, value));
+    return Array.from(memory);
+}
 export const PROGRAMS = [
     {
         name: 'SUM ARRAY',
@@ -93,6 +100,105 @@ col:  lb   x4, 0(x1)
             { reg: 1, tag: 'NEXT', about: "NEXT BYTE'S ADDRESS, FROM 0" },
             { reg: 2, tag: 'END', about: 'END OF THIS ROW (x1 + 3)' },
             { reg: 6, tag: 'GRID', about: 'END OF THE GRID: STOP AT 12' },
+        ],
+    },
+    // The L1's upgrades, each shown on a program made for the misses it fixes (data/lessons.ts).
+    {
+        name: 'SUM WORDS',
+        // BIGGER BLOCKS: six 32-bit numbers, each its own 4-byte block, so every load is a FIRST USE miss.
+        // In 8-byte blocks, each miss brings in the next number too: half the misses.
+        source: `
+      addi x1, x0, 0      # x1 = address of the next number
+      addi x2, x0, 24     # x2 = end address: 6 numbers, 4 bytes each
+      addi x3, x0, 0      # x3 = running sum
+loop: lw   x4, 0(x1)
+      add  x3, x3, x4
+      addi x1, x1, 4
+      bne  x1, x2, loop
+      sw   x3, 32(x0)
+    `,
+        memory: asBytes(32, [125000, 98000, 143000, 76000, 110000, 88000]),
+        elements: 6,
+        verb: 'SUM',
+        unit: '32-BIT WORDS',
+        dataBits: 32,
+        roles: {
+            1: 'the address of the next number (4 bytes on each time)',
+            2: 'the end address (24): the loop stops when x1 reaches it',
+            3: 'the running sum',
+            4: 'the number just loaded from memory',
+        },
+        memoryNote: 'Addresses 0-23 hold six 32-bit numbers, 4 bytes each. The sum (640000) is stored at address 32.',
+        keys: [
+            { reg: 1, tag: 'NEXT', about: "NEXT NUMBER'S ADDRESS, FROM 0" },
+            { reg: 2, tag: 'END', about: 'STOP WHEN x1 REACHES 24' },
+        ],
+    },
+    {
+        name: 'ADD TWO LISTS',
+        // 2-WAY: two lists of bytes 16 apart, a whole first L1 apart, so each pair's blocks need the same line and
+        // push each other out: every load misses (CONFLICT). In 2-way sets both blocks fit.
+        source: `
+      addi x1, x0, 0      # x1 = which pair (its address in the first list)
+      addi x2, x0, 6      # x2 = how many pairs
+loop: lb   x3, 0(x1)      # from the first list
+      lb   x4, 16(x1)     # from the second, 16 bytes on
+      add  x3, x3, x4
+      sb   x3, 0(x1)      # the sum replaces the first
+      addi x1, x1, 1
+      bne  x1, x2, loop
+    `,
+        memory: [4, 7, 2, 9, 5, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 1, 8, 2, 4, 7],
+        elements: 6,
+        verb: 'ADD PAIRS OF',
+        unit: 'BYTES',
+        roles: {
+            1: 'which pair: its address in the first list (the second is 16 bytes on)',
+            2: 'how many pairs (6): the loop stops when x1 reaches it',
+            3: 'a byte from the first list, then the sum',
+            4: 'a byte from the second list',
+        },
+        memoryNote: 'Addresses 0-5 and 16-21 hold two lists. They are 16 bytes apart, so on the first L1 each pair needs the same line. Each sum replaces the byte in the first list.',
+        keys: [
+            { reg: 1, tag: 'NEXT', about: 'WHICH PAIR IS NEXT, FROM 0' },
+            { reg: 2, tag: 'END', about: 'STOP WHEN x1 REACHES 6' },
+        ],
+    },
+    {
+        name: 'TWO PASSES',
+        // MORE LINES: six 32-bit numbers (24 bytes) read twice: once for their total, again to work out each
+        // one's "all the others" (the total less itself). The first L1 holds 16 bytes, so by the second pass the
+        // first numbers are gone (TOO SMALL); with 8 lines all 24 bytes fit, and the second pass all hits.
+        source: `
+      addi x1, x0, 0      # x1 = address of the next number
+      addi x2, x0, 24     # x2 = end address: 6 numbers, 4 bytes each
+      addi x3, x0, 0      # x3 = the total
+sum:  lw   x4, 0(x1)
+      add  x3, x3, x4
+      addi x1, x1, 4
+      bne  x1, x2, sum
+      addi x1, x0, 0      # back to the start for the second pass
+rest: lw   x4, 0(x1)
+      sub  x4, x3, x4     # x4 = the total of all the others
+      sw   x4, 0(x1)
+      addi x1, x1, 4
+      bne  x1, x2, rest
+    `,
+        memory: asBytes(32, [41000, 27000, 35000, 52000, 18000, 30000]),
+        elements: 6,
+        verb: 'TOTAL THE OTHERS FOR',
+        unit: '32-BIT WORDS',
+        dataBits: 32,
+        roles: {
+            1: 'the address of the next number (it goes round twice)',
+            2: 'the end address (24): each pass stops when x1 reaches it',
+            3: 'the total of all six',
+            4: 'the number just loaded, then the total of the others',
+        },
+        memoryNote: 'Addresses 0-23 hold six 32-bit numbers (24 bytes, more than the first L1 holds). Each is replaced by the total of the other five.',
+        keys: [
+            { reg: 1, tag: 'NEXT', about: "NEXT NUMBER'S ADDRESS, FROM 0, TWICE" },
+            { reg: 2, tag: 'END', about: 'STOP EACH PASS AT 24' },
         ],
     },
     {

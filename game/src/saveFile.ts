@@ -4,7 +4,7 @@
 // imported on another computer.
 import { cleanSkillLog } from './rhythm/skills.ts';
 
-import { CLOCK, COOLING, CPU_PARTS, GRADES, MEMORY_PARTS, WORKDAY } from './data/economy.ts';
+import { CACHE_UPGRADES, CLOCK, COOLING, CPU_PARTS, GRADES, MEMORY_PARTS, WORKDAY } from './data/economy.ts';
 import { chipByBits, fitChip, NEW_GAME, type Contract, type DayRecord, type Progress } from './sim/progress.ts';
 import { THERMAL } from './sim/thermal.ts';
 
@@ -58,6 +58,10 @@ function cleanProgress(raw: Record<string, unknown>): Progress {
     parts: CPU_PARTS.slice(0, parts).map((part) => part.id),
     clockLevel: Math.round(clamp(progress.clockLevel, 0, CLOCK.factors.length - 1, 0)),
     cacheLevels: Math.round(clamp(progress.cacheLevels, 0, MEMORY_PARTS.length, 0)),
+    // Saves from before the L1's upgrades have none; each upgrade is kept once, in the order bought.
+    cacheUpgrades: Array.isArray(progress.cacheUpgrades)
+      ? [...new Set(progress.cacheUpgrades)].filter((id) => CACHE_UPGRADES.some((upgrade) => upgrade.id === id))
+      : [],
     cooling: Math.round(clamp(progress.cooling, 0, COOLING.length - 1, 0)),
     overclocking: progress.overclocking === true,
     deepPipeline: progress.deepPipeline === 'on' || progress.deepPipeline === 'off' ? progress.deepPipeline : 'none',

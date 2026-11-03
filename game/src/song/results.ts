@@ -1,6 +1,7 @@
 import { formatHours, formatMoney } from '../format.ts';
 import type { PipelineRun } from '../rhythm/pipelineRun.ts';
 import type { Cpu } from '../sim/cpu.ts';
+import { L1_BASE, sameShape } from '../sim/memory.ts';
 import { perfectCycles } from '../sim/pipeline.ts';
 import { payFor, type Contract } from '../sim/progress.ts';
 import type { Card, CardRow, Mark, Tone } from '../visual/asciiChart.ts';
@@ -73,7 +74,7 @@ export type RunReport = {
   readonly period: number;
   readonly cooling: number;
   /** Time per instruction for the CPUs this one improves on, each at its best. */
-  readonly compare: readonly { readonly cpu: 'one-at-a-time' | 'no-forwarding' | 'never-guessing' | 'predictor-alone' | 'no-cache' | 'single-cycle'; readonly time: number }[];
+  readonly compare: readonly { readonly cpu: 'one-at-a-time' | 'no-forwarding' | 'never-guessing' | 'predictor-alone' | 'no-cache' | 'first-l1' | 'single-cycle'; readonly time: number }[];
   readonly branches?: { readonly right: number; readonly total: number; readonly predictorRight?: number };
   readonly cache?: { readonly hits: number; readonly loads: number };
   /** The player's right calls of each kind: the learning objective, measured (rhythm/skills.ts). */
@@ -103,7 +104,9 @@ export function runReport(f: Finished): RunReport {
   if (setup.predictor) compare.push({ cpu: 'predictor-alone', time: best(rated, 'hardware') });
   else if (setup.guessing) compare.push({ cpu: 'never-guessing', time: best({ ...rated, predictor: undefined }, 'hardware') });
   else if (setup.forwarding) compare.push({ cpu: 'no-forwarding', time: best({ ...rated, forwarding: false }) });
-  if (setup.l1) compare.push({ cpu: 'no-cache', time: best({ ...rated, cache: false }) });
+  if (setup.l1) compare.push({ cpu: 'no-cache', time: best({ ...rated, cache: undefined }) });
+  // An upgraded L1 against the first one: what the upgrades bought.
+  if (setup.l1 && !sameShape(setup.l1, L1_BASE)) compare.push({ cpu: 'first-l1', time: best({ ...rated, cache: L1_BASE }) });
   if (!setup.singleCycle) {
     // A single-cycle CPU's clock is a quarter of a pipelined one's (its cycle is all five stages long).
     const singleMhz = ratedMhz / 4;

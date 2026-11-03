@@ -1,7 +1,7 @@
 import { GLOSSARY } from '../data/glossary.ts';
 import { tokens, type Instruction, type Program } from '../sim/isa.ts';
 import { itemAt, writeItem } from '../sim/cpu.ts';
-import { BLOCK_BYTES, blockOf, CACHE_LINES, lineOf, SHOWN_BYTES, tagOf, type Access } from '../sim/memory.ts';
+import { addressSplit, setsOf, SHOWN_BYTES, type Access } from '../sim/memory.ts';
 import { STAGES, type Stage } from '../sim/pipeline.ts';
 import { cssColor } from '../ui/eras.ts';
 import type { Rect } from '../ui/guide.ts';
@@ -86,10 +86,18 @@ export class Panel extends Part {
     const cacheArea = { x: BOX_X + memoryW + 6, y, w: BOX_W - memoryW - 6, h: MEMORY_ROWS * LINE + 20 };
     clickable(panel(this.scene, this.era, BOX_X, y, memoryW, MEMORY_ROWS * LINE + 20, 'MEMORY'), () => words.memory());
     if (setup.l1) {
+      const cache = setup.l1;
       const cacheX = BOX_X + memoryW + 6;
-      clickable(panel(this.scene, this.era, cacheX, y, BOX_W - memoryW - 6, MEMORY_ROWS * LINE + 20, 'L1: LINE TAG DATA'), () => GLOSSARY.CACHE);
-      for (let line = 0; line < CACHE_LINES; line++) {
-        this.cacheTexts.push(clickable(this.text(cacheX + 8, y + 12 + line * LINE, '', 13).setAlpha(0.8), () => words.cacheLine(line)));
+      const cacheW = BOX_W - memoryW - 6;
+      clickable(panel(this.scene, this.era, cacheX, y, cacheW, MEMORY_ROWS * LINE + 20, words.cacheTitle()), () => words.cache());
+      // A line a row while they fit; 8 lines take two columns (a set a row, if they're 2-way).
+      const columns = Math.ceil(cache.lines / MEMORY_ROWS);
+      // A 2-way set's longer tag makes its rows a character longer than the first L1's: a size smaller keeps them in the box.
+      const size = addressSplit(cache).tag > 4 ? 12 : 13;
+      for (let line = 0; line < cache.lines; line++) {
+        const [row, column] = cachePlace(line, cache.ways, columns);
+        const text = this.text(cacheX + 8 + (column * (cacheW - 16)) / columns, y + 12 + row * LINE, '', size).setAlpha(0.8);
+        this.cacheTexts.push(clickable(text, () => words.cacheLine(line)));
       }
     }
     y += 12;
@@ -98,7 +106,7 @@ export class Panel extends Part {
     }
     y += MEMORY_ROWS * LINE + 12;
     const lookup = setup.l1 ? 'LOADS LOOK IN THE CACHE FIRST' : 'LOADS AND STORES GO TO RAM';
-    this.lookupText = clickable(this.text(PANEL_X, y, lookup, 13).setAlpha(0.8), () => (setup.l1 ? GLOSSARY.LOOKUP : GLOSSARY.RAM));
+    this.lookupText = clickable(this.text(PANEL_X, y, lookup, 13).setAlpha(0.8), () => (setup.l1 ? words.lookupInfo() : GLOSSARY.RAM));
     y += 22;
     this.areas = { listing: listingArea, registers: registersArea, memory: memoryArea, cache: setup.l1 ? cacheArea : memoryArea, stats: { x: BOX_X, y: y - 6, w: BOX_W, h: 64 } };
     this.statsText = clickable(this.text(PANEL_X, y, '', 14).setLineSpacing(3), () => GLOSSARY.STATS);
@@ -175,9 +183,10 @@ export class Panel extends Part {
     const head = `${hex(base)}: `;
     const cells: { from: number; to: number; at: number; len: number }[] = [];
     if (setup.dataBits === 8) {
-      for (let i = 0; i < 8; i++) cells.push({ from: base + i, to: base + i + 1, at: head.length + i * 3 + (i >= BLOCK_BYTES ? 1 : 0), len: 2 });
-      const bytes = (from: number) => Array.from(shown.memory.subarray(from, from + BLOCK_BYTES), hex).join(' ');
-      return { text: `${head}${bytes(base)}  ${bytes(base + BLOCK_BYTES)}`, cells };
+      // Two groups of 4, the first L1's blocks.
+      for (let i = 0; i < 8; i++) cells.push({ from: base + i, to: base + i + 1, at: head.length + i * 3 + (i >= 4 ? 1 : 0), len: 2 });
+      const bytes = (from: number) => Array.from(shown.memory.subarray(from, from + 4), hex).join(' ');
+      return { text: `${head}${bytes(base)}  ${bytes(base + 4)}`, cells };
     }
     const size = setup.dataBits / 8;
     const width = CELL_CHARS[setup.dataBits];
@@ -189,6 +198,33 @@ export class Panel extends Part {
       numbers.push(String(itemAt(shown.memory, from, setup.dataBits)).padStart(width));
     }
     return { text: head + numbers.join(' '.repeat(gap)), cells };
+  }
+
+  /**
+   * A cache line as its box shows it: its set (or line) number, its tag, and
+   * while a line a row fits, its block: the bytes, or for 8-byte blocks which
+   * bytes they are. Write-through keeps a cached block the same as memory, so
+   * its bytes are memory's.
+   */
+  private cacheEntry(line: number): string {
+    const cache = this.view.setup.l1;
+    if (!cache) return '';
+    const { valid, tag } = this.view.shown.lines[line];
+    const sets = setsOf(cache);
+    const set = Math.floor(line / cache.ways);
+    const tagBits = addressSplit(cache).tag;
+    const tagText = valid ? bin(tag, tagBits) : '-'.repeat(tagBits);
+    const from = (tag * sets + set) * cache.blockBytes;
+    if (cache.lines > MEMORY_ROWS) {
+      // Two columns: a set's lines side by side under one number, or lines 0-3 then 4-7.
+      if (cache.ways > 1) return line % cache.ways === 0 ? `${set} ${tagText}` : tagText;
+      return `${line} ${tagText}`;
+    }
+    const block =
+      cache.blockBytes > 4
+        ? valid ? `${from}-${from + cache.blockBytes - 1}` : '--'
+        : valid ? Array.from(this.view.shown.memory.subarray(from, from + cache.blockBytes), hex).join(' ') : '-- -- -- --';
+    return `${cache.ways > 1 ? set : line} ${tagText} ${block}`;
   }
 
   // ---- the count-in ----
@@ -243,16 +279,16 @@ export class Panel extends Part {
   showAccess(lookup: string, access: Access): void {
     this.lookupText.setText(lookup);
     this.highlight(this.lookupText);
-    if (access.level === 'L1' || (access.kind === 'store' && access.hit)) this.flashCacheLine(lineOf(access.address));
+    for (const line of access.used ?? []) this.flashCacheLine(line);
   }
 
   /** A load that missed brings its blocks into their lines (what the panel shows once they've arrived). */
   fillLine(access: Access): void {
-    if (!this.view.setup.l1 || access.kind !== 'load' || access.hit) return;
-    for (const block of access.fills ?? [blockOf(access.address)]) {
-      const address = block * BLOCK_BYTES;
-      this.view.shown.lines[lineOf(address)] = { valid: true, tag: tagOf(address) };
-      this.flashCacheLine(lineOf(address));
+    const cache = this.view.setup.l1;
+    if (!cache || access.kind !== 'load' || access.hit) return;
+    for (const { block, line } of access.fills ?? []) {
+      this.view.shown.lines[line] = { valid: true, tag: Math.floor(block / setsOf(cache)) };
+      this.flashCacheLine(line);
     }
   }
 
@@ -276,13 +312,8 @@ export class Panel extends Part {
         .setText(`x${r}`.padEnd(4) + registerValue(value, setup.dataBits) + (tag ? ` ${tag}` : '') + (where ? ` <-${where}` : ''))
         .setAlpha(where || tag ? 1 : 0.8);
     });
-    const bytes = (block: number) => Array.from(shown.memory.subarray(block * BLOCK_BYTES, (block + 1) * BLOCK_BYTES), hex).join(' ');
     this.memTexts.forEach((row, i) => row.setText(this.memoryRow(this.memStart + i).text));
-    shown.lines.forEach((line, i) => {
-      // Write-through keeps a cached block the same as memory, so its bytes are memory's.
-      const data = line.valid ? bytes(line.tag * CACHE_LINES + i) : '-- -- -- --';
-      this.cacheTexts[i]?.setText(`${i} ${line.valid ? bin(line.tag, 4) : '----'} ${data}`);
-    });
+    this.cacheTexts.forEach((text, line) => text.setText(this.cacheEntry(line)));
 
     // A superscalar CPU can finish two a cycle, so its bar is full at 2.
     const filled = Math.min(8, Math.round((run.throughput / (this.view.setup.superscalar ? 2 : 1)) * 8));
@@ -380,10 +411,15 @@ export class Panel extends Part {
     motionOf(this.scene).play('mark-fade', mark, { remove: true });
   }
 
-  /** Outlines the 4-byte block holding `address` in the MEMORY box while it's fetched (`seconds` at least). */
-  markBlock(address: number, seconds: number): void {
-    const from = blockOf(address) * BLOCK_BYTES;
-    this.markBytes(from, from + BLOCK_BYTES, Math.max(PACE.linger, seconds * 1000));
+  /** Outlines what a trip to RAM brings in the MEMORY box while it comes (`seconds` at least): the blocks that missed, or without a cache the item. */
+  markBlock(access: Access, seconds: number): void {
+    const cache = this.view.setup.l1;
+    const fills = access.fills ?? [];
+    const [from, to] =
+      cache && fills.length > 0
+        ? [fills[0].block * cache.blockBytes, (fills[fills.length - 1].block + 1) * cache.blockBytes]
+        : [access.address, access.address + access.size];
+    this.markBytes(from, to, Math.max(PACE.linger, seconds * 1000));
   }
 
   /**
@@ -413,6 +449,16 @@ export class Panel extends Part {
     const keyRow = this.view.setup.spec.keys?.some(({ reg }) => this.regTexts[reg] === text);
     if (!keyRow) motion.play('value-settle', text);
   }
+}
+
+/**
+ * Where a cache line goes in its box: its row and column. A line a row in
+ * one column; in two, a set's lines side by side (2-way), or lines 0-3 then 4-7.
+ */
+function cachePlace(line: number, ways: number, columns: number): [number, number] {
+  if (columns === 1) return [line, 0];
+  if (ways === columns) return [Math.floor(line / ways), line % ways];
+  return [line % MEMORY_ROWS, Math.floor(line / MEMORY_ROWS)];
 }
 
 /** The program as the listing shows it: each label on its own line before its instruction. */

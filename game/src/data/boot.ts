@@ -9,8 +9,8 @@
 import { COOLING } from './economy.ts';
 import { programByName } from './programs.ts';
 import { formatDuration, formatMhz, formatMoney } from '../format.ts';
-import { MEMORY_TIMING, ramCycles, SHOWN_BYTES } from '../sim/memory.ts';
-import { cpuName, ratedMhz, type Progress } from '../sim/progress.ts';
+import { cacheWords, MEMORY_TIMING, missNs, ramCycles, SHOWN_BYTES } from '../sim/memory.ts';
+import { cacheOf, cpuName, ratedMhz, type Progress } from '../sim/progress.ts';
 import { THERMAL } from '../sim/thermal.ts';
 import { dateLine } from '../sim/workday.ts';
 import type { Era } from '../ui/eras.ts';
@@ -134,14 +134,14 @@ export function programListing(progress: Progress | null): string[] {
 /** What the boot reports about the player's computer. */
 function hardware(progress: Progress): { cpu: string; clock: string; ram: string; cache: string; cooler: string; wear?: string } {
   const mhz = ratedMhz(progress);
-  const cache = progress.cacheLevels > 0;
+  const cache = cacheOf(progress);
   const cycles = ramCycles(mhz, cache);
-  const ramNs = MEMORY_TIMING.ramNs + (cache ? MEMORY_TIMING.l1Ns : 0);
+  const ramNs = cache ? missNs(cache) : MEMORY_TIMING.ramNs;
   return {
     cpu: cpuName(progress),
     clock: `${formatMhz(mhz)}, A CYCLE EVERY ${formatDuration(1 / (mhz * 1e6))}`,
     ram: `A TRIP TAKES ${ramNs} ns = ${cycles} CYCLE${cycles === 1 ? '' : 'S'}`,
-    cache: cache ? '16 BYTES, DIRECT-MAPPED' : 'NONE',
+    cache: cache ? cacheWords(cache) : 'NONE',
     cooler: COOLING[progress.cooling].name,
     wear: progress.chipMaxDial < THERMAL.maxDial ? `MAX CLOCK ${Math.round(progress.chipMaxDial * 100)}%` : undefined,
   };

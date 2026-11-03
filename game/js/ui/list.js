@@ -30,6 +30,9 @@ export class ListMenu {
     middle;
     depth;
     heading;
+    bottom;
+    /** How far the list has scrolled up (layout pixels), when it's longer than its room. */
+    scrolled = 0;
     rows = [];
     /** Each row's middle, worked out from the groups. */
     ys = [];
@@ -51,6 +54,7 @@ export class ListMenu {
         this.middle = options.middle ?? 70;
         this.depth = options.depth;
         this.heading = options.heading ?? this.rowHeight * GROUP_HEADING;
+        this.bottom = options.bottom ?? Number.POSITIVE_INFINITY;
     }
     /** Shows these rows, keeping the selection (or moving it to `selected`). */
     setRows(rows, selected = this.selected) {
@@ -95,22 +99,43 @@ export class ListMenu {
             action();
         });
     }
-    /** The middle of row `index`, for drawing beside it. */
+    /** The middle of row `index` as drawn (scrolled), for drawing beside it. */
     rowY(index) {
-        return this.ys[index] ?? this.top + index * this.rowHeight;
+        return (this.ys[index] ?? this.top + index * this.rowHeight) - this.scrolled;
+    }
+    /** Scrolls just enough to show the chosen row (and its group's heading), if the list is longer than its room. */
+    scrollToSelected() {
+        const y = this.ys[this.selected];
+        if (y === undefined)
+            return;
+        const above = this.rows[this.selected]?.group !== undefined ? this.heading : 0;
+        if (y - this.scrolled > this.bottom)
+            this.scrolled = y - this.bottom;
+        if (y - above - this.scrolled < this.top - this.heading)
+            this.scrolled = Math.max(0, y - above - this.top + this.heading);
+        if (this.selected === 0)
+            this.scrolled = 0;
     }
     render() {
         for (const part of this.parts)
             part.destroy();
         this.parts = [];
         this.button = undefined;
+        this.scrollToSelected();
+        const inView = (i) => this.rowY(i) >= this.top - 0.5 && this.rowY(i) <= this.bottom + 0.5;
         this.rows.forEach((row, i) => {
-            if (i >= this.shown)
+            if (i >= this.shown || !inView(i))
                 return;
             if (row.group !== undefined)
                 this.drawHeading(row.group, this.rowY(i) - this.heading);
             this.drawRow(row, i === this.selected, this.rowY(i));
         });
+        // Marks for rows out of view above and below.
+        const more = (y, mark) => this.parts.push(this.scene.add.text(this.x + this.width + 14, y, mark, { ...textBase(), fontSize: `${this.size}px`, color: cssColor(this.era.fg) }).setOrigin(0.5).setAlpha(0.6));
+        if (this.rows.some((_, i) => i < this.shown && this.rowY(i) < this.top - 0.5))
+            more(this.top, '^');
+        if (this.rows.some((_, i) => i < this.shown && this.rowY(i) > this.bottom + 0.5))
+            more(this.bottom, 'v');
         // The modern era's bar outlives redraws: hide it while its row isn't shown.
         this.bar?.setVisible(this.selected < this.shown);
         if (this.depth !== undefined)

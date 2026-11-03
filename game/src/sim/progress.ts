@@ -4,6 +4,7 @@
 
 import {
   BASE_MHZ,
+  CACHE_UPGRADES,
   CHIPS,
   DATA_WIDTHS,
   CLOCK,
@@ -20,6 +21,7 @@ import {
   TIGHT_SHARE,
   TUTORIAL_JOB,
   WORKDAY,
+  type CacheUpgradeId,
   type PartId,
   type GradeId,
   type WordBits,
@@ -30,7 +32,7 @@ import type { SkillJob } from '../rhythm/skills.ts';
 import { formatDuration, formatMhz } from '../format.ts';
 import { tierByNumber, type Tier } from '../data/tiers.ts';
 import { cpuFor, trace } from './cpu.ts';
-import { ramCycles } from './memory.ts';
+import { cacheShape, cacheWords, ramCycles, type CacheShape } from './memory.ts';
 import { perfectRun } from './pipeline.ts';
 import { THERMAL, type ThermalConfig } from './thermal.ts';
 import { tempoForClock } from '../rhythm/tempo.ts';
@@ -66,6 +68,8 @@ export type Progress = {
   readonly clockLevel: number;
   /** Cache levels owned (MEMORY_PARTS): 0 = none, 1 = L1. */
   readonly cacheLevels: number;
+  /** Upgrades to the L1 owned (CACHE_UPGRADES), in the order bought. */
+  readonly cacheUpgrades: readonly CacheUpgradeId[];
   /** Index into COOLING. */
   readonly cooling: number;
   /** Bought the overclocking unlock: H can push the clock past its rating. */
@@ -96,6 +100,7 @@ export const NEW_GAME: Progress = {
   parts: [],
   clockLevel: 0,
   cacheLevels: 0,
+  cacheUpgrades: [],
   cooling: 0,
   overclocking: false,
   deepPipeline: 'none',
@@ -228,6 +233,11 @@ export function hasCache(progress: Progress): boolean {
   return progress.cacheLevels > 0;
 }
 
+/** The L1 cache you own, with its upgrades, or undefined without one. */
+export function cacheOf(progress: Progress): CacheShape | undefined {
+  return hasCache(progress) ? cacheShape(progress.cacheUpgrades) : undefined;
+}
+
 /**
  * The memory wall has arrived: at your rated clock, a trip to RAM (without a
  * cache) takes more than one cycle, so loads and stores freeze the pipeline.
@@ -252,7 +262,7 @@ const cpiCache = new Map<string, number>();
 export function cpiFor(programName: string, progress: Progress): number {
   const tier = tierOf(progress);
   const deep = deepActive(progress);
-  const key = `${programName}:${tier.number}:${progress.clockLevel}:${progress.cacheLevels}:${deep}`;
+  const key = `${programName}:${tier.number}:${progress.clockLevel}:${progress.cacheLevels}:${[...progress.cacheUpgrades].sort()}:${deep}`;
   const cached = cpiCache.get(key);
   if (cached !== undefined) return cached;
   const spec = programByName(programName);
@@ -261,7 +271,7 @@ export function cpiFor(programName: string, progress: Progress): number {
     singleCycle: !isPipelined(progress),
     forwarding: tier.options?.forwarding ?? false,
     predictor: tier.options?.predictor,
-    cache: hasCache(progress),
+    cache: cacheOf(progress),
     mhz: ratedMhz(progress),
     wrongGuessCycles: deep ? DEEP_PIPELINE.wrongGuessCycles : 1,
   });
@@ -318,6 +328,7 @@ export function withEverything(progress: Progress): Progress {
     clockLevel: CLOCK.factors.length - 1,
     cooling: COOLING.length - 1,
     cacheLevels: MEMORY_PARTS.length,
+    cacheUpgrades: CACHE_UPGRADES.map((upgrade) => upgrade.id),
     overclocking: true,
     deepPipeline: 'on',
     chipMaxDial: THERMAL.maxDial,
@@ -494,6 +505,7 @@ export function shopItems(progress: Progress): ShopItem[] {
       apply: (p) => ({ ...p, cacheLevels: i + 1 }),
     });
   });
+  for (const upgrade of CACHE_UPGRADES) items.push(cacheUpgradeItem(progress, upgrade));
   COOLING.forEach((cooler, i) => {
     if (i === 0) return;
     items.push({
@@ -518,6 +530,25 @@ export function shopItems(progress: Progress): ShopItem[] {
     apply: (p) => ({ ...p, chipMaxDial: THERMAL.maxDial }),
   });
   return items;
+}
+
+/**
+ * An upgrade to the L1: on sale once the L1 is in, in any order. Its line
+ * says what the cache becomes.
+ */
+function cacheUpgradeItem(progress: Progress, upgrade: (typeof CACHE_UPGRADES)[number]): ShopItem {
+  const owned = progress.cacheUpgrades.includes(upgrade.id);
+  const after = cacheShape([...progress.cacheUpgrades, upgrade.id]);
+  return {
+    key: upgrade.id,
+    group: 'MEMORY',
+    name: upgrade.name,
+    price: upgrade.price,
+    state: owned ? 'owned' : hasCache(progress) ? 'buy' : 'later',
+    lessonId: upgrade.lessonId,
+    about: hasCache(progress) && !owned ? `${upgrade.about} Your L1 becomes ${cacheWords(after)}.` : hasCache(progress) ? upgrade.about : `An upgrade to the L1 cache. ${upgrade.about}`,
+    apply: (p) => ({ ...p, cacheUpgrades: [...p.cacheUpgrades, upgrade.id] }),
+  };
 }
 
 /**
@@ -588,7 +619,7 @@ function clockAbout(progress: Progress, before: number, after: number): string {
   const upgraded = { ...progress, clockLevel: progress.clockLevel + 1 };
   const [now, then] = [typicalSecondsPerInstruction(progress), typicalSecondsPerInstruction(upgraded)];
   const saved = Math.round((1 - then / now) * 100);
-  const ram = [ramCycles(before, hasCache(progress)), ramCycles(after, hasCache(progress))];
+  const ram = [ramCycles(before, cacheOf(progress)), ramCycles(after, cacheOf(progress))];
   const wall = ram[1] > 1 ? ` A trip to RAM still takes 60 ns: ${ram[0]} -> ${ram[1]} cycles.` : '';
   return (
     `Rated clock ${formatMhz(before)} -> ${formatMhz(after)}, beat ${Math.round(tempoForClock(before))} -> ${Math.round(tempoForClock(after))} BPM. ` +

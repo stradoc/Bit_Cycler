@@ -22,6 +22,8 @@ const LIST_TOP = 172;
 const ROW_H = 26;
 /** BRIEFS holds more files: its rows are closer together. */
 const BRIEFS_ROW_H = 16.5;
+/** The lowest row's middle, above the listing's footer: a longer folder scrolls. */
+const LIST_BOTTOM = 430;
 /** The code in the margins scrolls up this fast (layout pixels a second). */
 const CODE_SPEED = 14;
 /** The margins' code columns: their left edges, and the band they show in. */
@@ -87,7 +89,7 @@ export class TitleScene extends Screen {
         this.logo = new TitleLogo(this, era, TITLE.x, TITLE.y, TITLE.word);
         const tagline = this.text(WIDTH / 2, 106, 'A CPU TYCOON WHERE EVERY BEAT IS ONE CLOCK CYCLE', 13).setAlpha(ALPHA.subtitle);
         this.prompt = this.text(LIST_X, 138, '', 15).setOrigin(0, 0.5);
-        this.menu = new ListMenu(this, era, { x: LIST_X, top: LIST_TOP, width: 500, rowHeight: ROW_H, size: 16 });
+        this.menu = new ListMenu(this, era, { x: LIST_X, top: LIST_TOP, width: 500, rowHeight: ROW_H, size: 16, bottom: LIST_BOTTOM });
         // Block letters close up (no line spacing), so their half blocks join into whole letters.
         this.viewerTitle = this.textAt(LIST_X, LIST_TOP - 18, '', 16).setLineSpacing(0).setColor(cssColor(era.accent)).setVisible(false);
         this.viewer = this.textAt(LIST_X, LIST_TOP + 46, '', 16).setLineSpacing(6).setVisible(false);
@@ -200,7 +202,7 @@ export class TitleScene extends Screen {
         const rowHeight = folder === 'root' ? ROW_H : BRIEFS_ROW_H;
         if (this.menu.rowHeight !== rowHeight) {
             this.menu.destroy();
-            this.menu = new ListMenu(this, era, { x: LIST_X, top: LIST_TOP, width: 500, rowHeight, size: 16 });
+            this.menu = new ListMenu(this, era, { x: LIST_X, top: LIST_TOP, width: 500, rowHeight, size: 16, bottom: LIST_BOTTOM });
         }
         this.prompt.setText(commandLine(era, FOLDER_PATH[folder], listCommand(era)));
         const start = this.entries.findIndex((entry) => entry.action === selected || entry.lessonId === selected);

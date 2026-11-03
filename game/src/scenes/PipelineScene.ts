@@ -10,7 +10,7 @@ import { getProgress, updateProgress } from '../save.ts';
 import { getSettings, teaching } from '../settings.ts';
 import { addressOf, cpuFor, itemAt, type Cpu } from '../sim/cpu.ts';
 import { isLoad, keepsTotal, unitOf, type Unit } from '../sim/isa.ts';
-import { CACHE_LINES, freezeBeats, type Access } from '../sim/memory.ts';
+import { freezeBeats, type Access } from '../sim/memory.ts';
 import type { Slot } from '../sim/pipeline.ts';
 import { thermalConfig, tierOf, withSeen, withTipSeen } from '../sim/progress.ts';
 import { logJob, NO_CALLS, tallyCycle, type Tally } from '../rhythm/skills.ts';
@@ -202,7 +202,7 @@ export class PipelineScene extends Screen {
     const shown: Shown = {
       regs: [...this.run.pipeline.regs],
       memory: cpu.memory.slice(),
-      lines: Array.from({ length: CACHE_LINES }, () => ({ valid: false, tag: 0 })),
+      lines: Array.from({ length: setup.l1 ? setup.l1.lines : 0 }, () => ({ valid: false, tag: 0 })),
     };
     this.replayControls = new ReplayControls(this, this.era, setup.watching, {
       speed: (step) => this.setSpeed(this.speedIndex + step),
@@ -616,7 +616,7 @@ export class PipelineScene extends Screen {
     if (access.cycles > 1) {
       const total = access.cycles - 1;
       this.freezeView = { start: this.run.dueBeat, beats: freezeBeats(total), base: this.run.waitBeats, total, slot, access };
-      this.panel.markBlock(access.address, this.freezeView.beats * this.beatSeconds());
+      this.panel.markBlock(access, this.freezeView.beats * this.beatSeconds());
     } else {
       this.panel.fillLine(access);
     }

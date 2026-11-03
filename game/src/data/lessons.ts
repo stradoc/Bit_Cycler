@@ -1,3 +1,4 @@
+import { cacheShape, L1_BASE, type CacheShape } from '../sim/memory.ts';
 import type { TierOptions } from './tiers.ts';
 
 // The lessons: what TICK teaches, one idea at a time, as a tour of the song
@@ -17,6 +18,7 @@ export type DiagramId =
   | 'overclock' | 'power' | 'throttle' | 'damage'
   | 'ramtrip' | 'wallchart' | 'floor' | 'freezeplay'
   | 'desk' | 'lines' | 'address' | 'locality' | 'misskinds' | 'cacheplay' | 'cachescore'
+  | 'morelines' | 'twoway' | 'sets' | 'bigblocks'
   | 'deep' | 'deeptrade';
 
 export type Lesson = {
@@ -24,7 +26,13 @@ export type Lesson = {
   readonly title: string;
   /** The screen its tour plays on, and how that song is set up. */
   readonly scene: 'pipeline';
-  readonly options?: TierOptions & { readonly l1?: boolean; readonly deep?: boolean };
+  /**
+   * How its song is set up. A practice right after buying (flow.ts) runs on
+   * the player's own CPU, but keeps the lesson's `program` and `l1`: the L1's
+   * upgrades are each shown on a program made for the misses they fix, on the
+   * first L1 with just that upgrade, so the difference is plain.
+   */
+  readonly options?: TierOptions & { readonly l1?: CacheShape; readonly deep?: boolean };
   /** A practice follows the tour (a new kind of CPU); without one, the tour explains and the game goes on. */
   readonly practice: boolean;
 };
@@ -41,7 +49,10 @@ export const LESSONS: Readonly<Record<string, Lesson>> = Object.fromEntries(
     // Explained once, on the song screen, as the upgrade arrives (or the clock first outruns RAM); no practice of their own.
     { id: 'overclock', title: 'OVERCLOCKING', scene: 'pipeline', practice: false },
     { id: 'memwall', title: 'THE MEMORY WALL', scene: 'pipeline', options: { forwarding: true }, practice: false },
-    { id: 'cache', title: 'THE L1 CACHE', scene: 'pipeline', options: { forwarding: true, l1: true }, practice: true },
+    { id: 'cache', title: 'THE L1 CACHE', scene: 'pipeline', options: { forwarding: true, l1: L1_BASE }, practice: true },
+    { id: 'morelines', title: 'THE L1: 8 LINES', scene: 'pipeline', options: { forwarding: true, l1: cacheShape(['lines']), program: 'TWO PASSES' }, practice: true },
+    { id: 'twoway', title: 'THE L1: 2-WAY SETS', scene: 'pipeline', options: { forwarding: true, l1: cacheShape(['ways']), program: 'ADD TWO LISTS' }, practice: true },
+    { id: 'bigblocks', title: 'THE L1: 8-BYTE BLOCKS', scene: 'pipeline', options: { forwarding: true, l1: cacheShape(['blocks']), program: 'SUM WORDS' }, practice: true },
     { id: 'deep', title: 'THE DEEP PIPELINE', scene: 'pipeline', options: { forwarding: true, guessing: true, deep: true }, practice: true },
   ] satisfies Lesson[]).map((lesson) => [lesson.id, lesson]),
 );

@@ -1,13 +1,13 @@
 // The player's progress: money, the CPU chip (its word size) and parts, clock,
 // memory and cooling upgrades, chip wear, and the contract board. Pure functions over a plain object, so the
 // rules are testable; game/src/save.ts stores it.
-import { BASE_MHZ, CHIPS, DATA_WIDTHS, CLOCK, CONTRACTS_PER_GRADE, COOLING, CPU_PARTS, DEEP_PIPELINE, LATE_PAY_FACTOR, MEMORY_PARTS, OVERCLOCKING_PRICE, REPAIR_PRICE_PER_STEP, GRADES, PAY, TIGHT_SHARE, TUTORIAL_JOB, WORKDAY, } from '../data/economy.js';
+import { BASE_MHZ, CACHE_UPGRADES, CHIPS, DATA_WIDTHS, CLOCK, CONTRACTS_PER_GRADE, COOLING, CPU_PARTS, DEEP_PIPELINE, LATE_PAY_FACTOR, MEMORY_PARTS, OVERCLOCKING_PRICE, REPAIR_PRICE_PER_STEP, GRADES, PAY, TIGHT_SHARE, TUTORIAL_JOB, WORKDAY, } from '../data/economy.js';
 import { programByName, TUTORIAL_PROGRAM } from '../data/programs.js';
 import { generateProgram } from './generator.js';
 import { formatDuration, formatMhz } from '../format.js';
 import { tierByNumber } from '../data/tiers.js';
 import { cpuFor, trace } from './cpu.js';
-import { ramCycles } from './memory.js';
+import { cacheShape, cacheWords, ramCycles } from './memory.js';
 import { perfectRun } from './pipeline.js';
 import { THERMAL } from './thermal.js';
 import { tempoForClock } from '../rhythm/tempo.js';
@@ -17,6 +17,7 @@ export const NEW_GAME = {
     parts: [],
     clockLevel: 0,
     cacheLevels: 0,
+    cacheUpgrades: [],
     cooling: 0,
     overclocking: false,
     deepPipeline: 'none',
@@ -124,6 +125,10 @@ export function ratedMhzFor(progress, pipelined, deep = pipelined && deepActive(
 export function hasCache(progress) {
     return progress.cacheLevels > 0;
 }
+/** The L1 cache you own, with its upgrades, or undefined without one. */
+export function cacheOf(progress) {
+    return hasCache(progress) ? cacheShape(progress.cacheUpgrades) : undefined;
+}
 /**
  * The memory wall has arrived: at your rated clock, a trip to RAM (without a
  * cache) takes more than one cycle, so loads and stores freeze the pipeline.
@@ -145,7 +150,7 @@ const cpiCache = new Map();
 export function cpiFor(programName, progress) {
     const tier = tierOf(progress);
     const deep = deepActive(progress);
-    const key = `${programName}:${tier.number}:${progress.clockLevel}:${progress.cacheLevels}:${deep}`;
+    const key = `${programName}:${tier.number}:${progress.clockLevel}:${progress.cacheLevels}:${[...progress.cacheUpgrades].sort()}:${deep}`;
     const cached = cpiCache.get(key);
     if (cached !== undefined)
         return cached;
@@ -155,7 +160,7 @@ export function cpiFor(programName, progress) {
         singleCycle: !isPipelined(progress),
         forwarding: tier.options?.forwarding ?? false,
         predictor: tier.options?.predictor,
-        cache: hasCache(progress),
+        cache: cacheOf(progress),
         mhz: ratedMhz(progress),
         wrongGuessCycles: deep ? DEEP_PIPELINE.wrongGuessCycles : 1,
     });
@@ -204,6 +209,7 @@ export function withEverything(progress) {
         clockLevel: CLOCK.factors.length - 1,
         cooling: COOLING.length - 1,
         cacheLevels: MEMORY_PARTS.length,
+        cacheUpgrades: CACHE_UPGRADES.map((upgrade) => upgrade.id),
         overclocking: true,
         deepPipeline: 'on',
         chipMaxDial: THERMAL.maxDial,
@@ -354,6 +360,8 @@ export function shopItems(progress) {
             apply: (p) => ({ ...p, cacheLevels: i + 1 }),
         });
     });
+    for (const upgrade of CACHE_UPGRADES)
+        items.push(cacheUpgradeItem(progress, upgrade));
     COOLING.forEach((cooler, i) => {
         if (i === 0)
             return;
@@ -379,6 +387,24 @@ export function shopItems(progress) {
         apply: (p) => ({ ...p, chipMaxDial: THERMAL.maxDial }),
     });
     return items;
+}
+/**
+ * An upgrade to the L1: on sale once the L1 is in, in any order. Its line
+ * says what the cache becomes.
+ */
+function cacheUpgradeItem(progress, upgrade) {
+    const owned = progress.cacheUpgrades.includes(upgrade.id);
+    const after = cacheShape([...progress.cacheUpgrades, upgrade.id]);
+    return {
+        key: upgrade.id,
+        group: 'MEMORY',
+        name: upgrade.name,
+        price: upgrade.price,
+        state: owned ? 'owned' : hasCache(progress) ? 'buy' : 'later',
+        lessonId: upgrade.lessonId,
+        about: hasCache(progress) && !owned ? `${upgrade.about} Your L1 becomes ${cacheWords(after)}.` : hasCache(progress) ? upgrade.about : `An upgrade to the L1 cache. ${upgrade.about}`,
+        apply: (p) => ({ ...p, cacheUpgrades: [...p.cacheUpgrades, upgrade.id] }),
+    };
 }
 /**
  * The deep pipeline: on sale once branch guessing and its chip are in; once
@@ -445,7 +471,7 @@ function clockAbout(progress, before, after) {
     const upgraded = { ...progress, clockLevel: progress.clockLevel + 1 };
     const [now, then] = [typicalSecondsPerInstruction(progress), typicalSecondsPerInstruction(upgraded)];
     const saved = Math.round((1 - then / now) * 100);
-    const ram = [ramCycles(before, hasCache(progress)), ramCycles(after, hasCache(progress))];
+    const ram = [ramCycles(before, cacheOf(progress)), ramCycles(after, cacheOf(progress))];
     const wall = ram[1] > 1 ? ` A trip to RAM still takes 60 ns: ${ram[0]} -> ${ram[1]} cycles.` : '';
     return (`Rated clock ${formatMhz(before)} -> ${formatMhz(after)}, beat ${Math.round(tempoForClock(before))} -> ${Math.round(tempoForClock(after))} BPM. ` +
         `A typical job: ${formatDuration(now)} -> ${formatDuration(then)} per instruction (${saved}% less).${wall}`);

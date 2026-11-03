@@ -8,8 +8,8 @@
 import { COOLING } from './economy.js';
 import { programByName } from './programs.js';
 import { formatDuration, formatMhz, formatMoney } from '../format.js';
-import { MEMORY_TIMING, ramCycles, SHOWN_BYTES } from '../sim/memory.js';
-import { cpuName, ratedMhz } from '../sim/progress.js';
+import { cacheWords, MEMORY_TIMING, missNs, ramCycles, SHOWN_BYTES } from '../sim/memory.js';
+import { cacheOf, cpuName, ratedMhz } from '../sim/progress.js';
 import { THERMAL } from '../sim/thermal.js';
 import { dateLine } from '../sim/workday.js';
 /**
@@ -108,14 +108,14 @@ export function programListing(progress) {
 /** What the boot reports about the player's computer. */
 function hardware(progress) {
     const mhz = ratedMhz(progress);
-    const cache = progress.cacheLevels > 0;
+    const cache = cacheOf(progress);
     const cycles = ramCycles(mhz, cache);
-    const ramNs = MEMORY_TIMING.ramNs + (cache ? MEMORY_TIMING.l1Ns : 0);
+    const ramNs = cache ? missNs(cache) : MEMORY_TIMING.ramNs;
     return {
         cpu: cpuName(progress),
         clock: `${formatMhz(mhz)}, A CYCLE EVERY ${formatDuration(1 / (mhz * 1e6))}`,
         ram: `A TRIP TAKES ${ramNs} ns = ${cycles} CYCLE${cycles === 1 ? '' : 'S'}`,
-        cache: cache ? '16 BYTES, DIRECT-MAPPED' : 'NONE',
+        cache: cache ? cacheWords(cache) : 'NONE',
         cooler: COOLING[progress.cooling].name,
         wear: progress.chipMaxDial < THERMAL.maxDial ? `MAX CLOCK ${Math.round(progress.chipMaxDial * 100)}%` : undefined,
     };

@@ -1,6 +1,6 @@
 import type { Entry } from '../data/glossary.ts';
 import { UNITS, type Unit } from '../sim/isa.ts';
-import { BLOCK_BYTES, lineOf, SHOWN_BYTES, tagOf, type Access, type MissKind } from '../sim/memory.ts';
+import { addressSplit, setOf, SHOWN_BYTES, tagOf, type Access, type CacheShape, type MissKind } from '../sim/memory.ts';
 import type { Slot, Stage } from '../sim/pipeline.ts';
 
 // Where everything on the song screen goes (layout pixels, 960 x 540), and
@@ -105,8 +105,11 @@ export const noteKey = (slot: Slot) => `${slot.seq}:${slot.pc}`;
 export const laneCenter = (unit: Unit) => LANE_X0 + LANE_W * (UNITS.indexOf(unit) + 0.5);
 export const hex = (value: number) => value.toString(16).toUpperCase().padStart(2, '0');
 export const bin = (value: number, bits: number) => value.toString(2).padStart(bits, '0');
-/** An address as the cache splits it: tag, line, offset (tttt ii oo). */
-export const addressBits = (address: number) => `${bin(tagOf(address), 4)} ${bin(lineOf(address), 2)} ${bin(address % BLOCK_BYTES, 2)}`;
+/** An address as a cache splits it: tag, set (or line), offset (tttt ii oo in the first L1). */
+export function addressBits(shape: CacheShape, address: number): string {
+  const bits = addressSplit(shape);
+  return `${bin(tagOf(shape, address), bits.tag)} ${bin(setOf(shape, address), bits.set)} ${bin(address % shape.blockBytes, bits.offset)}`;
+}
 /** Why a miss happened, in the words the screen uses. */
 export const MISS_WORDS: Readonly<Record<MissKind, string>> = { 'first-use': 'FIRST USE', conflict: 'CONFLICT', 'too-small': 'TOO SMALL' };
 

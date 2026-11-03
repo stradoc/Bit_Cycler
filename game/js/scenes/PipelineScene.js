@@ -10,7 +10,7 @@ import { getProgress, updateProgress } from '../save.js';
 import { getSettings, teaching } from '../settings.js';
 import { addressOf, cpuFor, itemAt } from '../sim/cpu.js';
 import { isLoad, keepsTotal, unitOf } from '../sim/isa.js';
-import { CACHE_LINES, freezeBeats } from '../sim/memory.js';
+import { freezeBeats } from '../sim/memory.js';
 import { thermalConfig, tierOf, withSeen, withTipSeen } from '../sim/progress.js';
 import { logJob, NO_CALLS, tallyCycle } from '../rhythm/skills.js';
 import { finishJob } from '../sim/workday.js';
@@ -189,7 +189,7 @@ export class PipelineScene extends Screen {
         const shown = {
             regs: [...this.run.pipeline.regs],
             memory: cpu.memory.slice(),
-            lines: Array.from({ length: CACHE_LINES }, () => ({ valid: false, tag: 0 })),
+            lines: Array.from({ length: setup.l1 ? setup.l1.lines : 0 }, () => ({ valid: false, tag: 0 })),
         };
         this.replayControls = new ReplayControls(this, this.era, setup.watching, {
             speed: (step) => this.setSpeed(this.speedIndex + step),
@@ -646,7 +646,7 @@ export class PipelineScene extends Screen {
         if (access.cycles > 1) {
             const total = access.cycles - 1;
             this.freezeView = { start: this.run.dueBeat, beats: freezeBeats(total), base: this.run.waitBeats, total, slot, access };
-            this.panel.markBlock(access.address, this.freezeView.beats * this.beatSeconds());
+            this.panel.markBlock(access, this.freezeView.beats * this.beatSeconds());
         }
         else {
             this.panel.fillLine(access);

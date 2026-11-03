@@ -1,12 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CHIPS, CLOCK, DATA_WIDTHS, GRADES, WORKDAY } from '../game/src/data/economy.ts';
+import { CACHE_UPGRADES, CHIPS, CLOCK, DATA_WIDTHS, GRADES, WORKDAY } from '../game/src/data/economy.ts';
 import { bitsOf } from '../game/src/sim/generator.ts';
 import { programByName } from '../game/src/data/programs.ts';
 import { formatCount, formatDuration, formatMhz, formatMoney } from '../game/src/format.ts';
 import {
   bitsName,
   buy,
+  cacheOf,
   chipByBits,
   chipNeeded,
   completeContract,
@@ -25,6 +26,7 @@ import {
   ratedMhz,
   shopItems,
   tierOf,
+  withEverything,
   withTier,
   withWordBits,
   dataWidth,
@@ -224,6 +226,31 @@ test('the memory wall: clock upgrades past it help less, and the L1 cache goes o
   // With the cache, the same upgrade is worth more.
   const savedCached = Number(/\((\d+)% less\)/.exec(shopItems({ ...late, cacheLevels: 1 }).find((item) => item.key === 'clock')?.about ?? '')?.[1]);
   assert.ok(savedCached > saved, `${savedCached}% vs ${saved}%`);
+});
+
+test("the L1's upgrades: on sale once the L1 is in, in any order, each with its lesson", () => {
+  const cached: Progress = { ...NEW_GAME, wordBits: 32, parts: ['pipeline', 'forwarding'], money: 10_000, clockLevel: 3, cacheLevels: 1 };
+  const item = (p: Progress, key: string) => shopItems(p).find((i) => i.key === key);
+  for (const upgrade of CACHE_UPGRADES) {
+    assert.equal(item({ ...cached, cacheLevels: 0 }, upgrade.id)?.state, 'later', upgrade.id);
+    assert.equal(item(cached, upgrade.id)?.state, 'buy', upgrade.id);
+    assert.equal(item(cached, upgrade.id)?.lessonId, upgrade.lessonId);
+    assert.equal(item(cached, upgrade.id)?.group, 'MEMORY');
+  }
+  // Bought out of order, each one says what the cache becomes, and stays bought.
+  const ways = buy(cached, 'ways');
+  assert.ok(ways);
+  assert.deepEqual(ways.cacheUpgrades, ['ways']);
+  assert.equal(item(ways, 'ways')?.state, 'owned');
+  assert.match(item(ways, 'blocks')?.about ?? '', /32 BYTES: 4 LINES OF 8, 2-WAY/);
+  const both = buy(ways, 'blocks');
+  assert.ok(both);
+  assert.deepEqual(cacheOf(both), { lines: 4, blockBytes: 8, ways: 2 });
+  assert.equal(cacheOf({ ...both, cacheLevels: 0 }), undefined);
+  // The board's estimates use the cache you own: two lists that collide in the first L1 are quicker on 2-way sets.
+  const colliding = 'ADD TWO LISTS';
+  assert.ok(cpiFor(colliding, ways) < cpiFor(colliding, cached), `${cpiFor(colliding, ways)} vs ${cpiFor(colliding, cached)}`);
+  assert.deepEqual(withEverything(NEW_GAME).cacheUpgrades, CACHE_UPGRADES.map((upgrade) => upgrade.id));
 });
 
 test('the board is endless: finishing a contract pays and puts a new one in its place', () => {

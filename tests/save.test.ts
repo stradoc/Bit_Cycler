@@ -21,6 +21,7 @@ test('a save from before slots (the progress alone) loads, missing fields taking
   assert.equal(saved.progress.money, 750);
   assert.deepEqual(saved.progress.parts, ['pipeline']);
   assert.equal(saved.progress.cacheLevels, 0); // saved before the cache existed
+  assert.deepEqual(saved.progress.cacheUpgrades, []); // and before its upgrades
   assert.deepEqual(saved.progress.seenLessons, []); // the settings kept these then
   assert.deepEqual(saved.progress.seenTips, []); // saved before tips were remembered
   assert.equal(saved.progress.wordBits, 16); // saved before the chips: the pipeline needs the 16-bit one
@@ -48,6 +49,7 @@ test('an edited save is pulled back into range', () => {
     parts: ['pipeline', 'predictor2'], // skips the parts in between
     clockLevel: 99,
     cacheLevels: 7,
+    cacheUpgrades: ['ways', 'bogus', 'ways', 'lines'],
     cooling: -3,
     overclocking: 'yes',
     chipMaxDial: 9,
@@ -62,6 +64,8 @@ test('an edited save is pulled back into range', () => {
   assert.deepEqual(p.parts, ['pipeline']);
   assert.equal(p.clockLevel, CLOCK.factors.length - 1);
   assert.equal(p.cacheLevels, 1);
+  // Each L1 upgrade once, unknown ones dropped, in the order bought.
+  assert.deepEqual(p.cacheUpgrades, ['ways', 'lines']);
   assert.equal(p.cooling, 0);
   assert.equal(p.overclocking, false);
   assert.equal(p.chipMaxDial, THERMAL.maxDial);

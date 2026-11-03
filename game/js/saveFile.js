@@ -3,7 +3,7 @@
 // into browser storage and into exported files, so an exported save can be
 // imported on another computer.
 import { cleanSkillLog } from './rhythm/skills.js';
-import { CLOCK, COOLING, CPU_PARTS, GRADES, MEMORY_PARTS, WORKDAY } from './data/economy.js';
+import { CACHE_UPGRADES, CLOCK, COOLING, CPU_PARTS, GRADES, MEMORY_PARTS, WORKDAY } from './data/economy.js';
 import { chipByBits, fitChip, NEW_GAME } from './sim/progress.js';
 import { THERMAL } from './sim/thermal.js';
 const GAME = 'bit-cycler';
@@ -52,6 +52,10 @@ function cleanProgress(raw) {
         parts: CPU_PARTS.slice(0, parts).map((part) => part.id),
         clockLevel: Math.round(clamp(progress.clockLevel, 0, CLOCK.factors.length - 1, 0)),
         cacheLevels: Math.round(clamp(progress.cacheLevels, 0, MEMORY_PARTS.length, 0)),
+        // Saves from before the L1's upgrades have none; each upgrade is kept once, in the order bought.
+        cacheUpgrades: Array.isArray(progress.cacheUpgrades)
+            ? [...new Set(progress.cacheUpgrades)].filter((id) => CACHE_UPGRADES.some((upgrade) => upgrade.id === id))
+            : [],
         cooling: Math.round(clamp(progress.cooling, 0, COOLING.length - 1, 0)),
         overclocking: progress.overclocking === true,
         deepPipeline: progress.deepPipeline === 'on' || progress.deepPipeline === 'off' ? progress.deepPipeline : 'none',

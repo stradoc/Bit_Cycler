@@ -4,6 +4,7 @@ import { DEEP_PIPELINE } from '../game/src/data/economy.ts';
 import { RELAXED_WINDOWS, NORMAL_WINDOWS } from '../game/src/rhythm/judge.ts';
 import { DEFAULT_DIFFICULTY, DIFFICULTIES } from '../game/src/rhythm/tempo.ts';
 import { NEW_GAME, newContract, ratedMhzFor, type Progress } from '../game/src/sim/progress.ts';
+import { cacheShape, L1_BASE } from '../game/src/sim/memory.ts';
 import { THERMAL } from '../game/src/sim/thermal.ts';
 import { ROWS, SINGLE_CYCLE_ROWS } from '../game/src/song/layout.ts';
 import { pipelineOptions, playAgain, songSetup, watch, type Recording } from '../game/src/song/setup.ts';
@@ -29,7 +30,9 @@ test('a song is set up from what it was started with, then the save, then the UR
   assert.equal(tier3.ratedMhz, ratedMhzFor(NEW_GAME, true));
 
   const fromUrl = songSetup({}, NEW_GAME, url('forwarding&guessing&predictor=2-bit&cache&practice'));
-  assert.deepEqual([fromUrl.forwarding, fromUrl.guessing, fromUrl.predictor, fromUrl.l1, fromUrl.practice], [true, true, '2-bit', true, true]);
+  assert.deepEqual([fromUrl.forwarding, fromUrl.guessing, fromUrl.predictor, fromUrl.l1, fromUrl.practice], [true, true, '2-bit', L1_BASE, true]);
+  // ?cache=ways,blocks: the L1 with those upgrades.
+  assert.deepEqual(songSetup({}, NEW_GAME, url('cache=ways,blocks')).l1, cacheShape(['ways', 'blocks']));
   assert.equal(fromUrl.program, 'SUM GRID');
   assert.equal(songSetup({}, NEW_GAME, url('predictor=3-bit')).predictor, undefined);
   // What the song was started with wins over the URL.
@@ -44,8 +47,10 @@ test('a contract plays its own program, and the save fits the cache and sets the
   const setup = songSetup({ contract }, worn, url());
   assert.equal(setup.program, contract.program);
   assert.equal(setup.spec.name, contract.program);
-  assert.equal(setup.l1, true);
+  assert.deepEqual(setup.l1, L1_BASE);
   assert.equal(setup.maxDial, 1.3);
+  // The save's L1 upgrades come with it.
+  assert.deepEqual(songSetup({ contract }, { ...worn, cacheUpgrades: ['lines'] }, url()).l1, { lines: 8, blockBytes: 4, ways: 1 });
   assert.equal(setup.canOverclock, true);
   // Practice always runs on a new chip.
   assert.equal(songSetup({ contract, practice: true }, worn, url()).maxDial, THERMAL.maxDial);
@@ -89,7 +94,7 @@ test('a replay plays on the chip its run started on, and watching again or playi
 
 test('the simulator runs the setup\'s hardware', () => {
   const setup = songSetup({ forwarding: true, predictor: '1-bit' }, worn, url());
-  assert.deepEqual(pipelineOptions(setup, 40), { forwarding: true, predictor: '1-bit', singleCycle: false, cache: true, mhz: 40, wrongGuessCycles: 1, superscalar: false });
+  assert.deepEqual(pipelineOptions(setup, 40), { forwarding: true, predictor: '1-bit', singleCycle: false, cache: L1_BASE, mhz: 40, wrongGuessCycles: 1, superscalar: false });
 });
 
 test('the deep pipeline: from the save where branches are guessed, a faster rated clock, dearer wrong guesses, kept by retries and replays', () => {

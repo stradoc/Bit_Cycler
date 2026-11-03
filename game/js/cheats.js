@@ -1,5 +1,5 @@
 import { cheatFlags } from './cheatFlags.js';
-import { CHIPS, CLOCK, COOLING } from './data/economy.js';
+import { CACHE_UPGRADES, CHIPS, CLOCK, COOLING } from './data/economy.js';
 import { TAUGHT_IDS } from './data/tours.js';
 import { formatMhz, formatMoney } from './format.js';
 import { activeSlot, getProgress, newGame, slotName, updateProgress } from './save.js';
@@ -17,10 +17,11 @@ const HELP = `Bit Cycler cheats (type in this console):
   cheat.clock(5)        clock upgrade level (0-${CLOCK.factors.length - 1}), on a chip that runs it
   cheat.cooling(2)      cooler (0 stock, 1 heatsink, 2 fan)
   cheat.cache()         own the L1 cache (false to remove)
+  cheat.l1('ways')      the L1 with these upgrades: 'lines', 'ways', 'blocks' (none: the first one)
   cheat.overclock()     own the overclocking upgrade (false to remove)
   cheat.deep('on')      the deep pipeline: 'on', 'off' (owned) or 'none'
   cheat.wear(1.2)       chip's max clock after overheating (1.0-1.5)
-  cheat.unlockAll()     every part, max clock, fan, overclocking, the L1 cache, $100,000
+  cheat.unlockAll()     every part, max clock, fan, overclocking, the L1 cache and its upgrades, $100,000
   cheat.board()         new random contracts
   cheat.time(6)         hours of today's workday already used (0-8; past 8 the day is over)
   cheat.endDay()        log off: the next morning, with new offers
@@ -59,6 +60,10 @@ export function installCheats(game) {
         overclock: (on = true) => change((p) => ({ ...p, overclocking: on })),
         deep: (state = 'on') => change((p) => ({ ...p, deepPipeline: ['none', 'off', 'on'].includes(state) ? state : 'on' })),
         cache: (on = true) => change((p) => ({ ...p, cacheLevels: on ? 1 : 0 })),
+        l1: (...upgrades) => {
+            const ids = CACHE_UPGRADES.filter((upgrade) => upgrades.includes(upgrade.id)).map((upgrade) => upgrade.id);
+            return change((p) => ({ ...p, cacheLevels: 1, cacheUpgrades: ids }));
+        },
         wear: (maxDial) => change((p) => ({ ...p, chipMaxDial: Math.min(THERMAL.maxDial, Math.max(1, maxDial)) })),
         unlockAll: () => change(withEverything),
         board: () => change((p) => fillBoard({ ...p, board: [] }, Math.random)),

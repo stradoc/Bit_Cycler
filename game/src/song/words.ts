@@ -5,7 +5,7 @@ import { formatDuration, formatHours, formatMhz, formatMoney } from '../format.t
 import type { Decision, Outcome, PipelineRun } from '../rhythm/pipelineRun.ts';
 import { addressOf, itemAt } from '../sim/cpu.ts';
 import { describe, format, UNIT_ROLES, unitOf, type Instruction, type RType, type Unit } from '../sim/isa.ts';
-import { BLOCK_BYTES, blockOf, CACHE_LINES, lineOf, MEMORY_TIMING, tagOf, type Access, type MissKind } from '../sim/memory.ts';
+import { addressSplit, blockOf, cacheBytes, cacheWords, L1_BASE, MEMORY_TIMING, missNs, sameShape, setOf, setsOf, tagOf, type Access, type MissKind } from '../sim/memory.ts';
 import type { Hazard, PairBlock, Slot, Stage } from '../sim/pipeline.ts';
 import type { Chip } from '../sim/thermal.ts';
 import { THERMAL } from '../sim/thermal.ts';
@@ -186,7 +186,7 @@ export class SongWords {
   waiting(view: FreezeView, counted: number): string {
     const { access } = view;
     const why = this.setup.l1 ? `MISS: ${MISS_WORDS[access.missKind ?? 'first-use']}` : access.kind === 'store' ? 'STORE: WRITING TO RAM' : 'LOAD: WAITING ON RAM';
-    const ns = MEMORY_TIMING.ramNs + (this.setup.l1 ? MEMORY_TIMING.l1Ns : 0);
+    const ns = this.setup.l1 ? missNs(this.setup.l1) : MEMORY_TIMING.ramNs;
     return `${why}\n${counted} / ${view.total} CYCLES FROZEN\n${ns} ns = ${access.cycles} AT ${formatMhz(this.run.chip.mhz)}`;
   }
 
@@ -223,13 +223,14 @@ export class SongWords {
   /** What the last access did, in one line: "lb 5: 0000 01 01 LINE 1 TAG 0 -> HIT". */
   lookup(slot: Slot, access: Access): string {
     const what = `${slot.instr.op} ${access.address}`;
-    if (!this.setup.l1) {
+    const cache = this.setup.l1;
+    if (!cache) {
       const ns = MEMORY_TIMING.ramNs;
       return access.cycles > 1
         ? `${what} -> RAM: ${ns} ns = ${access.cycles} CYCLES AT ${formatMhz(this.run.chip.mhz)}`
         : `${what} -> RAM: ${ns} ns FITS IN ONE ${formatDuration(1e-6 / this.run.chip.mhz)} CYCLE`;
     }
-    const where = `${what}: ${addressBits(access.address)} LINE ${lineOf(access.address)} TAG ${tagOf(access.address)}`;
+    const where = `${what}: ${addressBits(cache, access.address)} ${this.placeWord()} ${setOf(cache, access.address)} TAG ${tagOf(cache, access.address)}`;
     if (access.kind === 'store') return `${where} -> ${access.hit ? 'HIT, ' : ''}WRITE BUFFER`;
     return `${where} -> ${access.hit ? 'HIT' : `MISS (${MISS_WORDS[access.missKind ?? 'first-use']})`}`;
   }
@@ -486,6 +487,7 @@ export class SongWords {
       'never-guessing': (t) => `Without guessing, waiting at every branch instead, a perfect run would take ${t} an instruction.`,
       'predictor-alone': (t) => `The predictor alone, with no help from you, would take ${t} an instruction.`,
       'no-cache': (t) => `With no cache, every load going to RAM, a perfect run would take ${t} an instruction.`,
+      'first-l1': (t) => `With the first L1 (${this.firstCacheWords()}), a perfect run would take ${t} an instruction.`,
       'single-cycle': (t) => `A single-cycle CPU needs a clock a quarter as fast as yours, so it takes ${t} an instruction.`,
     };
     for (const { cpu, time: t } of report.compare) steps.push({ say: compare[cpu](time(t)) });
@@ -537,13 +539,21 @@ export class SongWords {
       if (access.cycles <= 1) return undefined;
       return { id: 'ram', point: 'memory', message: `WAITING ON RAM: memory takes ${MEMORY_TIMING.ramNs} ns,\n${access.cycles} cycles at ${at}. Everything freezes\nuntil it answers. No key needed.` };
     }
+    const cache = this.setup.l1;
     if (access.kind === 'store') return { id: 'buffer', point: 'cache', message: 'STORE: it goes to RAM through the\nwrite buffer, so the CPU never\nwaits for it.' };
     if (access.hit) {
-      const block = blockOf(access.address) * BLOCK_BYTES;
-      return { id: 'hit', point: 'cache', message: `HIT: byte ${access.address} came in with its\nblock (bytes ${block}-${block + 3}). No trip to RAM,\nno waiting.` };
+      const block = blockOf(cache, access.address) * cache.blockBytes;
+      return { id: 'hit', point: 'cache', message: `HIT: byte ${access.address} came in with its\nblock (bytes ${block}-${block + cache.blockBytes - 1}). No trip to RAM,\nno waiting.` };
     }
     if (access.cycles <= 1) return undefined;
-    return { id: 'miss', point: 'cache', message: `MISS: line ${lineOf(access.address)} doesn't hold byte ${access.address}.\nIts whole block comes from RAM:\n${access.cycles} cycles at ${at}. Just watch.` };
+    // The first miss is always a first use; the other kinds get a tip of their own when they first come up.
+    if (access.missKind === 'conflict') {
+      return { id: 'miss-conflict', point: 'cache', message: `CONFLICT: byte ${access.address} was in the cache,\nbut another block needed ${this.placeWord().toLowerCase()} ${setOf(cache, access.address)}\nand pushed it out.` };
+    }
+    if (access.missKind === 'too-small') {
+      return { id: 'miss-too-small', point: 'cache', message: `TOO SMALL: byte ${access.address} was in the cache,\nbut more blocks came in than its\n${cache.lines} lines hold, and pushed it out.` };
+    }
+    return { id: 'miss', point: 'cache', message: `MISS: the cache doesn't hold byte ${access.address}.\nIts whole block comes from RAM:\n${access.cycles} cycles at ${at}. Just watch.` };
   }
 
   /** Tier 3: a value forwarded into the instruction that needed it. */
@@ -598,25 +608,79 @@ export class SongWords {
   private tripWords(access: Access): string {
     const at = `${access.cycles} cycles at ${formatMhz(this.run.chip.mhz)}`;
     if (access.level === 'BUFFER') return `It went to RAM through the write buffer: no waiting${access.hit ? ', and its cache line was updated too' : ''}.`;
-    if (access.level === 'L1') return `Cache HIT: its block was already in line ${lineOf(access.address)}, so no trip to RAM.`;
-    if (!this.setup.l1) return access.cycles > 1 ? `RAM took ${MEMORY_TIMING.ramNs} ns = ${at}: everything froze while it waited.` : 'RAM answered within the cycle.';
+    const cache = this.setup.l1;
+    if (!cache) return access.cycles > 1 ? `RAM took ${MEMORY_TIMING.ramNs} ns = ${at}: everything froze while it waited.` : 'RAM answered within the cycle.';
+    const place = `${this.placeWord().toLowerCase()} ${setOf(cache, access.address)}`;
+    if (access.level === 'L1') return `Cache HIT: its block was already in ${place}, so no trip to RAM.`;
     const why: Record<MissKind, string> = {
       'first-use': 'FIRST USE: its block had never been loaded.',
-      conflict: `CONFLICT: another block using line ${lineOf(access.address)} had pushed it out. A cache that could put blocks anywhere would still hold it.`,
-      'too-small': 'TOO SMALL: more blocks were in use than the 4 lines hold.',
+      conflict: `CONFLICT: ${cache.ways === 1 ? 'another block' : 'other blocks'} using ${place} had pushed it out. A cache that could put blocks anywhere would still hold it.`,
+      'too-small': `TOO SMALL: more blocks were in use than the ${cache.lines} lines hold.`,
     };
     return `Cache MISS, ${why[access.missKind ?? 'first-use']} Its block came from RAM: ${at}.`;
   }
 
   /** A cache line: valid or not, and which block it holds. */
   cacheLine(line: number): Entry {
+    const cache = this.setup.l1 || L1_BASE;
     const { valid, tag } = this.shown.lines[line];
-    const block = tag * CACHE_LINES + line;
-    const holds = valid ? `Holds bytes ${block * BLOCK_BYTES}-${block * BLOCK_BYTES + 3} (tag ${bin(tag, 4)}).` : 'Empty: nothing loaded into it yet.';
+    const sets = setsOf(cache);
+    const set = Math.floor(line / cache.ways);
+    const block = tag * sets + set;
+    const bits = addressSplit(cache);
+    const [from, to] = [block * cache.blockBytes, (block + 1) * cache.blockBytes - 1];
+    const holds = valid ? `Holds bytes ${from}-${to} (tag ${bin(tag, bits.tag)}).` : 'Empty: nothing loaded into it yet.';
+    const pattern = `${'x'.repeat(bits.tag)} ${bin(set, bits.set)} ${'x'.repeat(bits.offset)}`;
+    const where =
+      cache.ways === 1
+        ? `Only addresses whose line bits are ${bin(set, bits.set)} (${pattern}) can go here, so blocks ${set}, ${set + sets}, ${set + 2 * sets}... share it.`
+        : `It's one of the ${cache.ways} lines of set ${set}: addresses whose set bits are ${bin(set, bits.set)} (${pattern}) can go in either, so blocks ${set}, ${set + sets}, ${set + 2 * sets}... share them. A new block takes the one used longest ago.`;
+    return { title: cache.ways === 1 ? `CACHE LINE ${line}` : `CACHE SET ${set}, LINE ${line % cache.ways}`, body: `${holds} ${where}` };
+  }
+
+  /** What a cache's places are called: lines when each block has one, sets when it has a few to choose from. */
+  private placeWord(): 'LINE' | 'SET' {
+    return this.setup.l1 && this.setup.l1.ways > 1 ? 'SET' : 'LINE';
+  }
+
+  /** The L1 box's title: what each row shows. */
+  cacheTitle(): string {
+    const cache = this.setup.l1 || L1_BASE;
+    const place = this.placeWord();
+    if (cache.lines > 4) return cache.ways > 1 ? 'L1: SET  TAGS' : 'L1: LINE TAG';
+    return `L1: ${place} TAG ${cache.blockBytes > 4 ? 'BYTES' : 'DATA'}`;
+  }
+
+  /** What the L1 is, when its box is clicked: how it's built. */
+  cache(): Entry {
+    const cache = this.setup.l1 || L1_BASE;
+    if (sameShape(cache, L1_BASE)) return GLOSSARY.CACHE;
+    const placing =
+      cache.ways === 1
+        ? 'Each block has one line it can go in.'
+        : `Its lines are paired into ${setsOf(cache)} SETS: a block can go in either line of its set, so two blocks that share a set both fit.`;
+    const shown = cache.lines > 4 ? ' The box shows each line\'s tag; click one for the bytes it holds.' : '';
     return {
-      title: `CACHE LINE ${line}`,
-      body: `${holds} Only addresses whose line bits are ${bin(line, 2)} (xxxx ${bin(line, 2)} xx) can go here, so blocks ${line}, ${line + 4}, ${line + 8}... share it.`,
+      title: GLOSSARY.CACHE.title,
+      body: `A small, fast memory beside the CPU: ${cacheBytes(cache)} bytes, ${cache.lines} lines of ${cache.blockBytes} bytes. ${placing} A HIT needs no trip to RAM; a MISS brings the whole block in.${shown}`,
     };
+  }
+
+  /** How an address finds its place in this cache, when the lookup line is clicked. */
+  lookupInfo(): Entry {
+    const cache = this.setup.l1 || L1_BASE;
+    const bits = addressSplit(cache);
+    const pattern = `${'t'.repeat(bits.tag)} ${'i'.repeat(bits.set)} ${'o'.repeat(bits.offset)}`;
+    const place = this.placeWord().toLowerCase();
+    return {
+      title: GLOSSARY.LOOKUP.title,
+      body: `An address splits into ${pattern}: the i bits pick the ${place}, the t bits (the tag) say which block is in it, the o bits pick the byte. Valid + same tag = HIT. Stores go out through a write buffer.`,
+    };
+  }
+
+  /** The first L1's shape in words, for the results' comparison. */
+  firstCacheWords(): string {
+    return cacheWords(L1_BASE).toLowerCase();
   }
 
   predictorState(pc: number): Entry {

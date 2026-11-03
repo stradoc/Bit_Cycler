@@ -456,6 +456,55 @@ function replace(r, L) {
  * so a kind's place here can change but its name can't: the rebuild finds the
  * kind by name (a list that grows would otherwise turn old jobs into new kinds).
  */
+/**
+ * For each item, the total of all the others: one pass adds them up, a
+ * second reads them all again and replaces each with the total less itself.
+ * The only kind that reads its data twice, so a cache too small for it loses
+ * the first items before the second pass (TOO SMALL misses). Bytes fit the
+ * first L1 (8-12 of them, so the second pass hits); wider data takes 20-32
+ * bytes, more than its 16.
+ */
+function others(r, L) {
+    // Two passes take 9 instructions an item, so at most 12 (the song's length); 16-bit data: 20-24 bytes.
+    const n = L.bits === 8 ? r.int(8, 12) : r.int(Math.ceil(20 / L.bytes), Math.min(12, Math.floor(32 / L.bytes)));
+    const [p, end, total, v] = r.registers(4);
+    const data = L.values(r, n, 1, 15);
+    const sum = data.reduce((a, b) => L.wrap(a + b), 0);
+    const early = r.chance(0.5); // the pointer step between the load and its use: no load-use stall
+    const first = early
+        ? [`${op(L.load)} ${x(v)}, 0(${x(p)})`, `addi ${x(p)}, ${x(p)}, ${L.bytes}`, `add  ${x(total)}, ${x(total)}, ${x(v)}`]
+        : [`${op(L.load)} ${x(v)}, 0(${x(p)})`, `add  ${x(total)}, ${x(total)}, ${x(v)}`, `addi ${x(p)}, ${x(p)}, ${L.bytes}`];
+    return {
+        kind: 'OTHERS',
+        source: [
+            `      addi ${x(p)}, x0, 0`,
+            `      addi ${x(end)}, x0, ${L.at(n)}`,
+            `      addi ${x(total)}, x0, 0`,
+            `sum:  ${first[0]}`,
+            ...first.slice(1).map((line) => `      ${line}`),
+            `      bne  ${x(p)}, ${x(end)}, sum`,
+            `      addi ${x(p)}, x0, 0`,
+            `rest: ${op(L.load)} ${x(v)}, 0(${x(p)})`,
+            `      sub  ${x(v)}, ${x(total)}, ${x(v)}`,
+            `      ${op(L.store)} ${x(v)}, 0(${x(p)})`,
+            `      addi ${x(p)}, ${x(p)}, ${L.bytes}`,
+            `      bne  ${x(p)}, ${x(end)}, rest`,
+        ].join('\n'),
+        memory: data,
+        elements: n,
+        verb: 'TOTAL THE OTHERS FOR',
+        unit: 'BYTES',
+        roles: {
+            [p]: `the address of the next ${L.noun} (it goes through them twice)`,
+            [end]: `the end address (${L.at(n)}): each pass stops when the address reaches it`,
+            [total]: `the total of all ${n}`,
+            [v]: `the ${L.noun} just loaded, then the total of the others`,
+        },
+        keys: loopKeys(L, p, end, L.at(n), `${L.noun.toUpperCase()}'S ADDRESS, TWICE`),
+        memoryNote: `Addresses ${L.span(0, n)} hold the data${L.sized(n)}, read twice. Their total is ${sum}; each is replaced by the total of the others.`,
+        answer: data.map((d, i) => ({ address: i, value: L.wrap(sum - d) })),
+    };
+}
 const KERNELS = [
     { kind: 'SUM', build: (r, L) => reduce(r, L, 'add') },
     { kind: 'CHECKSUM', build: (r, L) => reduce(r, L, 'xor') },
@@ -470,6 +519,7 @@ const KERNELS = [
     { kind: 'RUNNING TOTAL', build: runningTotal },
     { kind: 'CHANGES', build: changes },
     { kind: 'REPLACE', build: replace },
+    { kind: 'OTHERS', build: others },
 ];
 const CLIENTS = {
     SUM: [
@@ -526,6 +576,10 @@ const CLIENTS = {
     REPLACE: [
         { name: 'BLACKLINE LEGAL', unit: 'DOCUMENT BYTES' },
         { name: 'PIXEL MEDICS', unit: 'SCREEN PIXELS' },
+    ],
+    OTHERS: [
+        { name: 'TRUE NORTH RETAIL', verb: 'ALL-BUT-ONE TOTALS OF', unit: 'STORE SALES' },
+        { name: 'HILLCREST LEAGUE', verb: 'REST-OF-TEAM TOTALS OF', unit: 'PLAYER SCORES' },
     ],
 };
 /**

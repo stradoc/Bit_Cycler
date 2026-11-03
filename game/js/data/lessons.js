@@ -1,3 +1,4 @@
+import { cacheShape, L1_BASE } from '../sim/memory.js';
 export const LESSONS = Object.fromEntries([
     { id: 'tier1', title: 'LESSON 1: HOW A CPU RUNS A PROGRAM', scene: 'pipeline', options: { singleCycle: true }, practice: true },
     { id: 'tier2', title: 'LESSON 2: PIPELINING', scene: 'pipeline', practice: true },
@@ -9,7 +10,10 @@ export const LESSONS = Object.fromEntries([
     // Explained once, on the song screen, as the upgrade arrives (or the clock first outruns RAM); no practice of their own.
     { id: 'overclock', title: 'OVERCLOCKING', scene: 'pipeline', practice: false },
     { id: 'memwall', title: 'THE MEMORY WALL', scene: 'pipeline', options: { forwarding: true }, practice: false },
-    { id: 'cache', title: 'THE L1 CACHE', scene: 'pipeline', options: { forwarding: true, l1: true }, practice: true },
+    { id: 'cache', title: 'THE L1 CACHE', scene: 'pipeline', options: { forwarding: true, l1: L1_BASE }, practice: true },
+    { id: 'morelines', title: 'THE L1: 8 LINES', scene: 'pipeline', options: { forwarding: true, l1: cacheShape(['lines']), program: 'TWO PASSES' }, practice: true },
+    { id: 'twoway', title: 'THE L1: 2-WAY SETS', scene: 'pipeline', options: { forwarding: true, l1: cacheShape(['ways']), program: 'ADD TWO LISTS' }, practice: true },
+    { id: 'bigblocks', title: 'THE L1: 8-BYTE BLOCKS', scene: 'pipeline', options: { forwarding: true, l1: cacheShape(['blocks']), program: 'SUM WORDS' }, practice: true },
     { id: 'deep', title: 'THE DEEP PIPELINE', scene: 'pipeline', options: { forwarding: true, guessing: true, deep: true }, practice: true },
 ].map((lesson) => [lesson.id, lesson]));
 //# sourceMappingURL=lessons.js.map

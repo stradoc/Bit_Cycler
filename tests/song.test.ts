@@ -8,6 +8,7 @@ import { unitOf } from '../game/src/sim/isa.ts';
 import { CARD_WIDTH, practiceLines, resultCard, runReport } from '../game/src/song/results.ts';
 import { ASCII, cardLines, CP437 } from '../game/src/visual/asciiChart.ts';
 import { NO_CALLS } from '../game/src/rhythm/skills.ts';
+import { cacheShape, L1_BASE } from '../game/src/sim/memory.ts';
 import { fillBoard, NEW_GAME } from '../game/src/sim/progress.ts';
 import { songSetup, type SongStart } from '../game/src/song/setup.ts';
 import type { Shown } from '../game/src/song/view.ts';
@@ -109,7 +110,7 @@ test('a paid job\'s card stamps it on time with the full pay, or late with half'
 });
 
 test("TICK's explanation of the results: short lines, one for each way cycles were lost, on every tier", () => {
-  for (const options of [{ singleCycle: true }, {}, { forwarding: true }, { predictor: '2-bit', l1: true }] as SongStart[]) {
+  for (const options of [{ singleCycle: true }, {}, { forwarding: true }, { predictor: '2-bit', l1: L1_BASE }, { forwarding: true, l1: cacheShape(['ways']) }] as SongStart[]) {
     const { run, setup, fresh, words } = paidRun(false, options);
     playPerfectly(run);
     const report = runReport({ run, setup, freshCpu: fresh, dials: [], calls: NO_CALLS });
@@ -120,5 +121,9 @@ test("TICK's explanation of the results: short lines, one for each way cycles we
     const lost = report.uses.filter((u) => u.use !== 'finished');
     for (const { cycles } of lost) assert.ok(steps.some((step) => step.say.startsWith(`${cycles} cycles`)), `no line for ${cycles} lost cycles`);
     assert.equal(steps.filter((step) => step.say.startsWith('A single-cycle CPU')).length, setup.singleCycle ? 0 : 1);
+    // An upgraded L1 is compared with the first one; the first L1 with none.
+    const first = report.compare.some((c) => c.cpu === 'first-l1');
+    assert.equal(first, Boolean(setup.l1 && setup.l1.ways > 1));
+    assert.equal(steps.some((step) => step.say.startsWith('With the first L1 (16 bytes: 4 lines of 4, direct-mapped)')), first);
   }
 });

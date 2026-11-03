@@ -1,4 +1,4 @@
-import { DEEP_PIPELINE } from '../data/economy.ts';
+import { CACHE_UPGRADES, DEEP_PIPELINE } from '../data/economy.ts';
 import { programByName, type ProgramSpec } from '../data/programs.ts';
 import { songFor, type Song } from '../data/songs.ts';
 import type { TierOptions } from '../data/tiers.ts';
@@ -6,8 +6,9 @@ import type { Judgment } from '../rhythm/judge.ts';
 import type { Action, Outcome } from '../rhythm/pipelineRun.ts';
 import { DEFAULT_DIFFICULTY, DIFFICULTIES, isDifficulty, type Difficulty, type Pace } from '../rhythm/tempo.ts';
 import type { WordBits } from '../sim/cpu.ts';
+import { cacheShape, type CacheShape } from '../sim/memory.ts';
 import type { PipelineOptions, Predictor } from '../sim/pipeline.ts';
-import { deepActive, hasCache, ratedMhzFor, type Contract, type Progress } from '../sim/progress.ts';
+import { cacheOf, deepActive, ratedMhzFor, type Contract, type Progress } from '../sim/progress.ts';
 import { THERMAL } from '../sim/thermal.ts';
 import { ROWS, SINGLE_CYCLE_ROWS, type Rows } from './layout.ts';
 
@@ -41,8 +42,8 @@ export type Recording = {
 export type SongStart = TierOptions & {
   /** How fast the song goes (the settings' DIFFICULTY; ?difficulty=hard in the URL). */
   readonly difficulty?: Difficulty;
-  /** The L1 data cache. */
-  readonly l1?: boolean;
+  /** The L1 data cache, as it's built, or false for none. */
+  readonly l1?: CacheShape | false;
   /** The deep pipeline: a faster clock, dearer wrong guesses. */
   readonly deep?: boolean;
   /** Notes wait for the player, and mistakes are explained. */
@@ -75,8 +76,8 @@ export type SongSetup = {
   readonly guessing: boolean;
   /** Tiers 5-6: a hardware predictor guesses first. */
   readonly predictor: Predictor | undefined;
-  /** The L1 data cache (from the shop). */
-  readonly l1: boolean;
+  /** The L1 data cache (from the shop, with its upgrades), or false without one. */
+  readonly l1: CacheShape | false;
   /** The deep pipeline, switched on in the shop (with branch guessing): the rated clock is faster and a wrong guess costs more. */
   readonly deep: boolean;
   /** Superscalar (tier 7): two instructions can start together, a chord. */
@@ -122,7 +123,8 @@ export function songSetup(start: SongStart, progress: Progress, params: URLSearc
   const practice = start.practice ?? params.has('practice');
   // ?contract=fair plays the board's first contract of that grade (easy, fair or stretch).
   const contract = start.contract ?? progress.board.find((c) => c.grade === params.get('contract'));
-  const program = start.program ?? contract?.program ?? (predictor ? 'SUM GRID' : 'SUM ARRAY');
+  // ?program=SUM WORDS plays a program by name (data/programs.ts, or a contract's: "32-BIT SUM #4821").
+  const program = start.program ?? contract?.program ?? params.get('program') ?? (predictor ? 'SUM GRID' : 'SUM ARRAY');
   const { replay } = start;
   const guessing = start.guessing ?? params.has('guessing');
   // ?deep fits the deep pipeline (on a pipelined CPU); from the save, only where branches are guessed.
@@ -140,8 +142,8 @@ export function songSetup(start: SongStart, progress: Progress, params: URLSearc
     forwarding: start.forwarding ?? params.has('forwarding'),
     guessing,
     predictor,
-    // ?cache fits the L1 cache.
-    l1: start.l1 ?? (hasCache(progress) || params.has('cache')),
+    // ?cache fits the L1 cache; ?cache=lines,ways,blocks with those upgrades.
+    l1: start.l1 ?? cacheOf(progress) ?? cacheParam(params),
     deep,
     // ?superscalar lets two start together (a tier's options pass it in, like its other hardware).
     superscalar: !singleCycle && (start.superscalar ?? params.has('superscalar')),
@@ -166,10 +168,17 @@ export function songSetup(start: SongStart, progress: Progress, params: URLSearc
   };
 }
 
+/** The L1 the URL asks for: ?cache for the first one, ?cache=lines,ways with those upgrades (CACHE_UPGRADES' ids). */
+function cacheParam(params: URLSearchParams): CacheShape | false {
+  if (!params.has('cache')) return false;
+  const asked = (params.get('cache') ?? '').split(',');
+  return cacheShape(CACHE_UPGRADES.filter((upgrade) => asked.includes(upgrade.id)).map((upgrade) => upgrade.id));
+}
+
 /** The hardware the simulator runs for this song, at a clock (MHz). */
 export function pipelineOptions(setup: SongSetup, mhz: number): PipelineOptions {
   const { forwarding, predictor, singleCycle, l1, deep, superscalar } = setup;
-  return { forwarding, predictor, singleCycle, cache: l1, mhz, wrongGuessCycles: deep ? DEEP_PIPELINE.wrongGuessCycles : 1, superscalar };
+  return { forwarding, predictor, singleCycle, cache: l1 || undefined, mhz, wrongGuessCycles: deep ? DEEP_PIPELINE.wrongGuessCycles : 1, superscalar };
 }
 
 // Starting the song again passes its whole setup on. songSetup reads only what

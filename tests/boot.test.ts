@@ -34,11 +34,18 @@ test('upgrades change the boot', () => {
     const text = screen(bootScript(maxed, SLOT, era)).join('\n');
     assert.match(text, /64-BIT, TIER 7 SUPERSCALAR, DEEP PIPELINE/, `era ${era.name}`);
     assert.match(text, /4 GHz, A CYCLE EVERY 0.25 ns/, `era ${era.name}`);
-    assert.match(text, /61 ns = 244 CYCLES/, `era ${era.name}`); // checking L1 on the way: 61 ns
-    assert.match(text, /16 BYTES, DIRECT-MAPPED/, `era ${era.name}`);
+    // Every L1 upgrade: checking L1 on the way (1 ns), RAM (60) and the second 4 bytes of an 8-byte block (5).
+    assert.match(text, /66 ns = 264 CYCLES/, `era ${era.name}`);
+    assert.match(text, /64 BYTES: 8 LINES OF 8, 2-WAY/, `era ${era.name}`);
     assert.match(text, /FAN/, `era ${era.name}`);
     assert.doesNotMatch(text, /WORN/i, `era ${era.name}`);
   }
+});
+
+test('the first L1 is reported as it was bought', () => {
+  const text = screen(bootScript({ ...maxed, cacheUpgrades: [] }, SLOT, ERAS[0])).join('\n');
+  assert.match(text, /61 ns = 244 CYCLES/);
+  assert.match(text, /16 BYTES: 4 LINES OF 4, DIRECT-MAPPED/);
 });
 
 test('a worn chip is reported; no save says so', () => {

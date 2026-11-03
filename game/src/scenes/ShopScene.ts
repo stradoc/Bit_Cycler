@@ -11,6 +11,8 @@ const LIST_X = 56;
 const LIST_RIGHT = 590;
 const LIST_TOP = 100;
 const ROW_H = 19;
+/** The lowest row's middle: the about line is under it. */
+const LIST_BOTTOM = 448;
 /** The spinning chip's center, and its info lines under it. */
 const CHIP_X = 770;
 const CHIP_Y = 210;
@@ -52,7 +54,8 @@ export class ShopScene extends Screen {
     // The line under the title: your CPU, filled in by refresh().
     this.cpu = this.header('SHOP', '').subtitle!;
     this.money = this.corner('');
-    this.menu = new ListMenu(this, this.era, { x: LIST_X, top: LIST_TOP, width: LIST_RIGHT - LIST_X, rowHeight: ROW_H, size: 15 });
+    // The list scrolls once it's longer than the room above the about line.
+    this.menu = new ListMenu(this, this.era, { x: LIST_X, top: LIST_TOP, width: LIST_RIGHT - LIST_X, rowHeight: ROW_H, size: 15, bottom: LIST_BOTTOM });
     this.about = this.aboutLine();
     this.message = this.messageLine();
     this.hints('[UP/DOWN] CHOOSE', '[ENTER] BUY', '[B] CONTRACT BOARD', '[M] HUM', '[Q] MENU');

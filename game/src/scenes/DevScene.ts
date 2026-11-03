@@ -1,5 +1,5 @@
 import { cheatFlags } from '../cheatFlags.ts';
-import { CHIPS, CLOCK, COOLING } from '../data/economy.ts';
+import { CACHE_UPGRADES, CHIPS, CLOCK, COOLING, type CacheUpgradeId } from '../data/economy.ts';
 import { LESSONS } from '../data/lessons.ts';
 import { TIERS } from '../data/tiers.ts';
 import { folderPath } from '../data/menuFiles.ts';
@@ -7,7 +7,8 @@ import { TAUGHT_IDS } from '../data/tours.ts';
 import { openLesson } from '../flow.ts';
 import { formatHours, formatMhz, formatMoney } from '../format.ts';
 import { activeSlot, getProgress, hasSave, newGame, slotName, updateProgress } from '../save.ts';
-import { bitsName, chipOf, deepActive, fillBoard, fitChip, ratedMhz, tierOf, withEverything, withTier, withWordBits, type Progress } from '../sim/progress.ts';
+import { bitsName, cacheOf, chipOf, deepActive, fillBoard, fitChip, ratedMhz, tierOf, withEverything, withTier, withWordBits, type Progress } from '../sim/progress.ts';
+import { cacheWords } from '../sim/memory.ts';
 import { dateLine, DAY_SECONDS, endDay } from '../sim/workday.ts';
 import { ListMenu, type MenuRow } from '../ui/list.ts';
 import { Screen } from '../ui/screen.ts';
@@ -30,7 +31,7 @@ const ABOUT: Readonly<Record<Row, string>> = {
   tier: 'THE CPU DESIGN: SINGLE-CYCLE, PIPELINE, FORWARDING, GUESSING, PREDICTORS. A TIER MAY NEED A WIDER CHIP.',
   clock: 'CLOCK UPGRADES BOUGHT. A FASTER CLOCK PLAYS SONGS FASTER.',
   cooling: 'HOW WELL THE CHIP SHEDS HEAT WHEN OVERCLOCKED.',
-  cache: "THE L1 CACHE: LOADS IT ALREADY HOLDS DON'T WAIT FOR RAM.",
+  cache: "THE L1 CACHE: LOADS IT ALREADY HOLDS DON'T WAIT FOR RAM. [LEFT/RIGHT] STEPS THROUGH ITS UPGRADES, ONE AT A TIME, THEN ALL.",
   overclock: 'LETS G / H TURN THE CLOCK DOWN AND UP DURING A SONG.',
   deep: 'NOT BOUGHT, OFF OR ON: A FASTER CLOCK, BUT A WRONG GUESS COSTS MORE. IN USE FROM TIER 4, ON THE 32-BIT CHIP.',
   money: 'MONEY TO SPEND IN THE SHOP.',
@@ -51,13 +52,35 @@ const ABOUT: Readonly<Record<Row, string>> = {
 const MONEY_STEPS = [0, 100, 500, 1_000, 5_000, 10_000, 100_000];
 const LESSON_IDS = Object.keys(LESSONS);
 
+/** The L1s the cache row steps through: none, the first one, each upgrade alone, then all of them. */
+const CACHE_STEPS: readonly (readonly CacheUpgradeId[] | undefined)[] = [undefined, [], ...CACHE_UPGRADES.map((upgrade) => [upgrade.id]), CACHE_UPGRADES.map((upgrade) => upgrade.id)];
+
+/** Where a save's L1 is among CACHE_STEPS (an order of upgrades not listed counts as the first one). */
+function cacheStep(p: Progress): number {
+  if (p.cacheLevels === 0) return 0;
+  const owned = [...p.cacheUpgrades].sort().join();
+  return Math.max(1, CACHE_STEPS.findIndex((step) => step !== undefined && [...step].sort().join() === owned));
+}
+
+/** A save's L1 in words, or OFF. */
+function cacheText(p: Progress): string {
+  const l1 = cacheOf(p);
+  return l1 ? cacheWords(l1) : 'OFF';
+}
+
+/** A save with the L1 at `step` of CACHE_STEPS. */
+function withCacheStep(p: Progress, step: number): Progress {
+  const upgrades = CACHE_STEPS[step];
+  return { ...p, cacheLevels: upgrades ? 1 : 0, cacheUpgrades: upgrades ?? [] };
+}
+
 /** What a save's CPU is, field by field: compared before and after a change, to say what else it changed. */
 function hardware(p: Progress): Record<string, string> {
   return {
     CHIP: bitsName(p.wordBits),
     TIER: String(tierOf(p).number),
     CLOCK: `LEVEL ${p.clockLevel}`,
-    'L1 CACHE': p.cacheLevels > 0 ? 'ON' : 'OFF',
+    'L1 CACHE': cacheText(p),
     OVERCLOCKING: p.overclocking ? 'ON' : 'OFF',
     'DEEP PIPELINE': deepActive(p) ? 'IN USE' : p.deepPipeline === 'none' ? 'NOT BOUGHT' : 'IDLE',
   };
@@ -112,7 +135,7 @@ export class DevScene extends Screen {
       tier: ['CPU TIER', `${tier.number}: ${tier.name}`],
       clock: ['CLOCK UPGRADES', `LEVEL ${p.clockLevel}: ${formatMhz(ratedMhz(p))}`],
       cooling: ['COOLER', COOLING[p.cooling].name],
-      cache: ['L1 CACHE', onOff(p.cacheLevels > 0)],
+      cache: ['L1 CACHE', cacheText(p)],
       overclock: ['OVERCLOCKING UPGRADE', onOff(p.overclocking)],
       deep: ['DEEP PIPELINE', p.deepPipeline === 'none' ? 'NOT BOUGHT' : `${p.deepPipeline.toUpperCase()}${p.deepPipeline === 'on' && !deepActive(p) ? ' (IDLE BELOW TIER 4)' : ''}`],
       money: ['MONEY', formatMoney(p.money)],
@@ -210,6 +233,7 @@ export class DevScene extends Screen {
         this.cue('move');
         return this.refresh();
       case 'cache':
+        return this.edit(row, (p) => withCacheStep(p, clampInt(cacheStep(p) + delta, CACHE_STEPS.length - 1)));
       case 'overclock':
       case 'seen':
       case 'autoplay':
@@ -223,7 +247,7 @@ export class DevScene extends Screen {
     const tier = tierOf(getProgress());
     switch (row) {
       case 'cache':
-        return this.edit(row, (p) => ({ ...p, cacheLevels: p.cacheLevels > 0 ? 0 : 1 }));
+        return this.edit(row, (p) => withCacheStep(p, p.cacheLevels > 0 ? 0 : 1));
       case 'overclock':
         return this.edit(row, (p) => ({ ...p, overclocking: !p.overclocking }));
       case 'everything':

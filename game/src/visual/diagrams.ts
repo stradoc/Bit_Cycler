@@ -1,11 +1,11 @@
 import { DEEP_PIPELINE } from '../data/economy.ts';
 import type { DiagramId } from '../data/lessons.ts';
-import { PROGRAMS } from '../data/programs.ts';
+import { programByName, PROGRAMS } from '../data/programs.ts';
 import { formatMhz } from '../format.ts';
 import { assemble } from '../sim/assembler.ts';
-import { cpuFor } from '../sim/cpu.ts';
+import { cpuFor, trace } from '../sim/cpu.ts';
 import { tokens } from '../sim/isa.ts';
-import { Cache, MEMORY_TIMING, ramCycles } from '../sim/memory.ts';
+import { Cache, cacheShape, L1_BASE, MEMORY_TIMING, MemorySystem, missNs, ramCycles, type CacheShape, type MissKind } from '../sim/memory.ts';
 import { perfectRun, type PipelineOptions } from '../sim/pipeline.ts';
 import { Chip, relativePower, steadyTemperature, THERMAL } from '../sim/thermal.ts';
 import { branchHint, hintColor } from './branchHint.ts';
@@ -14,6 +14,36 @@ import { cssColor, type Era } from '../ui/eras.ts';
 import { textBase } from './display.ts';
 
 type Parts = Phaser.GameObjects.GameObject[];
+
+/** A load in a program, as a cache saw it. */
+type Load = { readonly op: string; readonly address: number; readonly hit: boolean; readonly missKind?: MissKind };
+
+/** Every load a program makes, in order, on a cache of this shape (its stores go through too: a hit refreshes its line). */
+function loadsOn(program: string, shape: CacheShape): Load[] {
+  const memory = new MemorySystem(shape);
+  const loads: Load[] = [];
+  for (const step of trace(cpuFor(programByName(program)))) {
+    if (step.loaded !== undefined) {
+      const access = memory.access('load', step.loaded, undefined, step.size);
+      loads.push({ op: step.instr.op, address: step.loaded, hit: access.hit ?? false, missKind: access.missKind });
+    } else if (step.stored !== undefined) memory.access('store', step.stored, undefined, step.size);
+  }
+  return loads;
+}
+
+const MISS_SHORT: Readonly<Record<MissKind, string>> = { 'first-use': 'first use', conflict: 'conflict', 'too-small': 'too small' };
+
+/** A row of loads, HIT or MISS (and why), under a label: a before or after in an upgrade's picture. */
+function missRow(s: Sketch, cx: number, y: number, label: string, loads: readonly Load[]): void {
+  const w = Math.min(70, 720 / loads.length);
+  s.text(cx, y - 32, label, 13, 0.85, true);
+  loads.forEach((load, i) => {
+    const x = cx + (i - (loads.length - 1) / 2) * w;
+    s.box(x, y, w - 6, 26, !load.hit, !load.hit);
+    s.hintText(x, y, load.hit ? 'HIT' : 'MISS', load.hit, 13);
+    if (!load.hit && load.missKind) s.text(x, y + 22, MISS_SHORT[load.missKind], 10, 0.75);
+  });
+}
 
 /** Small drawing kit for lesson diagrams, in the current era's colors. */
 class Sketch {
@@ -758,8 +788,8 @@ const DIAGRAMS: Record<DiagramId, (s: Sketch, cx: number, cy: number) => void> =
     s.arrow(cx - 30, cy - 20, cx + 145, cy - 20);
     s.text(cx - 190, cy + 34, 'HIT: inside the', 12, 0.9);
     s.text(cx - 190, cy + 50, 'MEMORY stage', 12, 0.9);
-    s.text(cx + 58, cy + 34, `MISS: ${MEMORY_TIMING.l1Ns + MEMORY_TIMING.ramNs} ns`, 12, 0.9);
-    s.text(cx + 58, cy + 50, `(${ramCycles(4000, true)} cycles at 4 GHz)`, 12, 0.9);
+    s.text(cx + 58, cy + 34, `MISS: ${missNs(L1_BASE)} ns`, 12, 0.9);
+    s.text(cx + 58, cy + 50, `(${ramCycles(4000, L1_BASE)} cycles at 4 GHz)`, 12, 0.9);
   },
 
   // Memory's blocks and the line each one must go in
@@ -853,14 +883,63 @@ const DIAGRAMS: Record<DiagramId, (s: Sketch, cx: number, cy: number) => void> =
   // SUM ARRAY at 4 GHz with and without the cache (the game's own runs)
   cachescore(s, cx, cy) {
     const spec = PROGRAMS[0];
-    const run = (cache: boolean) => perfectRun(cpuFor(spec), { forwarding: true, mhz: 4000, cache });
-    const [plain, cached] = [run(false), run(true)];
+    const run = (cache?: CacheShape) => perfectRun(cpuFor(spec), { forwarding: true, mhz: 4000, cache });
+    const [plain, cached] = [run(), run(L1_BASE)];
     const ns = (cpi: number) => (cpi * 0.25 * plain.instructions).toFixed(0);
     s.box(cx, cy - 56, 640, 46, true);
     s.text(cx, cy - 56, 'CPU TIME = INSTRUCTIONS x CPI x CLOCK PERIOD', 20, 1, true);
     s.text(cx, cy + 6, `NO CACHE (4 GHz): ${plain.instructions} x ${plain.cpi.toFixed(2)} x 0.25 ns = ${ns(plain.cpi)} ns`, 16, 0.7);
     s.text(cx, cy + 38, `L1 CACHE (4 GHz): ${cached.instructions} x ${cached.cpi.toFixed(2)} x 0.25 ns = ${ns(cached.cpi)} ns`, 16);
     s.text(cx, cy + 74, `${(plain.cpi / cached.cpi).toFixed(1)}x FASTER: ${plain.memory.ramTrips} TRIPS TO RAM BECOME ${cached.memory.ramTrips}`, 16, 1, true);
+  },
+
+  // MORE LINES: TWO PASSES's loads on the first L1 and with 8 lines (the game's own caches)
+  morelines(s, cx, cy) {
+    const [before, after] = [loadsOn('TWO PASSES', L1_BASE), loadsOn('TWO PASSES', cacheShape(['lines']))];
+    missRow(s, cx, cy - 64, 'FIRST L1: 4 LINES (16 BYTES)', before);
+    missRow(s, cx, cy + 28, '8 LINES (32 BYTES)', after);
+    const second = (loads: readonly Load[]) => loads.slice(loads.length / 2).filter((load) => !load.hit).length;
+    s.text(cx, cy + 96, `THE SECOND PASS: ${second(before)} MISSES -> ${second(after)}, ALL 24 BYTES STILL THERE`, 15, 1, true);
+  },
+
+  // 2-WAY: ADD TWO LISTS's loads, one line per block against two-way sets
+  twoway(s, cx, cy) {
+    const [before, after] = [loadsOn('ADD TWO LISTS', L1_BASE), loadsOn('ADD TWO LISTS', cacheShape(['ways']))];
+    missRow(s, cx, cy - 64, 'FIRST L1: ONE LINE PER BLOCK', before);
+    missRow(s, cx, cy + 28, '2-WAY: TWO LINES PER SET', after);
+    const misses = (loads: readonly Load[]) => loads.filter((load) => !load.hit).length;
+    s.text(cx, cy + 96, `THE SAME 16 BYTES: ${misses(before)} MISSES -> ${misses(after)}`, 15, 1, true);
+  },
+
+  // Blocks and the set each must go in: blocks 0 and 4 share set 0, and both fit
+  sets(s, cx, cy) {
+    const blockX = (b: number) => cx - 315 + b * 90;
+    for (let b = 0; b < 8; b++) {
+      s.box(blockX(b), cy - 60, 80, 30, b % 2 === 0 && b % 4 === 0);
+      s.text(blockX(b), cy - 60, `${b * 4}-${b * 4 + 3}`, 13);
+    }
+    s.text(cx, cy - 92, 'MEMORY, IN 4-BYTE BLOCKS', 12, 0.7);
+    const lineX = (i: number) => cx - 160 + i * 90 + (i >= 2 ? 50 : 0);
+    for (let i = 0; i < 4; i++) {
+      s.box(lineX(i), cy + 50, 80, 30, i < 2);
+      s.text(lineX(i), cy + 50, `SET ${i >> 1}`, 13);
+    }
+    s.text(cx - 115, cy + 84, 'SET 0: TWO LINES', 12, 0.7);
+    s.text(cx + 75, cy + 84, 'SET 1: TWO LINES', 12, 0.7);
+    s.arrow(blockX(0), cy - 44, lineX(0), cy + 34);
+    s.arrow(blockX(4), cy - 44, lineX(1), cy + 34);
+    s.text(cx + 330, cy + 4, 'block number', 12, 0.8);
+    s.text(cx + 330, cy + 22, 'mod 2 = its set', 12, 0.8);
+  },
+
+  // BIGGER BLOCKS: SUM WORDS's loads in 4-byte and 8-byte blocks
+  bigblocks(s, cx, cy) {
+    const big = cacheShape(['blocks']);
+    const [before, after] = [loadsOn('SUM WORDS', L1_BASE), loadsOn('SUM WORDS', big)];
+    missRow(s, cx, cy - 64, 'FIRST L1: 4-BYTE BLOCKS, ONE NUMBER EACH', before);
+    missRow(s, cx, cy + 28, '8-BYTE BLOCKS: TWO NUMBERS EACH', after);
+    const misses = (loads: readonly Load[]) => loads.filter((load) => !load.hit).length;
+    s.text(cx, cy + 96, `${misses(before)} MISSES -> ${misses(after)}, EACH ${missNs(L1_BASE)} -> ${missNs(big)} ns`, 15, 1, true);
   },
 
   // Perfect guesses vs always guessing not taken

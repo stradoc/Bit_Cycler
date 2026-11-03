@@ -1,6 +1,6 @@
 import type { Cpu, Step } from './cpu.ts';
 import { destReg, isBranch, isLoad, sourceRegs, unitOf, type Instruction } from './isa.ts';
-import { MemorySystem, type Access } from './memory.ts';
+import { MemorySystem, type Access, type CacheShape } from './memory.ts';
 
 // The classic 5-stage in-order pipeline from Patterson & Hennessy:
 //   IF  fetch   ID  decode + read registers (branches resolve here)
@@ -52,8 +52,8 @@ export type PipelineOptions = {
    * branch is decided before the next instruction is fetched.
    */
   readonly singleCycle?: boolean;
-  /** The L1 data cache: loads that hit don't wait for RAM. */
-  readonly cache?: boolean;
+  /** The L1 data cache, as it's built (sim/memory.ts): loads that hit don't wait for RAM. None if left out. */
+  readonly cache?: CacheShape;
   /**
    * Cycles a wrong guess costs (1 without: the 5-stage pipeline decides a
    * branch in ID, so only the one instruction fetched behind it is thrown
@@ -210,7 +210,7 @@ export class Pipeline {
     this.cpu = cpu;
     this.options = options;
     this.regs = [...cpu.regs];
-    this.memory = new MemorySystem(options.cache ?? false);
+    this.memory = new MemorySystem(options.cache);
     this.clockMhz = options.mhz;
     this.stages.IF = this.fetch();
     if (options.singleCycle) {
