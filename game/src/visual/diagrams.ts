@@ -5,7 +5,7 @@ import { formatMhz } from '../format.ts';
 import { assemble } from '../sim/assembler.ts';
 import { cpuFor, trace } from '../sim/cpu.ts';
 import { tokens } from '../sim/isa.ts';
-import { Cache, cacheShape, L1_BASE, MEMORY_TIMING, MemorySystem, missNs, ramCycles, type CacheShape, type MissKind } from '../sim/memory.ts';
+import { Cache, cacheBytes, cachesBelow, cacheShape, cyclesFor, L1_BASE, LOWER_CACHES, MEMORY_TIMING, MemorySystem, missNs, ramCycles, type CacheShape, type MemoryLevel, type MissKind, type Source } from '../sim/memory.ts';
 import { perfectRun, type PipelineOptions } from '../sim/pipeline.ts';
 import { Chip, relativePower, steadyTemperature, THERMAL } from '../sim/thermal.ts';
 import { branchHint, hintColor } from './branchHint.ts';
@@ -15,17 +15,20 @@ import { textBase } from './display.ts';
 
 type Parts = Phaser.GameObjects.GameObject[];
 
-/** A load in a program, as a cache saw it. */
-type Load = { readonly op: string; readonly address: number; readonly hit: boolean; readonly missKind?: MissKind };
+/** A load in a program, as the caches saw it: where it was found, and how long it took (ns). */
+type Load = { readonly op: string; readonly address: number; readonly hit: boolean; readonly missKind?: MissKind; readonly level: MemoryLevel; readonly ns: number };
 
-/** Every load a program makes, in order, on a cache of this shape (its stores go through too: a hit refreshes its line). */
-function loadsOn(program: string, shape: CacheShape): Load[] {
-  const memory = new MemorySystem(shape);
+/**
+ * Every load a program makes, in order, on an L1 of this shape with `lower`
+ * caches below it (its stores go through too: a hit refreshes its line).
+ */
+function loadsOn(program: string, shape: CacheShape, lower = 0): Load[] {
+  const memory = new MemorySystem(shape, lower);
   const loads: Load[] = [];
   for (const step of trace(cpuFor(programByName(program)))) {
     if (step.loaded !== undefined) {
       const access = memory.access('load', step.loaded, undefined, step.size);
-      loads.push({ op: step.instr.op, address: step.loaded, hit: access.hit ?? false, missKind: access.missKind });
+      loads.push({ op: step.instr.op, address: step.loaded, hit: access.hit ?? false, missKind: access.missKind, level: access.level, ns: access.ns });
     } else if (step.stored !== undefined) memory.access('store', step.stored, undefined, step.size);
   }
   return loads;
@@ -33,16 +36,71 @@ function loadsOn(program: string, shape: CacheShape): Load[] {
 
 const MISS_SHORT: Readonly<Record<MissKind, string>> = { 'first-use': 'first use', conflict: 'conflict', 'too-small': 'too small' };
 
-/** A row of loads, HIT or MISS (and why), under a label: a before or after in an upgrade's picture. */
-function missRow(s: Sketch, cx: number, y: number, label: string, loads: readonly Load[]): void {
+/**
+ * A row of loads under a label: a before or after in an upgrade's picture.
+ * With the L1 alone, HIT or MISS (and why); with caches below it (`levels`),
+ * where each was found (HIT in the L1, L2, L3 or RAM) and how long it took.
+ */
+function missRow(s: Sketch, cx: number, y: number, label: string, loads: readonly Load[], levels = false): void {
   const w = Math.min(70, 720 / loads.length);
   s.text(cx, y - 32, label, 13, 0.85, true);
   loads.forEach((load, i) => {
     const x = cx + (i - (loads.length - 1) / 2) * w;
-    s.box(x, y, w - 6, 26, !load.hit, !load.hit);
-    s.hintText(x, y, load.hit ? 'HIT' : 'MISS', load.hit, 13);
-    if (!load.hit && load.missKind) s.text(x, y + 22, MISS_SHORT[load.missKind], 10, 0.75);
+    const far = load.level === 'RAM';
+    s.box(x, y, w - 6, 26, !load.hit && (far || !levels), !load.hit && far);
+    s.hintText(x, y, load.hit ? 'HIT' : levels ? load.level : 'MISS', load.hit, 13);
+    if (levels) s.text(x, y + 22, `${load.ns} ns`, 10, 0.75);
+    else if (!load.hit && load.missKind) s.text(x, y + 22, MISS_SHORT[load.missKind], 10, 0.75);
   });
+}
+
+/** Loads' average time (ns, to a tenth): the AMAT of a picture's row. */
+const averageNs = (loads: readonly Load[]) => Number((loads.reduce((ns, load) => ns + load.ns, 0) / loads.length).toFixed(1));
+
+/**
+ * A new cache level's picture: `program`'s loads on the first L1 without the
+ * `lower`th level below it and with it, each cell where it was found, and the
+ * trips to RAM and average load time each way.
+ */
+function newLevel(s: Sketch, cx: number, cy: number, program: string, lower: number, without: string, withIt: string): void {
+  const [before, after] = [loadsOn(program, L1_BASE, lower - 1), loadsOn(program, L1_BASE, lower)];
+  missRow(s, cx, cy - 64, without, before, true);
+  missRow(s, cx, cy + 28, withIt, after, true);
+  const trips = (loads: readonly Load[]) => loads.filter((load) => load.level === 'RAM').length;
+  s.text(cx, cy + 96, `${trips(before)} TRIPS TO RAM -> ${trips(after)}, AN AVERAGE LOAD ${averageNs(before)} -> ${averageNs(after)} ns`, 15, 1, true);
+}
+
+/** Where each level is in TICK's comparison: the desk, the shelf in the room, the bookcase down the hall, the library across town. */
+const PLACES: Readonly<Record<'L1' | Source, string>> = { L1: 'your desk', L2: 'the shelf', L3: 'down the hall', RAM: 'across town' };
+
+/**
+ * The memory hierarchy with `lower` caches below the L1: each level's size,
+ * TICK's comparison, and how long a load takes when it's found there (ns, and
+ * cycles at 4 GHz), from the game's own timings.
+ */
+function ladder(s: Sketch, cx: number, cy: number, lower: number): void {
+  const levels: { name: string; bytes: number; from?: 'L1' | Source }[] = [
+    { name: 'CPU', bytes: 0 },
+    { name: 'L1', bytes: cacheBytes(L1_BASE), from: 'L1' },
+    ...cachesBelow(lower).map((level) => ({ name: level.name, bytes: cacheBytes(level.shape), from: level.name })),
+    { name: 'RAM', bytes: 256, from: 'RAM' as const },
+  ];
+  const gap = 720 / (levels.length - 1);
+  levels.forEach((level, i) => {
+    const x = cx - 360 + i * gap;
+    const y = cy - 40;
+    if (i > 0) s.arrow(x - gap + 58, y, x - 58, y);
+    s.box(x, y, 104, 64, i < 2, i === 0);
+    s.text(x, y - 12, level.name, 20, 1, true);
+    if (level.bytes > 0) s.text(x, y + 14, `${level.bytes} BYTES`, 12, 0.8);
+    if (!level.from) return;
+    const ns = level.from === 'L1' ? MEMORY_TIMING.l1Ns : missNs(L1_BASE, lower, level.from);
+    s.text(x, y + 52, PLACES[level.from], 13, 0.85);
+    s.text(x, y + 76, `${ns} ns`, 16, 1, true);
+    // A hit fits in the MEMORY stage's own cycle; anything further freezes the pipeline for its cycles.
+    s.text(x, y + 98, level.from === 'L1' ? 'in the MEMORY stage' : `${cyclesFor(ns, 4000)} cycles at 4 GHz`, 11, 0.75);
+  });
+  s.text(cx, cy + 112, 'EACH LEVEL DOWN: BIGGER, FURTHER, SLOWER', 14, 1, true);
 }
 
 /** Small drawing kit for lesson diagrams, in the current era's colors. */
@@ -940,6 +998,41 @@ const DIAGRAMS: Record<DiagramId, (s: Sketch, cx: number, cy: number) => void> =
     missRow(s, cx, cy + 28, '8-BYTE BLOCKS: TWO NUMBERS EACH', after);
     const misses = (loads: readonly Load[]) => loads.filter((load) => !load.hit).length;
     s.text(cx, cy + 96, `${misses(before)} MISSES -> ${misses(after)}, EACH ${missNs(L1_BASE)} -> ${missNs(big)} ns`, 15, 1, true);
+  },
+
+  // THE L2: the levels with a shelf in the room
+  shelf(s, cx, cy) {
+    ladder(s, cx, cy, 1);
+  },
+
+  // THE L2: TWO PASSES's loads on the L1 alone and with the L2 behind it (the game's own caches)
+  l2loads(s, cx, cy) {
+    newLevel(s, cx, cy, 'TWO PASSES', 1, 'THE L1 ALONE: EVERY MISS GOES TO RAM', 'WITH THE L2: ITS 16-BYTE BLOCKS HOLD ALL 24 BYTES');
+  },
+
+  // The average memory access time, worked out on TWO PASSES's loads, without and with the L2
+  amat(s, cx, cy) {
+    const [before, after] = [loadsOn('TWO PASSES', L1_BASE), loadsOn('TWO PASSES', L1_BASE, 1)];
+    const n = before.length;
+    const l1Misses = after.filter((load) => !load.hit).length;
+    const ramLoads = after.filter((load) => load.level === 'RAM').length;
+    const [l2] = LOWER_CACHES;
+    s.box(cx, cy - 76, 720, 46, true);
+    s.text(cx, cy - 76, 'AMAT = HIT TIME + MISS RATE x MISS PENALTY', 20, 1, true);
+    s.text(cx, cy - 22, 'AVERAGE MEMORY ACCESS TIME: HOW LONG A LOAD TAKES, ON AVERAGE', 12, 0.75);
+    s.text(cx, cy + 14, `L1 ALONE: ${MEMORY_TIMING.l1Ns} + ${l1Misses}/${n} x ${MEMORY_TIMING.ramNs} = ${averageNs(before)} ns`, 16, 0.75);
+    s.text(cx, cy + 48, `WITH THE L2: ${MEMORY_TIMING.l1Ns} + ${l1Misses}/${n} x (${l2.ns} + ${ramLoads}/${l1Misses} x ${MEMORY_TIMING.ramNs}) = ${averageNs(after)} ns`, 16);
+    s.text(cx, cy + 82, "THE L2'S MISS PENALTY IS RAM; THE L1'S IS NOW THE L2, MOSTLY", 13, 0.8);
+  },
+
+  // THE L3: the levels with a bookcase down the hall
+  library(s, cx, cy) {
+    ladder(s, cx, cy, 2);
+  },
+
+  // THE L3: SUM BIG NUMBERS's loads with the L2 and with the L3 too
+  l3loads(s, cx, cy) {
+    newLevel(s, cx, cy, 'SUM BIG NUMBERS', 2, 'L1 AND L2: RAM SENDS 16 BYTES, 2 NUMBERS', 'WITH THE L3: RAM SENDS 64 BYTES, 8 NUMBERS');
   },
 
   // Perfect guesses vs always guessing not taken

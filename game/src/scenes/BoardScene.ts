@@ -8,6 +8,7 @@ import { getProgress, setProgress, updateProgress } from '../save.ts';
 import { teaching, updateSettings } from '../settings.ts';
 import { UNITS } from '../sim/isa.ts';
 import { jobSheet } from '../sim/jobSheet.ts';
+import { showcaseLine } from '../sim/showcase.ts';
 import { contractSeconds, cpiFor, cpuLine, hasSeen, isLocked, isTight, isTutorial, jobItems, ratedMhz, withSeen, type Contract } from '../sim/progress.ts';
 import { THERMAL } from '../sim/thermal.ts';
 import { clockSeconds, DAY_END, DAY_SECONDS, DAY_START, dayOver, endDay, fitsToday, gradeName, shortDate, timeLeft, weekday } from '../sim/workday.ts';
@@ -343,7 +344,17 @@ export class BoardScene extends Screen {
     centered(SHEET_ROWS.when, [done, offer].filter(Boolean).join('   '), TEXT.small, ALPHA.subtitle);
 
     // The details: a rule, then the loop the song plays, the notes it sends down each lane, and the memory it uses.
-    add(this.textAt(SHEET_MID, SHEET_ROWS.details - 13, '-'.repeat(60), DETAIL_SIZE).setOrigin(0.5, 0).setAlpha(0.35));
+    // A job dealt to show off one of your parts says what the part saves on it, in the middle of the rule.
+    const ruleY = SHEET_ROWS.details - 13;
+    const note = showcaseLine(contract, progress);
+    if (note) {
+      const words = add(this.textAt(SHEET_MID, ruleY, ` ${note} `, DETAIL_SIZE).setOrigin(0.5, 0).setColor(cssColor(this.era.accent)));
+      const dashes = '-'.repeat(Math.max(0, Math.floor((60 - note.length - 2) / 2)));
+      add(this.textAt(SHEET_MID - words.width / 2, ruleY, dashes, DETAIL_SIZE).setOrigin(1, 0).setAlpha(0.35));
+      add(this.textAt(SHEET_MID + words.width / 2, ruleY, dashes, DETAIL_SIZE).setOrigin(0, 0).setAlpha(0.35));
+    } else {
+      add(this.textAt(SHEET_MID, ruleY, '-'.repeat(60), DETAIL_SIZE).setOrigin(0.5, 0).setAlpha(0.35));
+    }
     const top = SHEET_ROWS.details;
     // Each column is drawn at x = 0, measured, then both are moved so they sit centered together.
     const left = [heading(0, top, `THE LOOP, RUN ${job.loopRuns} TIMES`), ...job.loop.map((code, i) => detail(0, top + (i + 1) * DETAIL_LINE, code))];

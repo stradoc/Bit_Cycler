@@ -92,9 +92,27 @@ test('a replay plays on the chip its run started on, and watching again or playi
   assert.equal(songSetup(watch(run, recording), worn, url('practice')).practice, false);
 });
 
+test('the caches below the L1: from the save, ?cache=l2 or l3, a lesson\'s own; never without an L1; kept by retries and replays', () => {
+  const three: Progress = { ...worn, cacheLevels: 3 };
+  assert.equal(songSetup({ forwarding: true }, three, url()).lowerCaches, 2);
+  assert.equal(songSetup({ forwarding: true }, { ...worn, cacheLevels: 2 }, url()).lowerCaches, 1);
+  assert.equal(songSetup({ forwarding: true }, worn, url()).lowerCaches, 0);
+  assert.equal(songSetup({}, NEW_GAME, url('cache=l2')).lowerCaches, 1);
+  assert.equal(songSetup({}, NEW_GAME, url('cache=lines,l3')).lowerCaches, 2);
+  assert.deepEqual(songSetup({}, NEW_GAME, url('cache=lines,l3')).l1, cacheShape(['lines']));
+  assert.equal(songSetup({}, NEW_GAME, url()).lowerCaches, 0, 'no L1, no levels below it');
+  // A lesson that names its L1 plays it alone, unless it names the levels too (the L2's and L3's lessons do).
+  assert.equal(songSetup({ l1: cacheShape(['lines']) }, three, url()).lowerCaches, 0);
+  assert.equal(songSetup({ l1: L1_BASE, lowerCaches: 1 }, three, url()).lowerCaches, 1);
+  const run = songSetup({ forwarding: true }, three, url());
+  assert.equal(songSetup(playAgain(run), worn, url()).lowerCaches, 2, 'a retry plays the same CPU');
+  assert.equal(songSetup(watch(run, recording), worn, url()).lowerCaches, 2);
+  assert.equal(pipelineOptions(run, 4000).lowerCaches, 2);
+});
+
 test('the simulator runs the setup\'s hardware', () => {
   const setup = songSetup({ forwarding: true, predictor: '1-bit' }, worn, url());
-  assert.deepEqual(pipelineOptions(setup, 40), { forwarding: true, predictor: '1-bit', singleCycle: false, cache: L1_BASE, mhz: 40, wrongGuessCycles: 1, superscalar: false });
+  assert.deepEqual(pipelineOptions(setup, 40), { forwarding: true, predictor: '1-bit', singleCycle: false, cache: L1_BASE, lowerCaches: 0, mhz: 40, wrongGuessCycles: 1, superscalar: false });
 });
 
 test('the deep pipeline: from the save where branches are guessed, a faster rated clock, dearer wrong guesses, kept by retries and replays', () => {

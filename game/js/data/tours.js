@@ -1,3 +1,4 @@
+import { cacheBytes, L1_BASE, LOWER_CACHES, missNs } from '../sim/memory.js';
 import { LESSONS } from './lessons.js';
 // What the guide says on each screen: TICK, a little robot who walks the
 // player through the real screen, pointing at its parts (everything else
@@ -85,6 +86,11 @@ export const CALENDAR_TOUR = [
     { say: "Choose any day with the arrows to see it here: a finished day's timecard, or what's coming that day.", point: 'day' },
     { say: 'Days when offers end are marked, so you can plan which jobs to take first. Press B to go back to the board.', point: 'month' },
 ];
+/** The caches below the L1, as their lessons talk about them. */
+const [L2, L3] = LOWER_CACHES;
+const bytes = (level) => cacheBytes(level.shape);
+/** How long a load found at `from` takes on the first L1 with `lower` caches below it (ns). */
+const ns = (lower, from) => missNs(L1_BASE, lower, from);
 /** Every lesson as a tour of the song screen, by lesson id (data/lessons.ts). */
 export const SONG_TOURS = {
     tier1: [
@@ -212,6 +218,25 @@ export const SONG_TOURS = {
         { say: 'Wide data needs this most: a 32-bit number fills a whole 4-byte block, so every new number was a miss.', picture: 'bigblocks' },
         { say: "A bigger block takes longer to send, about 5 ns more per miss. Here, half the trips is well worth it.", picture: 'bigblocks' },
         { say: "Let's practice: a job that sums 32-bit numbers.", point: 'line' },
+    ],
+    l2: [
+        { say: `Meet your L2 CACHE: a second, bigger cache behind the L1. It holds ${bytes(L2)} bytes, eight times the first L1, but it's a little slower.`, picture: 'shelf', mood: 'happy' },
+        { say: "Your L1 is a desk, and RAM is a library across town. The L2 is a shelf in the same room: not as handy as the desk, but no trip outside.", picture: 'shelf' },
+        { say: `When the L1 misses, the L2 is checked next. If it has the block, it answers in ${ns(1, 'L2')} ns instead of RAM's ${ns(1, 'RAM')}: a short wait, not a long one.`, point: 'lookup' },
+        { say: `If the L2 misses too, it's off to RAM, ${L2.ns} ns later than before: the L2 was checked on the way. That's the price of a level.`, point: 'lookup', mood: 'worried' },
+        { say: `The L2 moves BLOCKS of ${L2.shape.blockBytes} bytes, so one trip to RAM brings the next numbers too. When the L1 misses them, the L2 has them.`, picture: 'l2loads' },
+        { say: 'The lookup line and the bus now name where each load was found. Watch the waits: the L2 answers in fewer beats than RAM.', point: 'lookup' },
+        { say: "How fast is memory, overall? Its AMAT: how long a load takes, on average. A hit is quick; each miss adds its share of the trip down.", picture: 'amat' },
+        { say: "Let's practice: a job that reads 24 bytes twice. Count the short waits.", point: 'line' },
+    ],
+    l3: [
+        { say: `Meet your L3 CACHE: a third cache, behind the L2. ${bytes(L3)} bytes: room for a whole 64-bit job, all 32 of its numbers.`, picture: 'library', mood: 'happy' },
+        { say: 'Desk, shelf, and now a big bookcase down the hall, before the library across town. Further than the shelf, much nearer than town.', picture: 'library' },
+        { say: `An L2 miss now checks the L3. If it has the block, it answers in ${ns(2, 'L3')} ns, not ${ns(2, 'RAM')}. If not, it's RAM, ${L3.ns} ns later than before.`, point: 'lookup' },
+        { say: `The L3 moves BLOCKS of ${L3.shape.blockBytes} bytes: eight 64-bit numbers per trip to RAM, where the L2's blocks held two.`, picture: 'l3loads' },
+        { say: "Wide numbers need it most: a 64-bit number fills two of the first L1's blocks, so each one misses the L1. The levels below catch them.", picture: 'l3loads' },
+        { say: 'Real chips do this too: the further down a level is, the bigger its blocks, so each slow trip brings back more.' },
+        { say: "Let's practice: a job that sums 16 numbers, 64 bits each. Watch which level answers.", point: 'line' },
     ],
     deep: [
         { say: 'Your DEEP PIPELINE splits each instruction into 10 smaller stages instead of 5. Smaller stages are quicker, so the clock ticks 1.5x faster.', picture: 'deep' },

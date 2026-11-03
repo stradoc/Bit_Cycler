@@ -63,8 +63,11 @@ test("the L1 drawn on the chip as it's built: a cell per byte of each line, none
     }
   }
   // 4 lines of 4 cells at first; all three upgrades: 8 lines of 8.
-  const cells = (upgrades: readonly ('lines' | 'ways' | 'blocks')[]) => buildChip({ ...cached, cacheUpgrades: upgrades }).length;
+  const cells = (upgrades: readonly ('lines' | 'ways' | 'blocks')[], cacheLevels = 1) => buildChip({ ...cached, cacheUpgrades: upgrades, cacheLevels }).length;
   assert.equal(cells(['lines', 'ways', 'blocks']) - cells([]), 64 - 16);
+  // The L2 and the L3 add a bar for each of their lines: 8, then 4.
+  assert.equal(cells([], 2) - cells([]), 8);
+  assert.equal(cells([], 3) - cells([], 2), 4);
 });
 
 test('as the chip turns, every part is drawn after every part it can hide', () => {

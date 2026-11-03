@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { programByName } from '../game/src/data/programs.ts';
+import { jobSheet } from '../game/src/sim/jobSheet.ts';
 import { assemble } from '../game/src/sim/assembler.ts';
 import { Cpu, cpuFor, itemAt, trace } from '../game/src/sim/cpu.ts';
 import { bitsOf, generateProgram, kindOf, seedOf } from '../game/src/sim/generator.ts';
@@ -178,5 +179,44 @@ test('OTHERS reads its data twice: wider data outgrows the first L1 (TOO SMALL),
       assert.ok(missKinds(bits, seed)['too-small'] > 0, `${bits}-bit #${seed}: no TOO SMALL misses`);
       assert.equal(missKinds(bits, seed, ['lines'])['too-small'], 0, `${bits}-bit #${seed} with 8 lines`);
     }
+  }
+});
+
+// Kinds dealt only to show off a part (sim/showcase.ts): never drawn at random (the kinds test above), checked here.
+const SHOWCASE_KINDS = ['UNROLLED SUM', 'UNROLLED CHECKSUM', 'CHECKED COPY'];
+
+test('the showcase kinds, at every width: finish, leave the right answer, stay in their 32 items, and fit the job sheet', () => {
+  for (const kind of SHOWCASE_KINDS) {
+    for (const bits of [8, ...WIDE] as const) {
+      for (const seed of SEEDS.slice(0, 150)) {
+        const spec = generateProgram(seed, kind, bits);
+        assert.equal(kindOf(spec.name), kind);
+        assert.equal(programByName(spec.name).source, spec.source, spec.name);
+        const cpu = cpuFor(spec);
+        const steps = trace(cpu, 400);
+        while (!cpu.halted) cpu.step();
+        assert.ok(steps.length >= 16 && steps.length <= 120, `${spec.name}: ${steps.length} instructions`);
+        for (const step of steps) {
+          const address = step.loaded ?? step.stored;
+          if (address !== undefined) assert.ok(address + (bits / 8) <= SHOWN_BYTES * (bits / 8), `${spec.name}: memory past its 32 items`);
+        }
+        for (const { address, value } of spec.answer) assert.equal(itemAt(cpu.memory, address, bits), value, `${spec.name}: address ${address}`);
+        const keys = spec.keys ?? [];
+        assert.deepEqual(keys.slice(0, 2).map((key) => [key.reg, key.tag]), [[1, 'NEXT'], [2, 'END']], spec.name);
+        for (const key of keys) assert.ok(`x${key.reg} = ${key.tag}: ${key.about}`.length <= 44, `${spec.name}: "${key.about}" too long for the count-in`);
+        assert.ok(spec.client && spec.client.length <= 19, spec.name);
+        assert.ok(jobSheet(spec.name).loop.length <= 7, `${spec.name}: its loop won't fit the job sheet`);
+      }
+    }
+  }
+});
+
+test('CHECKED COPY reads its data twice: wider data outgrows the first L1 (TOO SMALL), and 8 lines hold it', () => {
+  for (const seed of SEEDS.slice(0, 100)) {
+    const missKinds = (bits: 8 | 32, upgrades: Parameters<typeof cacheShape>[0] = []) =>
+      perfectRun(cpuFor(generateProgram(seed, 'CHECKED COPY', bits)), { forwarding: true, cache: cacheShape(upgrades), mhz: 4000 }).memory.missKinds;
+    assert.equal(missKinds(8)['too-small'], 0, `bytes #${seed}`);
+    assert.ok(missKinds(32)['too-small'] > 0, `32-bit #${seed}`);
+    assert.equal(missKinds(32, ['lines'])['too-small'], 0, `32-bit #${seed} with 8 lines`);
   }
 });

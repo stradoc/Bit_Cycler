@@ -3,14 +3,15 @@ import assert from 'node:assert/strict';
 import { NORMAL_WINDOWS } from '../game/src/rhythm/judge.ts';
 import { PipelineRun, type Action } from '../game/src/rhythm/pipelineRun.ts';
 import { assemble } from '../game/src/sim/assembler.ts';
-import { Cpu } from '../game/src/sim/cpu.ts';
+import { Cpu, cpuFor } from '../game/src/sim/cpu.ts';
 import { unitOf } from '../game/src/sim/isa.ts';
 import { CARD_WIDTH, practiceLines, resultCard, runReport } from '../game/src/song/results.ts';
 import { ASCII, cardLines, CP437 } from '../game/src/visual/asciiChart.ts';
 import { NO_CALLS } from '../game/src/rhythm/skills.ts';
+import { Chip } from '../game/src/sim/thermal.ts';
 import { cacheShape, L1_BASE } from '../game/src/sim/memory.ts';
 import { fillBoard, NEW_GAME } from '../game/src/sim/progress.ts';
-import { songSetup, type SongStart } from '../game/src/song/setup.ts';
+import { pipelineOptions, songSetup, type SongStart } from '../game/src/song/setup.ts';
 import type { Shown } from '../game/src/song/view.ts';
 import { SongWords } from '../game/src/song/words.ts';
 
@@ -125,5 +126,39 @@ test("TICK's explanation of the results: short lines, one for each way cycles we
     const first = report.compare.some((c) => c.cpu === 'first-l1');
     assert.equal(first, Boolean(setup.l1 && setup.l1.ways > 1));
     assert.equal(steps.some((step) => step.say.startsWith('With the first L1 (16 bytes: 4 lines of 4, direct-mapped)')), first);
+  }
+});
+
+test('with caches below the L1: the card says where the loads were found and their AMAT, TICK names the levels, and the run is compared without the last one', () => {
+  for (const lowerCaches of [1, 2]) {
+    const contract = fillBoard(NEW_GAME, () => 0.5).board[0];
+    const replay = { cycles: [], dials: [], maxDial: 1.5, canOverclock: false, paid: true, late: false };
+    const setup = songSetup({ practice: false, contract, replay, forwarding: true, l1: L1_BASE, lowerCaches, program: 'TWO PASSES' }, NEW_GAME, new URLSearchParams());
+    const cpu = cpuFor(setup.spec);
+    const fresh = cpu.clone();
+    // At 4 GHz, so the misses wait.
+    const run = new PipelineRun(cpu, pipelineOptions(setup, 4000), 3, 0.6, NORMAL_WINDOWS, new Chip(4000));
+    const words = new SongWords(run, setup, { regs: [...run.pipeline.regs], memory: cpu.memory.slice(), lines: [] });
+    playPerfectly(run);
+    const report = runReport({ run, setup, freshCpu: fresh, dials: [], calls: NO_CALLS });
+    // TWO PASSES: 2 L1 hits, and the L2's two 16-byte blocks answer 8 misses. The first block of each comes from
+    // RAM; with the L3, its 64-byte block holds both, so the second is found there.
+    const below = lowerCaches > 1 ? [{ level: 'L3', loads: 1 }, { level: 'RAM', loads: 1 }] : [{ level: 'RAM', loads: 2 }];
+    assert.deepEqual(report.cache?.found, [{ level: 'L1', loads: 2 }, { level: 'L2', loads: 8 }, ...below]);
+    const card = resultCard(report);
+    const loads = card.rows.find((row) => row.kind === 'line' && row.left.startsWith('LOADS:'));
+    assert.ok(loads?.kind === 'line', 'no loads row');
+    assert.match(loads.left, lowerCaches > 1 ? /^LOADS: L1 2, L2 8, L3 1, RAM 1$/ : /^LOADS: L1 2, L2 8, RAM 2$/);
+    assert.match(loads.right ?? '', /^AMAT \d+(\.\d)? ns$/);
+    for (const glyphs of [ASCII, CP437]) assert.ok(cardLines(card, glyphs).lines.every((line) => line.text.length <= CARD_WIDTH + 1), 'a line runs off the card');
+    const legend = card.rows.find((row) => row.kind === 'legend');
+    assert.ok(legend?.kind === 'legend' && legend.entries.some((entry) => entry.text.endsWith('WAITING ON MEMORY')));
+    const steps = words.resultsTour(report);
+    for (const step of steps) assert.ok(step.say.length <= 150, `too long: ${step.say}`);
+    assert.ok(steps.some((step) => (lowerCaches > 1 ? /cycles waited on memory: 8 from the L2, 1 from the L3, 1 from RAM\./ : /cycles waited on memory: 8 from the L2, 2 from RAM\./).test(step.say)));
+    assert.ok(steps.some((step) => step.say.startsWith('On average a load took') && step.say.includes('AMAT')));
+    const without = lowerCaches === 1 ? 'no-l2' : 'no-l3';
+    assert.ok(report.compare.some((c) => c.cpu === without), without);
+    assert.ok(steps.some((step) => step.say.startsWith(lowerCaches === 1 ? 'With the L1 alone' : 'Without the L3')));
   }
 });

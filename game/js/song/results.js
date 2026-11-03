@@ -1,5 +1,5 @@
-import { formatHours, formatMoney } from '../format.js';
-import { L1_BASE, sameShape } from '../sim/memory.js';
+import { formatDuration, formatHours, formatMoney } from '../format.js';
+import { cachesBelow, L1_BASE, sameShape } from '../sim/memory.js';
 import { perfectCycles } from '../sim/pipeline.js';
 import { payFor } from '../sim/progress.js';
 import { callsLine } from '../rhythm/skills.js';
@@ -54,6 +54,9 @@ export function runReport(f) {
     // An upgraded L1 against the first one: what the upgrades bought.
     if (setup.l1 && !sameShape(setup.l1, L1_BASE))
         compare.push({ cpu: 'first-l1', time: best({ ...rated, cache: L1_BASE }) });
+    // The last cache level bought against the CPU without it.
+    if (setup.lowerCaches > 0)
+        compare.push({ cpu: setup.lowerCaches === 1 ? 'no-l2' : 'no-l3', time: best({ ...rated, lowerCaches: setup.lowerCaches - 1 }) });
     if (!setup.singleCycle) {
         // A single-cycle CPU's clock is a quarter of a pipelined one's (its cycle is all five stages long).
         const singleMhz = ratedMhz / 4;
@@ -71,16 +74,23 @@ export function runReport(f) {
         singleCycle: setup.singleCycle,
         pairs: p.pairs,
         ramTrips: p.memory.ramTrips,
+        lowerCaches: setup.lowerCaches,
         period,
         cooling: chip.haltedMicros / n / 1e6,
         compare,
         branches: setup.guessing ? { right: p.branches - p.mispredicted, total: p.branches, predictorRight: setup.predictor ? p.branches - p.predictorMisses : undefined } : undefined,
         calls: f.calls,
-        cache: setup.l1 && p.memory.loads > 0 ? { hits: p.memory.hits, loads: p.memory.loads } : undefined,
+        cache: setup.l1 && p.memory.loads > 0 ? cacheReport(p.memory, setup.lowerCaches) : undefined,
         clock: chip.cycles > 0 && (f.dials.some((d) => d !== 1) || chip.overheats > 0)
             ? { averageMhz: Number((1 / period / 1e6).toPrecision(3)), peak: Math.round(chip.peak), overheats: chip.overheats, maxDial: chip.maxDial }
             : undefined,
     };
+}
+/** A run's loads with a cache: where they were found, at the levels this CPU has, and their average time. */
+function cacheReport(memory, lowerCaches) {
+    const levels = ['L1', ...cachesBelow(lowerCaches).map((level) => level.name), 'RAM'];
+    // Stores go to the write buffer, so every load is in one of these.
+    return { hits: memory.hits, loads: memory.loads, found: levels.map((level) => ({ level, loads: memory.served[level] })), amatNs: memory.averageLoadNs() };
 }
 /** Each use's mark in the cycles' bar (the pipeline filling is its empty part), and its name in the key under it. */
 const USE_MARKS = {
@@ -114,7 +124,7 @@ export function resultCard(report) {
         rows.push({ kind: 'line', left: report.client, part: 'verdict' }, { kind: 'gap' });
     }
     // Where the cycles went: a bar, then its key. A single-cycle CPU's lost cycles are misses, not stalls.
-    const name = (use) => (use === 'stalled' && report.singleCycle ? 'MISSED' : USE_MARKS[use].name);
+    const name = (use) => (use === 'stalled' && report.singleCycle ? 'MISSED' : use === 'ram' && report.lowerCaches > 0 ? 'WAITING ON MEMORY' : USE_MARKS[use].name);
     rows.push({ kind: 'line', left: `WHERE THE ${report.cycles} CYCLES WENT`, right: `CPI ${report.cpi.toFixed(2)}`, part: 'cycles' }, {
         kind: 'stack',
         segments: report.uses.flatMap(({ use, cycles }) => {
@@ -128,6 +138,12 @@ export function resultCard(report) {
         entries: report.uses.map(({ use, cycles }) => ({ mark: USE_MARKS[use].mark, text: `${cycles} ${name(use)}${use === 'finished' && report.pairs > 0 ? `, ${report.pairs} AS PAIRS` : ''}` })),
         part: 'cycles',
     });
+    // With a cache: where the loads were found, and their average time (the AMAT).
+    const { cache } = report;
+    if (cache) {
+        const found = cache.found.map(({ level, loads }) => `${level} ${loads}`).join(', ');
+        rows.push({ kind: 'line', left: `LOADS: ${found}`, right: `AMAT ${formatDuration(cache.amatNs / 1e9)}` });
+    }
     const calls = callsLine(report.calls);
     if (calls)
         rows.push({ kind: 'gap' }, { kind: 'line', left: calls });

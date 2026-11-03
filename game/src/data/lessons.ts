@@ -19,6 +19,7 @@ export type DiagramId =
   | 'ramtrip' | 'wallchart' | 'floor' | 'freezeplay'
   | 'desk' | 'lines' | 'address' | 'locality' | 'misskinds' | 'cacheplay' | 'cachescore'
   | 'morelines' | 'twoway' | 'sets' | 'bigblocks'
+  | 'shelf' | 'l2loads' | 'amat' | 'library' | 'l3loads'
   | 'deep' | 'deeptrade';
 
 export type Lesson = {
@@ -28,11 +29,12 @@ export type Lesson = {
   readonly scene: 'pipeline';
   /**
    * How its song is set up. A practice right after buying (flow.ts) runs on
-   * the player's own CPU, but keeps the lesson's `program` and `l1`: the L1's
-   * upgrades are each shown on a program made for the misses they fix, on the
-   * first L1 with just that upgrade, so the difference is plain.
+   * the player's own CPU, but keeps the lesson's `program`, `l1` and
+   * `lowerCaches`: the L1's upgrades and the caches below it are each shown on
+   * a program made for what they fix, on the first L1 with just that change,
+   * so the difference is plain.
    */
-  readonly options?: TierOptions & { readonly l1?: CacheShape; readonly deep?: boolean };
+  readonly options?: TierOptions & { readonly l1?: CacheShape; readonly lowerCaches?: number; readonly deep?: boolean };
   /** A practice follows the tour (a new kind of CPU); without one, the tour explains and the game goes on. */
   readonly practice: boolean;
 };
@@ -53,6 +55,8 @@ export const LESSONS: Readonly<Record<string, Lesson>> = Object.fromEntries(
     { id: 'morelines', title: 'THE L1: 8 LINES', scene: 'pipeline', options: { forwarding: true, l1: cacheShape(['lines']), program: 'TWO PASSES' }, practice: true },
     { id: 'twoway', title: 'THE L1: 2-WAY SETS', scene: 'pipeline', options: { forwarding: true, l1: cacheShape(['ways']), program: 'ADD TWO LISTS' }, practice: true },
     { id: 'bigblocks', title: 'THE L1: 8-BYTE BLOCKS', scene: 'pipeline', options: { forwarding: true, l1: cacheShape(['blocks']), program: 'SUM WORDS' }, practice: true },
+    { id: 'l2', title: 'THE L2 CACHE', scene: 'pipeline', options: { forwarding: true, l1: L1_BASE, lowerCaches: 1, program: 'TWO PASSES' }, practice: true },
+    { id: 'l3', title: 'THE L3 CACHE', scene: 'pipeline', options: { forwarding: true, l1: L1_BASE, lowerCaches: 2, program: 'SUM BIG NUMBERS' }, practice: true },
     { id: 'deep', title: 'THE DEEP PIPELINE', scene: 'pipeline', options: { forwarding: true, guessing: true, deep: true }, practice: true },
   ] satisfies Lesson[]).map((lesson) => [lesson.id, lesson]),
 );

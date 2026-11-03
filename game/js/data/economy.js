@@ -119,15 +119,41 @@ export const CLOCK = {
     prices: [200, 290, 420, 610, 885, 1280, 1860, 2700, 3900, 5660],
 };
 /**
- * Memory parts, separate from the CPU tiers, bought in this order. The L1
- * cache goes on sale once your clock outruns RAM (a trip takes over a cycle).
+ * Memory parts, separate from the CPU tiers, bought in this order: each is
+ * the next cache level (sim/memory.ts: the L1's shape, then LOWER_CACHES).
+ * The L1 goes on sale once your clock outruns RAM (a trip takes over a
+ * cycle); each level after it once your chip is `bits` wide, when the data
+ * outgrows the level above (a 32-bit job's 128 bytes, a 64-bit job's 256).
+ * `later` is what the shop says before it's on sale. Prices are provisional
+ * until the balance pass.
  */
 export const MEMORY_PARTS = [
     {
         id: 'l1',
         name: 'L1 CACHE: 16 BYTES',
         price: 500,
+        bits: 8,
+        lessonId: 'cache',
         about: 'A tiny, fast memory beside the CPU: 4 lines of 4 bytes. A load it holds needs no trip to RAM; a miss brings in the whole 4-byte block, so the next bytes hit. Stores go out through a write buffer and never wait.',
+        later: 'RAM keeps up with your clock for now: a trip fits in one cycle. Once a faster clock makes loads wait for RAM, this goes on sale.',
+    },
+    {
+        id: 'l2',
+        name: 'L2 CACHE: 128 BYTES',
+        price: 800,
+        bits: 32,
+        lessonId: 'l2',
+        about: "A second, bigger cache behind the L1: 8 lines of 16 bytes, 2-way. When the L1 misses, the L2 answers in 5 ns instead of RAM's 60; each miss on the way to RAM takes 5 ns longer.",
+        later: 'A bigger cache behind the L1, for wide data. Needs the L1 cache and the 32-bit chip.',
+    },
+    {
+        id: 'l3',
+        name: 'L3 CACHE: 256 BYTES',
+        price: 1500,
+        bits: 64,
+        lessonId: 'l3',
+        about: 'A third cache behind the L2: 4 lines of 64 bytes, room for a whole 64-bit job. When the L2 misses, the L3 answers in 12 ns more; each miss on the way to RAM takes 12 ns longer.',
+        later: 'The biggest cache, behind the L2. Needs the L2 cache and the 64-bit chip.',
     },
 ];
 /**
@@ -166,7 +192,7 @@ export const CACHE_UPGRADES = [
         field: 'blockBytes',
         value: 8,
         lessonId: 'bigblocks',
-        about: 'Each miss brings in 8 bytes instead of 4, so more of the next data is already there. Fewer FIRST USE misses; each miss takes 5 ns longer.',
+        about: 'Each miss brings in 8 bytes instead of 4, so more of the next data is already there. Fewer FIRST USE misses; each trip to RAM takes 5 ns longer.',
     },
 ];
 /** Unlocks H (overclocking past the rated clock) in songs. Underclocking (G) is always allowed. */
@@ -231,6 +257,15 @@ export const DATA_WIDTHS = [
     { bits: 32, weight: 3, pay: 1.45 },
     { bits: 64, weight: 4, pay: 1.75 },
 ];
+/**
+ * Jobs that show off what you've bought (sim/showcase.ts). Of the new
+ * contracts dealt, `share` are picked because one of the parts your CPU uses
+ * speeds them up: your newest part gets `newest[0]` of those, the one bought
+ * before it `newest[1]`, and the rest share what's left. Each is the best of
+ * `candidates` jobs, and only counts if the part makes it at least `minGain`
+ * times as fast; otherwise an ordinary job is dealt. To tune by playing.
+ */
+export const SHOWCASE = { share: 0.75, newest: [0.5, 0.25], candidates: 4, minGain: 1.05 };
 /** A new game's first job, the only one on the board until it's done (data/programs.ts TUTORIAL_PROGRAM): what it pays, and how soon it's needed. */
 export const TUTORIAL_JOB = { pay: 50, deadline: 2 * HOUR };
 /** Finishing after the deadline pays this much of the pay. */

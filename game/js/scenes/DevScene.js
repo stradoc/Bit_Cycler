@@ -1,5 +1,5 @@
 import { cheatFlags } from '../cheatFlags.js';
-import { CACHE_UPGRADES, CHIPS, CLOCK, COOLING } from '../data/economy.js';
+import { CACHE_UPGRADES, CHIPS, CLOCK, COOLING, MEMORY_PARTS } from '../data/economy.js';
 import { LESSONS } from '../data/lessons.js';
 import { TIERS } from '../data/tiers.js';
 import { folderPath } from '../data/menuFiles.js';
@@ -7,8 +7,8 @@ import { TAUGHT_IDS } from '../data/tours.js';
 import { openLesson } from '../flow.js';
 import { formatHours, formatMhz, formatMoney } from '../format.js';
 import { activeSlot, getProgress, hasSave, newGame, slotName, updateProgress } from '../save.js';
-import { bitsName, cacheOf, chipOf, deepActive, fillBoard, fitChip, ratedMhz, tierOf, withEverything, withTier, withWordBits } from '../sim/progress.js';
-import { cacheWords } from '../sim/memory.js';
+import { bitsName, cacheOf, chipOf, deepActive, fillBoard, fitChip, lowerCachesOf, ratedMhz, tierOf, withEverything, withTier, withWordBits } from '../sim/progress.js';
+import { cachesBelow, cacheWords } from '../sim/memory.js';
 import { dateLine, DAY_SECONDS, endDay } from '../sim/workday.js';
 import { ListMenu } from '../ui/list.js';
 import { Screen } from '../ui/screen.js';
@@ -25,7 +25,7 @@ const ABOUT = {
     tier: 'THE CPU DESIGN: SINGLE-CYCLE, PIPELINE, FORWARDING, GUESSING, PREDICTORS. A TIER MAY NEED A WIDER CHIP.',
     clock: 'CLOCK UPGRADES BOUGHT. A FASTER CLOCK PLAYS SONGS FASTER.',
     cooling: 'HOW WELL THE CHIP SHEDS HEAT WHEN OVERCLOCKED.',
-    cache: "THE L1 CACHE: LOADS IT ALREADY HOLDS DON'T WAIT FOR RAM. [LEFT/RIGHT] STEPS THROUGH ITS UPGRADES, ONE AT A TIME, THEN ALL.",
+    cache: "THE CACHES: LOADS THEY ALREADY HOLD DON'T WAIT FOR RAM. [LEFT/RIGHT] STEPS THROUGH THE L1'S UPGRADES, THEN THE L2 AND L3.",
     overclock: 'LETS G / H TURN THE CLOCK DOWN AND UP DURING A SONG.',
     deep: 'NOT BOUGHT, OFF OR ON: A FASTER CLOCK, BUT A WRONG GUESS COSTS MORE. IN USE FROM TIER 4, ON THE 32-BIT CHIP.',
     money: 'MONEY TO SPEND IN THE SHOP.',
@@ -44,24 +44,39 @@ const ABOUT = {
 /** Rows changed with left / right (the toggles flip either way). */
 const MONEY_STEPS = [0, 100, 500, 1_000, 5_000, 10_000, 100_000];
 const LESSON_IDS = Object.keys(LESSONS);
-/** The L1s the cache row steps through: none, the first one, each upgrade alone, then all of them. */
-const CACHE_STEPS = [undefined, [], ...CACHE_UPGRADES.map((upgrade) => [upgrade.id]), CACHE_UPGRADES.map((upgrade) => upgrade.id)];
-/** Where a save's L1 is among CACHE_STEPS (an order of upgrades not listed counts as the first one). */
+/**
+ * The caches the cache row steps through: none, the first L1, each upgrade
+ * alone, all three, then the first L1 with the L2, with the L2 and L3, and
+ * everything. `levels` counts MEMORY_PARTS owned.
+ */
+const ALL_UPGRADES = CACHE_UPGRADES.map((upgrade) => upgrade.id);
+const CACHE_STEPS = [
+    { levels: 0, upgrades: [] },
+    { levels: 1, upgrades: [] },
+    ...CACHE_UPGRADES.map((upgrade) => ({ levels: 1, upgrades: [upgrade.id] })),
+    { levels: 1, upgrades: ALL_UPGRADES },
+    // Each level below the L1, behind the first L1; then everything.
+    ...MEMORY_PARTS.slice(1).map((_, i) => ({ levels: i + 2, upgrades: [] })),
+    { levels: MEMORY_PARTS.length, upgrades: ALL_UPGRADES },
+];
+/** Where a save's caches are among CACHE_STEPS (an order of upgrades not listed counts as the first L1's at that level). */
 function cacheStep(p) {
     if (p.cacheLevels === 0)
         return 0;
     const owned = [...p.cacheUpgrades].sort().join();
-    return Math.max(1, CACHE_STEPS.findIndex((step) => step !== undefined && [...step].sort().join() === owned));
+    const exact = CACHE_STEPS.findIndex((step) => step.levels === p.cacheLevels && [...step.upgrades].sort().join() === owned);
+    return exact >= 0 ? exact : Math.max(1, CACHE_STEPS.findIndex((step) => step.levels === p.cacheLevels));
 }
-/** A save's L1 in words, or OFF. */
+/** A save's caches in words, or OFF: the L1, then the levels below it. */
 function cacheText(p) {
     const l1 = cacheOf(p);
-    return l1 ? cacheWords(l1) : 'OFF';
+    const below = cachesBelow(lowerCachesOf(p)).map((level) => ` + ${level.name}`).join('');
+    return l1 ? `${cacheWords(l1)}${below}` : 'OFF';
 }
-/** A save with the L1 at `step` of CACHE_STEPS. */
+/** A save with the caches at `step` of CACHE_STEPS. */
 function withCacheStep(p, step) {
-    const upgrades = CACHE_STEPS[step];
-    return { ...p, cacheLevels: upgrades ? 1 : 0, cacheUpgrades: upgrades ?? [] };
+    const { levels, upgrades } = CACHE_STEPS[step];
+    return { ...p, cacheLevels: levels, cacheUpgrades: upgrades };
 }
 /** What a save's CPU is, field by field: compared before and after a change, to say what else it changed. */
 function hardware(p) {
@@ -69,13 +84,13 @@ function hardware(p) {
         CHIP: bitsName(p.wordBits),
         TIER: String(tierOf(p).number),
         CLOCK: `LEVEL ${p.clockLevel}`,
-        'L1 CACHE': cacheText(p),
+        CACHES: cacheText(p),
         OVERCLOCKING: p.overclocking ? 'ON' : 'OFF',
         'DEEP PIPELINE': deepActive(p) ? 'IN USE' : p.deepPipeline === 'none' ? 'NOT BOUGHT' : 'IDLE',
     };
 }
 /** The field a row itself changes (not worth repeating as a knock-on). */
-const OWN = { chip: 'CHIP', tier: 'TIER', clock: 'CLOCK', cache: 'L1 CACHE', overclock: 'OVERCLOCKING', deep: 'DEEP PIPELINE' };
+const OWN = { chip: 'CHIP', tier: 'TIER', clock: 'CLOCK', cache: 'CACHES', overclock: 'OVERCLOCKING', deep: 'DEEP PIPELINE' };
 /**
  * The developer screen (the backquote key on the main menu): the console
  * cheats (cheats.ts) on a screen, plus any lesson, practice and the board.
@@ -98,7 +113,8 @@ export class DevScene extends Screen {
         this.setUp();
         const slot = slotName(activeSlot());
         this.header(`DEVELOPER MODE: ${folderPath(this.era, ['DEV'])}`, hasSave() ? `CHANGES GO STRAIGHT INTO ${slot}, THE SAVE YOU'RE PLAYING.` : `${slot} IS EMPTY: A CHANGE STARTS A NEW GAME IN IT.`);
-        this.menu = new ListMenu(this, this.era, { x: 190, top: 96, width: 580, rowHeight: 18, size: 14, heading: 16 });
+        // Its rows scroll above the about line, which sits a little lower than on other screens.
+        this.menu = new ListMenu(this, this.era, { x: 190, top: 96, width: 580, rowHeight: 18, size: 14, heading: 16, bottom: LAYOUT.about - 22 });
         this.menu.setRows(this.rows(), data?.selected ?? 0);
         // A long list: the lines about it sit a little lower than on other screens.
         this.about = this.aboutLine().setY(LAYOUT.about + 11);
@@ -115,7 +131,7 @@ export class DevScene extends Screen {
             tier: ['CPU TIER', `${tier.number}: ${tier.name}`],
             clock: ['CLOCK UPGRADES', `LEVEL ${p.clockLevel}: ${formatMhz(ratedMhz(p))}`],
             cooling: ['COOLER', COOLING[p.cooling].name],
-            cache: ['L1 CACHE', cacheText(p)],
+            cache: ['CACHES', cacheText(p)],
             overclock: ['OVERCLOCKING UPGRADE', onOff(p.overclocking)],
             deep: ['DEEP PIPELINE', p.deepPipeline === 'none' ? 'NOT BOUGHT' : `${p.deepPipeline.toUpperCase()}${p.deepPipeline === 'on' && !deepActive(p) ? ' (IDLE BELOW TIER 4)' : ''}`],
             money: ['MONEY', formatMoney(p.money)],

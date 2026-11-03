@@ -620,7 +620,7 @@ export class PipelineScene extends Screen {
     } else {
       this.panel.fillLine(access);
     }
-    this.tip(this.words.access(access));
+    this.words.access(access).some((tip) => this.tip(tip));
   }
 
   /**

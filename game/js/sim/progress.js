@@ -4,6 +4,7 @@
 import { BASE_MHZ, CACHE_UPGRADES, CHIPS, DATA_WIDTHS, CLOCK, CONTRACTS_PER_GRADE, COOLING, CPU_PARTS, DEEP_PIPELINE, LATE_PAY_FACTOR, MEMORY_PARTS, OVERCLOCKING_PRICE, REPAIR_PRICE_PER_STEP, GRADES, PAY, TIGHT_SHARE, TUTORIAL_JOB, WORKDAY, } from '../data/economy.js';
 import { programByName, TUTORIAL_PROGRAM } from '../data/programs.js';
 import { generateProgram } from './generator.js';
+import { showcaseJob } from './showcase.js';
 import { formatDuration, formatMhz } from '../format.js';
 import { tierByNumber } from '../data/tiers.js';
 import { cpuFor, trace } from './cpu.js';
@@ -18,6 +19,7 @@ export const NEW_GAME = {
     clockLevel: 0,
     cacheLevels: 0,
     cacheUpgrades: [],
+    bought: [],
     cooling: 0,
     overclocking: false,
     deepPipeline: 'none',
@@ -129,6 +131,10 @@ export function hasCache(progress) {
 export function cacheOf(progress) {
     return hasCache(progress) ? cacheShape(progress.cacheUpgrades) : undefined;
 }
+/** How many of the caches below the L1 you own (sim/memory.ts LOWER_CACHES): 0, 1 (the L2) or 2 (the L2 and L3). */
+export function lowerCachesOf(progress) {
+    return Math.max(0, progress.cacheLevels - 1);
+}
 /**
  * The memory wall has arrived: at your rated clock, a trip to RAM (without a
  * cache) takes more than one cycle, so loads and stores freeze the pipeline.
@@ -140,33 +146,45 @@ export function pastMemoryWall(progress) {
 export function thermalConfig(progress) {
     return { ...THERMAL, ratedRise: COOLING[progress.cooling].ratedRise };
 }
-const cpiCache = new Map();
 /**
- * Cycles per instruction your CPU's hardware gets on a program, played
- * perfectly (the board's estimates), at your rated clock: past the memory
- * wall, waiting for RAM raises it. Branches follow the hardware: on a real job
- * of billions of instructions, nobody guesses them by hand.
+ * The hardware your CPU has, as the simulator runs it: the tier's parts, the
+ * caches, the rated clock, the deep pipeline. Branches follow the hardware:
+ * on a real job of billions of instructions, nobody guesses them by hand;
+ * pairs start whenever they can, as a perfect player chords them.
  */
-export function cpiFor(programName, progress) {
-    const tier = tierOf(progress);
+export function hardwareOptions(progress) {
+    const options = tierOf(progress).options;
     const deep = deepActive(progress);
-    const key = `${programName}:${tier.number}:${progress.clockLevel}:${progress.cacheLevels}:${[...progress.cacheUpgrades].sort()}:${deep}`;
+    return {
+        singleCycle: !isPipelined(progress),
+        forwarding: options?.forwarding ?? false,
+        predictor: options?.predictor,
+        superscalar: options?.superscalar ?? false,
+        cache: cacheOf(progress),
+        lowerCaches: lowerCachesOf(progress),
+        mhz: ratedMhz(progress),
+        wrongGuessCycles: deep ? DEEP_PIPELINE.wrongGuessCycles : 1,
+    };
+}
+const cpiCache = new Map();
+/** Cycles per instruction a program takes on this hardware, played perfectly (remembered: the board asks often). */
+export function cpiOn(programName, options) {
+    const key = `${programName}:${JSON.stringify(options)}`;
     const cached = cpiCache.get(key);
     if (cached !== undefined)
         return cached;
-    const spec = programByName(programName);
-    const cpu = cpuFor(spec);
-    const run = perfectRun(cpu, {
-        singleCycle: !isPipelined(progress),
-        forwarding: tier.options?.forwarding ?? false,
-        predictor: tier.options?.predictor,
-        cache: cacheOf(progress),
-        mhz: ratedMhz(progress),
-        wrongGuessCycles: deep ? DEEP_PIPELINE.wrongGuessCycles : 1,
-    });
+    const run = perfectRun(cpuFor(programByName(programName)), options);
     const cpi = run.cycles / run.instructions;
     cpiCache.set(key, cpi);
     return cpi;
+}
+/**
+ * Cycles per instruction your CPU's hardware gets on a program, played
+ * perfectly (the board's estimates), at your rated clock: past the memory
+ * wall, waiting for RAM raises it.
+ */
+export function cpiFor(programName, progress) {
+    return cpiOn(programName, hardwareOptions(progress));
 }
 /** Seconds per instruction on a typical job (SUM ARRAY) with this hardware: CPI x clock period. */
 export function typicalSecondsPerInstruction(progress) {
@@ -232,13 +250,19 @@ export function payPerHour(progress) {
  */
 export function newContract(grade, id, random, progress, busyClients = new Set()) {
     const spec = GRADES.find((g) => g.id === grade) ?? GRADES[0];
-    // Each contract gets its own randomly generated program (sim/generator.ts), named after its seed,
-    // for a client who isn't already on the board (if one turns up within a few tries), on data as wide as your chip allows.
-    const width = dataWidth(progress, random);
-    let generated = generateProgram(Math.floor(random() * 1_000_000), undefined, width.bits);
-    for (let tries = 0; tries < 10 && busyClients.has(generated.client ?? ''); tries++) {
-        generated = generateProgram(Math.floor(random() * 1_000_000), undefined, width.bits);
+    // Each contract gets its own randomly generated program (sim/generator.ts), named after its seed, for a client
+    // who isn't already on the board (if one turns up within a few tries). Most are picked to show off a part your
+    // CPU uses (sim/showcase.ts); the rest are on data as wide as your chip allows.
+    const showcase = showcaseJob(progress, random, busyClients);
+    let generated = showcase?.program;
+    if (!generated) {
+        const bits = dataWidth(progress, random).bits;
+        generated = generateProgram(Math.floor(random() * 1_000_000), undefined, bits);
+        for (let tries = 0; tries < 10 && busyClients.has(generated.client ?? ''); tries++) {
+            generated = generateProgram(Math.floor(random() * 1_000_000), undefined, bits);
+        }
     }
+    const width = DATA_WIDTHS.find((each) => each.bits === (generated.dataBits ?? 8)) ?? DATA_WIDTHS[0];
     // Due on the half hour.
     const deadline = Math.round(lerp(WORKDAY.deadlineHours[0], WORKDAY.deadlineHours[1], random()) * 2) * 1800;
     const seconds = deadline * lerp(spec.share[0], spec.share[1], random());
@@ -247,7 +271,7 @@ export function newContract(grade, id, random, progress, busyClients = new Set()
     const instructions = Number((seconds / secondsPerInstruction).toPrecision(3));
     const pay = Math.max(5, Math.round((payPerHour(progress) * (seconds / 3600) * spec.payBonus * width.pay) / 5) * 5);
     const days = WORKDAY.offerDays[0] + Math.floor(random() * (WORKDAY.offerDays[1] - WORKDAY.offerDays[0] + 1));
-    return { id, grade, program: generated.name, instructions, deadline, pay, expires: progress.day + days - 1 };
+    return { id, grade, program: generated.name, instructions, deadline, pay, expires: progress.day + days - 1, ...(showcase ? { shows: showcase.part.id } : {}) };
 }
 /**
  * How wide a new contract's data is: one of the widths your chip can take
@@ -346,22 +370,25 @@ export function shopItems(progress) {
         about: 'Lets H push the clock past its rating during a song, up to 150%: faster, but the chip heats up. G (slower) is always free.',
         apply: (p) => ({ ...p, overclocking: true }),
     });
+    // Each cache level after the one before it: the L1 once RAM is too slow for the clock, each one below it on a chip
+    // wide enough. The L1's upgrades come straight after it.
     MEMORY_PARTS.forEach((part, i) => {
         const owned = progress.cacheLevels > i;
-        const ready = i === progress.cacheLevels && pastMemoryWall(progress);
+        const ready = i === progress.cacheLevels && pastMemoryWall(progress) && progress.wordBits >= part.bits;
         items.push({
             key: part.id,
             group: 'MEMORY',
             name: part.name,
             price: part.price,
             state: owned ? 'owned' : ready ? 'buy' : 'later',
-            lessonId: 'cache',
-            about: owned || ready ? part.about : 'RAM keeps up with your clock for now: a trip fits in one cycle. Once a faster clock makes loads wait for RAM, this goes on sale.',
+            lessonId: part.lessonId,
+            about: owned || ready ? part.about : part.later,
             apply: (p) => ({ ...p, cacheLevels: i + 1 }),
         });
+        if (i === 0)
+            for (const upgrade of CACHE_UPGRADES)
+                items.push(cacheUpgradeItem(progress, upgrade));
     });
-    for (const upgrade of CACHE_UPGRADES)
-        items.push(cacheUpgradeItem(progress, upgrade));
     COOLING.forEach((cooler, i) => {
         if (i === 0)
             return;
@@ -471,7 +498,7 @@ function clockAbout(progress, before, after) {
     const upgraded = { ...progress, clockLevel: progress.clockLevel + 1 };
     const [now, then] = [typicalSecondsPerInstruction(progress), typicalSecondsPerInstruction(upgraded)];
     const saved = Math.round((1 - then / now) * 100);
-    const ram = [ramCycles(before, cacheOf(progress)), ramCycles(after, cacheOf(progress))];
+    const ram = [ramCycles(before, cacheOf(progress), lowerCachesOf(progress)), ramCycles(after, cacheOf(progress), lowerCachesOf(progress))];
     const wall = ram[1] > 1 ? ` A trip to RAM still takes 60 ns: ${ram[0]} -> ${ram[1]} cycles.` : '';
     return (`Rated clock ${formatMhz(before)} -> ${formatMhz(after)}, beat ${Math.round(tempoForClock(before))} -> ${Math.round(tempoForClock(after))} BPM. ` +
         `A typical job: ${formatDuration(now)} -> ${formatDuration(then)} per instruction (${saved}% less).${wall}`);
@@ -481,6 +508,6 @@ export function buy(progress, key) {
     const item = shopItems(progress).find((i) => i.key === key);
     if (!item || item.state !== 'buy' || progress.money < item.price)
         return null;
-    return item.apply({ ...progress, money: progress.money - item.price });
+    return item.apply({ ...progress, money: progress.money - item.price, bought: [...progress.bought.filter((each) => each !== key), key] });
 }
 //# sourceMappingURL=progress.js.map

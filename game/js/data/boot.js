@@ -8,8 +8,8 @@
 import { COOLING } from './economy.js';
 import { programByName } from './programs.js';
 import { formatDuration, formatMhz, formatMoney } from '../format.js';
-import { cacheWords, MEMORY_TIMING, missNs, ramCycles, SHOWN_BYTES } from '../sim/memory.js';
-import { cacheOf, cpuName, ratedMhz } from '../sim/progress.js';
+import { cachesBelow, cacheWords, MEMORY_TIMING, missNs, ramCycles, SHOWN_BYTES } from '../sim/memory.js';
+import { cacheOf, cpuName, lowerCachesOf, ratedMhz } from '../sim/progress.js';
 import { THERMAL } from '../sim/thermal.js';
 import { dateLine } from '../sim/workday.js';
 /**
@@ -35,6 +35,7 @@ export function bootScript(progress, slot, era) {
                 ok(`Clock: ${facts.clock}`),
                 ok(`Memory: ${SHOWN_BYTES} BYTES, ${facts.ram}`),
                 ok(`L1 cache: ${facts.cache}`),
+                ...facts.lower.map((level) => ok(`${level.name} cache: ${level.words}`)),
                 ok(`Cooling: ${facts.cooler}`),
                 ...(facts.wear ? [{ kind: 'print', text: `Chip worn: ${facts.wear}`, tag: 'WARN', pause: 90 }] : []),
             ]
@@ -56,6 +57,7 @@ export function bootScript(progress, slot, era) {
             memory,
             print(`RAM:    ${facts.ram}`),
             print(`CACHE:  ${facts.cache}`),
+            ...facts.lower.map((level) => print(`${level.name}:     ${level.words}`)),
             print(`COOLER: ${facts.cooler}`),
             ...(facts.wear ? [print(`WARNING: CHIP WORN, ${facts.wear}`, 300)] : []),
         ]
@@ -109,13 +111,15 @@ export function programListing(progress) {
 function hardware(progress) {
     const mhz = ratedMhz(progress);
     const cache = cacheOf(progress);
-    const cycles = ramCycles(mhz, cache);
-    const ramNs = cache ? missNs(cache) : MEMORY_TIMING.ramNs;
+    const lower = lowerCachesOf(progress);
+    const cycles = ramCycles(mhz, cache, lower);
+    const ramNs = cache ? missNs(cache, lower) : MEMORY_TIMING.ramNs;
     return {
         cpu: cpuName(progress),
         clock: `${formatMhz(mhz)}, A CYCLE EVERY ${formatDuration(1 / (mhz * 1e6))}`,
         ram: `A TRIP TAKES ${ramNs} ns = ${cycles} CYCLE${cycles === 1 ? '' : 'S'}`,
         cache: cache ? cacheWords(cache) : 'NONE',
+        lower: cachesBelow(lower).map((level) => ({ name: level.name, words: `${cacheWords(level.shape)}, +${level.ns} ns` })),
         cooler: COOLING[progress.cooling].name,
         wear: progress.chipMaxDial < THERMAL.maxDial ? `MAX CLOCK ${Math.round(progress.chipMaxDial * 100)}%` : undefined,
     };

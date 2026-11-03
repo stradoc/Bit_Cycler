@@ -1,8 +1,8 @@
-// The memory wall and the L1 data cache. RAM takes a fixed time in
-// nanoseconds, however fast the clock is, so a faster clock means more cycles
-// spent waiting for it: about 60 ns is 1 cycle at 16 MHz but 240 at 4 GHz.
-// While a load waits, the whole pipeline freezes (the textbook's in-order
-// pipeline), so the waiting cycles raise CPI.
+// The memory wall and the caches. RAM takes a fixed time in nanoseconds,
+// however fast the clock is, so a faster clock means more cycles spent
+// waiting for it: about 60 ns is 1 cycle at 16 MHz but 240 at 4 GHz. While a
+// load waits, the whole pipeline freezes (the textbook's in-order pipeline),
+// so the waiting cycles raise CPI.
 //
 // The L1 cache starts as the textbook's first cache: 16 bytes, direct-mapped,
 // 4 lines of 4 bytes. An 8-bit address splits into tag (4 bits), line (2) and
@@ -10,8 +10,11 @@
 // (data/economy.ts CACHE_UPGRADES) give it 8 lines, 2-way sets (lines paired,
 // a block going in either line of its set, the one used longest ago making
 // room) or 8-byte blocks, and the address split follows. A hit is served
-// inside the MEMORY stage; a miss checks L1, then fetches the whole block from
-// RAM. Stores are write-through with a write buffer: they go to RAM through
+// inside the MEMORY stage. A miss checks L1, then the caches below it in turn
+// (LOWER_CACHES: the L2, then the L3, once bought), each lookup adding its
+// time, and the first level that has the block answers; RAM if none does.
+// Every level it missed on keeps a copy of its own (bigger) block on the way
+// back. Stores are write-through with a write buffer: they go to RAM through
 // the buffer and never freeze (here the buffer never fills), and a store that
 // misses doesn't bring its block in (no write allocate). Without a cache,
 // stores wait for RAM like loads. Instruction fetch is always fast: like the
@@ -26,9 +29,11 @@ export const MEMORY_TIMING = {
   /** Checking L1 on the way to RAM (ns, approximate). A hit itself fits in the MEMORY stage. */
   l1Ns: 1,
   /**
-   * Sending each 4 bytes of a block after its first (ns, approximate): a
-   * bigger block makes a miss a little longer (the textbook's miss penalty:
-   * the wait for RAM, then the time to send the block).
+   * RAM sending each 4 bytes of an L1 block after its first (ns, approximate):
+   * a bigger block makes a trip to RAM a little longer (the textbook's miss
+   * penalty: the wait for RAM, then the time to send the block). Inside the
+   * chip, a cache below the L1 hands over a whole block at once (a wide bus),
+   * so a miss it answers takes no longer for it.
    */
   moreBytesNs: 5,
 } as const;
@@ -51,6 +56,32 @@ export const cacheBytes = (shape: CacheShape) => shape.lines * shape.blockBytes;
 /** How many sets it has: places a block can be found (a set holds `ways` lines). */
 export const setsOf = (shape: CacheShape) => shape.lines / shape.ways;
 
+/**
+ * A cache below the L1, checked when the L1 misses: its name, how it's built,
+ * and the time a lookup in it adds to the miss (ns), whether it finds the
+ * block or not.
+ */
+export type LowerCache = { readonly name: 'L2' | 'L3'; readonly shape: CacheShape; readonly ns: number };
+
+/**
+ * The caches below the L1 (the shop's memory parts after it), in the order a
+ * miss checks them. Each is bigger, with bigger blocks, and slower: lower
+ * levels are larger and often use larger blocks (Patterson & Hennessy 5.4).
+ * The L2 (128 bytes) holds a whole 32-bit job's data, the L3 (256 bytes) a
+ * whole 64-bit job's, so it misses only on first use. Times approximate: the
+ * textbook's example of a second-level cache takes 5 ns.
+ */
+export const LOWER_CACHES: readonly LowerCache[] = [
+  { name: 'L2', shape: { lines: 8, blockBytes: 16, ways: 2 }, ns: 5 },
+  { name: 'L3', shape: { lines: 4, blockBytes: 64, ways: 4 }, ns: 12 },
+];
+
+/** The caches below the L1 on a CPU that has `lower` of them (0, 1 or 2), in the order a miss checks them. */
+export const cachesBelow = (lower: number): readonly LowerCache[] => LOWER_CACHES.slice(0, lower);
+
+/** Where an L1 miss is answered: a cache below it, or RAM. */
+export type Source = 'L2' | 'L3' | 'RAM';
+
 /** The cache in a few words, as the boot and the shop say it: "16 BYTES: 4 LINES OF 4, DIRECT-MAPPED". */
 export function cacheWords(shape: CacheShape): string {
   const placing = shape.ways === 1 ? 'DIRECT-MAPPED' : `${shape.ways}-WAY`;
@@ -64,9 +95,21 @@ export function cacheWords(shape: CacheShape): string {
  */
 export const SHOWN_BYTES = 32;
 
-/** How long a miss takes with this cache (ns): the L1 check, the trip to RAM, and sending the rest of a bigger block. */
-export function missNs(shape: CacheShape): number {
-  return MEMORY_TIMING.l1Ns + MEMORY_TIMING.ramNs + MEMORY_TIMING.moreBytesNs * (shape.blockBytes / 4 - 1);
+/**
+ * How long an L1 miss takes when `from` answers it (ns), with the first
+ * `lower` of LOWER_CACHES fitted: the L1 check, each lookup below it on the
+ * way down to `from` (found or not), and if it came to RAM, RAM's 60 ns and
+ * the time to send the rest of a bigger L1 block. A lower level's own bigger
+ * block comes in behind the bytes asked for (the textbook's "critical word
+ * first"), so it adds nothing here (approximate).
+ */
+export function missNs(shape: CacheShape, lower = 0, from: Source = 'RAM'): number {
+  const levels = cachesBelow(lower);
+  const reached = from === 'RAM' ? levels.length : levels.findIndex((level) => level.name === from) + 1;
+  if (reached === 0 && from !== 'RAM') throw new Error(`no ${from} among ${lower} lower caches`);
+  const lookups = levels.slice(0, reached).reduce((ns, level) => ns + level.ns, 0);
+  const ram = from === 'RAM' ? MEMORY_TIMING.ramNs + MEMORY_TIMING.moreBytesNs * (shape.blockBytes / 4 - 1) : 0;
+  return MEMORY_TIMING.l1Ns + lookups + ram;
 }
 
 /** Cycles an access taking `ns` occupies at `mhz`: the whole access, at least the 1 the MEMORY stage has anyway. */
@@ -75,28 +118,24 @@ export function cyclesFor(ns: number, mhz: number): number {
   return Math.max(1, Math.ceil((ns * mhz) / 1000 - 1e-9));
 }
 
-/** Cycles a trip to RAM takes at `mhz`: without a cache, or a miss in `cache`. */
-export function ramCycles(mhz: number, cache?: CacheShape): number {
-  return cyclesFor(cache ? missNs(cache) : MEMORY_TIMING.ramNs, mhz);
+/** Cycles a trip to RAM takes at `mhz`: without a cache, or a miss in `cache` that every level below it (the first `lower`) missed too. */
+export function ramCycles(mhz: number, cache?: CacheShape, lower = 0): number {
+  return cyclesFor(cache ? missNs(cache, lower) : MEMORY_TIMING.ramNs, mhz);
 }
 
 /**
- * How long memory waits feel in the song: the beats on the log scale below
- * are stretched by this much (rounded up). Team: a trip to RAM should hurt.
- */
-export const FREEZE_STRETCH = 1.5;
-
-/**
- * Beats a memory wait is drawn over: a few hundred cycles can't take a few
- * hundred beats, so on a log scale (1 for under 10 extra cycles, 2 for under
- * 100, else 3) times FREEZE_STRETCH: 2, 3 or 5 beats. Never more beats than
+ * Beats a memory wait is drawn over. A few hundred cycles can't take a few
+ * hundred beats, so a wait gets one more beat each time its cycles about
+ * triple (each half power of ten: 10, 32, 100, 317 cycles): 2 beats under 10,
+ * then 3, 4, 5 and 6. So at 2-4 GHz an L2 hit takes 3 beats, an L3 hit 4 and
+ * a trip to RAM 5 (team: a trip to RAM should hurt). Never more beats than
  * cycles, so a beat still never stands for less than a cycle. The cycles all
  * count; only the song squeezes them.
  */
 export function freezeBeats(extraCycles: number): number {
   if (extraCycles <= 0) return 0;
-  const scale = extraCycles < 10 ? 1 : extraCycles < 100 ? 2 : 3;
-  return Math.min(extraCycles, Math.ceil(scale * FREEZE_STRETCH));
+  const triplings = Math.floor(2 * Math.log10(extraCycles) + 1e-9);
+  return Math.min(extraCycles, Math.max(2, triplings + 1));
 }
 
 /** The block holding `address`: blocks are numbered from address 0, `blockBytes` each. */
@@ -211,16 +250,24 @@ export class Cache {
   }
 }
 
+/** Where an access was served: the L1 cache (a hit), a cache below it, RAM, or (stores with a cache) the write buffer. */
+export type MemoryLevel = 'L1' | Source | 'BUFFER';
+
+/** How far down each level is, to find the deepest one an access reached. */
+const DEPTH: readonly MemoryLevel[] = ['BUFFER', 'L1', 'L2', 'L3', 'RAM'];
+
 /** One load or store reaching memory, and how long it took. */
 export type Access = {
   readonly kind: 'load' | 'store';
   readonly address: number;
   /** How many bytes it moved (an item of the job's data). */
   readonly size: number;
-  /** Where it was served: the L1 cache, RAM, or (stores with a cache) the write buffer. */
-  readonly level: 'L1' | 'RAM' | 'BUFFER';
+  /** Where it was served; for an item whose blocks came from different levels, the deepest one. */
+  readonly level: MemoryLevel;
   /** The whole access in cycles: 1 fits in the MEMORY stage, more freezes the pipeline. */
   readonly cycles: number;
+  /** The whole access in ns: an L1 hit's check, or every trip a miss made (missNs). */
+  readonly ns: number;
   /** With a cache: did it hit, and for a load that missed, why. */
   readonly hit?: boolean;
   readonly missKind?: MissKind;
@@ -232,47 +279,70 @@ export type Access = {
   readonly fills?: readonly { readonly block: number; readonly line: number }[];
 };
 
-/** The data memory side of the CPU: RAM, and the L1 cache once it's bought. */
+/** The data memory side of the CPU: RAM, and the caches once they're bought. */
 export class MemorySystem {
   readonly cache: Cache | undefined;
+  /** The caches below the L1 that are fitted, in the order a miss checks them. */
+  readonly lower: readonly (LowerCache & { readonly cache: Cache })[];
   loads = 0;
   stores = 0;
   hits = 0;
   misses = 0;
   readonly missKinds: Record<MissKind, number> = { 'first-use': 0, conflict: 0, 'too-small': 0 };
+  /** Accesses by where they were served (a load whose blocks came from different levels counts at the deepest). */
+  readonly served: Record<MemoryLevel, number> = { L1: 0, L2: 0, L3: 0, RAM: 0, BUFFER: 0 };
+  /** Every load's time added up (ns), for the average memory access time. */
+  loadNs = 0;
   /** Trips to RAM that made the pipeline wait. */
   ramTrips = 0;
 
-  constructor(cache?: CacheShape) {
+  /** `lower`: how many of LOWER_CACHES sit below the L1 (0 without; none without an L1). */
+  constructor(cache?: CacheShape, lower = 0) {
     this.cache = cache ? new Cache(cache) : undefined;
+    this.lower = cache ? cachesBelow(lower).map((level) => ({ ...level, cache: new Cache(level.shape) })) : [];
+  }
+
+  /**
+   * The average memory access time (ns) over the loads so far, the textbook's
+   * AMAT: an L1 hit's time, plus the misses' share of their trips down.
+   */
+  averageLoadNs(): number {
+    return this.loads > 0 ? this.loadNs / this.loads : 0;
   }
 
   /**
    * A load or store of `size` bytes at `address` on a clock of `mhz`. Without
    * a clock the memory keeps up with anything (every access fits in the
    * MEMORY stage). An item wider than a cache block spans several: each one
-   * missing is its own trip to RAM (a 64-bit number in 4-byte blocks can take
-   * two). Without a cache, RAM hands over the whole item in one trip, as wide
-   * as the chip's bus.
+   * missing is its own trip down (a 64-bit number in 4-byte blocks can take
+   * two, the second often found in the L2 the first one filled). Without a
+   * cache, RAM hands over the whole item in one trip, as wide as the chip's bus.
    */
   access(kind: 'load' | 'store', address: number, mhz: number | undefined, size = 1): Access {
     const cache = this.cache;
-    const ram = mhz === undefined ? 1 : ramCycles(mhz, cache?.shape);
+    const cyclesOf = (ns: number) => (mhz === undefined ? 1 : cyclesFor(ns, mhz));
     if (kind === 'store') this.stores++;
     else this.loads++;
     let access: Access;
     if (!cache) {
-      access = { kind, address, size, level: 'RAM', cycles: ram };
+      access = { kind, address, size, level: 'RAM', cycles: cyclesOf(MEMORY_TIMING.ramNs), ns: MEMORY_TIMING.ramNs };
     } else {
       const { shape } = cache;
       const first = blockOf(shape, address);
       const starts = Array.from({ length: blockOf(shape, address + size - 1) - first + 1 }, (_, i) => (first + i) * shape.blockBytes);
       if (kind === 'store') {
-        const results = starts.map((start) => cache.write(start));
+        // Write-through: every level holding the block updates its copy (and none takes one in).
+        const results = starts.map((start) => {
+          for (const level of this.lower) level.cache.write(start);
+          return cache.write(start);
+        });
         const used = results.flatMap((result) => (result.line === undefined ? [] : [result.line]));
-        access = { kind, address, size, level: 'BUFFER', cycles: 1, hit: results.every((result) => result.hit), used };
+        access = { kind, address, size, level: 'BUFFER', cycles: 1, ns: MEMORY_TIMING.l1Ns, hit: results.every((result) => result.hit), used };
       } else {
-        const results = starts.map((start) => ({ block: blockOf(shape, start), ...cache.read(start) }));
+        const results = starts.map((start) => {
+          const read = cache.read(start);
+          return { block: blockOf(shape, start), ...read, from: read.hit ? undefined : this.below(start) };
+        });
         const missed = results.filter((result) => !result.hit);
         if (missed.length === 0) this.hits++;
         else {
@@ -280,15 +350,17 @@ export class MemorySystem {
           if (missed[0].missKind) this.missKinds[missed[0].missKind]++;
         }
         const used = results.filter((result) => result.hit).map((result) => result.line);
+        const trips = missed.map((result) => missNs(shape, this.lower.length, result.from));
         access =
           missed.length === 0
-            ? { kind, address, size, level: 'L1', cycles: 1, hit: true, used }
+            ? { kind, address, size, level: 'L1', cycles: 1, ns: MEMORY_TIMING.l1Ns, hit: true, used }
             : {
                 kind,
                 address,
                 size,
-                level: 'RAM',
-                cycles: ram * missed.length,
+                level: missed.map((result) => result.from ?? 'RAM').reduce((deepest, from) => (DEPTH.indexOf(from) > DEPTH.indexOf(deepest) ? from : deepest)),
+                cycles: trips.reduce((cycles, ns) => cycles + cyclesOf(ns), 0),
+                ns: trips.reduce((total, ns) => total + ns, 0),
                 hit: false,
                 missKind: missed[0].missKind,
                 evicted: missed.find((result) => result.evicted !== undefined)?.evicted,
@@ -297,7 +369,15 @@ export class MemorySystem {
               };
       }
     }
-    if (access.cycles > 1) this.ramTrips++;
+    this.served[access.level]++;
+    if (kind === 'load') this.loadNs += access.ns;
+    if (access.level === 'RAM' && access.cycles > 1) this.ramTrips++;
     return access;
+  }
+
+  /** An L1 miss for the block at `address`, checked in each cache below in turn: the first that has it answers (RAM if none). Each one that missed takes its block in. */
+  private below(address: number): Source {
+    for (const level of this.lower) if (level.cache.read(address).hit) return level.name;
+    return 'RAM';
   }
 }

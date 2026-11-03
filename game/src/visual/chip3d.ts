@@ -1,7 +1,7 @@
 import { CLOCK, COOLING } from '../data/economy.ts';
 import { formatMhz } from '../format.ts';
-import { setsOf } from '../sim/memory.ts';
-import { cacheOf, ratedMhz, tierOf, type Progress } from '../sim/progress.ts';
+import { cachesBelow, setsOf } from '../sim/memory.ts';
+import { cacheOf, lowerCachesOf, ratedMhz, tierOf, type Progress } from '../sim/progress.ts';
 import { THERMAL } from '../sim/thermal.ts';
 import type { Era } from '../ui/eras.ts';
 import { box, ModelView, turnedBox, UPPER_LEFT_LIGHT, type Face, type Look, type Part, type Vec3 } from './model3d.ts';
@@ -26,6 +26,17 @@ const COOLER_Y = 64;
 /** The fan's hub, and where its blades start (clear of the hub's corners at every turn: 7 x sqrt 2 < 10). */
 const HUB = 7;
 const BLADE_ROOT = 10;
+
+/**
+ * Where each cache below the L1 sits on the die (LOWER_CACHES, in order): its
+ * lines laid out along `along` from `from` to `to`, each spanning `across`,
+ * `height` tall. The L2 between the predictor and the L1; the L3 along the
+ * die's front edge, inside the overclocking rim.
+ */
+const LOWER_AREAS: readonly { readonly along: 'x' | 'z'; readonly from: number; readonly to: number; readonly across: readonly [number, number]; readonly height: number }[] = [
+  { along: 'z', from: 4, to: 30.5, across: [-8, 3], height: 4 },
+  { along: 'x', from: -33, to: 33, across: [31, 33.6], height: 5 },
+];
 
 /** Small deterministic noise, so cracks land in the same places every time. */
 const noise = (n: number) => {
@@ -79,6 +90,18 @@ export function buildChip(progress: Progress): Part<Material>[] {
       }
     }
   }
+  // The caches below the L1, each in its own patch of the die (LOWER_AREAS): a bar per line, the lines of a set
+  // together, standing taller the further down the level is.
+  cachesBelow(lowerCachesOf(progress)).forEach((level, i) => {
+    const area = LOWER_AREAS[i];
+    const { lines, ways } = level.shape;
+    const pitch = (area.to - area.from) / (lines + (setsOf(level.shape) - 1) * 0.5);
+    for (let line = 0; line < lines; line++) {
+      const at = area.from + (line + Math.floor(line / ways) * 0.5) * pitch;
+      const [a, b] = [at, at + pitch * 0.8];
+      parts.push(area.along === 'z' ? box([area.across[0], DIE_TOP, a], [area.across[1], DIE_TOP + area.height, b], 'cache') : box([a, DIE_TOP, area.across[0]], [b, DIE_TOP + area.height, area.across[1]], 'cache'));
+    }
+  });
   // Overclocking: a hot rim around the die.
   if (progress.overclocking) {
     parts.push(box([-DIE, DIE_TOP, -DIE], [DIE, DIE_TOP + 1, -DIE + 2], 'oc'));

@@ -1,7 +1,7 @@
-import { formatHours, formatMoney } from '../format.ts';
+import { formatDuration, formatHours, formatMoney } from '../format.ts';
 import type { PipelineRun } from '../rhythm/pipelineRun.ts';
 import type { Cpu } from '../sim/cpu.ts';
-import { L1_BASE, sameShape } from '../sim/memory.ts';
+import { cachesBelow, L1_BASE, sameShape, type MemorySystem, type Source } from '../sim/memory.ts';
 import { perfectCycles } from '../sim/pipeline.ts';
 import { payFor, type Contract } from '../sim/progress.ts';
 import type { Card, CardRow, Mark, Tone } from '../visual/asciiChart.ts';
@@ -70,13 +70,19 @@ export type RunReport = {
   readonly pairs: number;
   /** RAM trips, for the cycles spent waiting on them. */
   readonly ramTrips: number;
+  /** How many caches below the L1 the CPU has (0 without them): its waits are on memory, not just RAM. */
+  readonly lowerCaches: number;
   /** The average clock period actually run at, and the time the clock stopped to cool, per instruction. */
   readonly period: number;
   readonly cooling: number;
   /** Time per instruction for the CPUs this one improves on, each at its best. */
-  readonly compare: readonly { readonly cpu: 'one-at-a-time' | 'no-forwarding' | 'never-guessing' | 'predictor-alone' | 'no-cache' | 'first-l1' | 'single-cycle'; readonly time: number }[];
+  readonly compare: readonly { readonly cpu: 'one-at-a-time' | 'no-forwarding' | 'never-guessing' | 'predictor-alone' | 'no-cache' | 'first-l1' | 'no-l2' | 'no-l3' | 'single-cycle'; readonly time: number }[];
   readonly branches?: { readonly right: number; readonly total: number; readonly predictorRight?: number };
-  readonly cache?: { readonly hits: number; readonly loads: number };
+  /**
+   * With a cache: the loads, how many hit the L1, where each one was found
+   * (the L1 and each level the CPU has), and their average time (ns): the AMAT.
+   */
+  readonly cache?: { readonly hits: number; readonly loads: number; readonly found: readonly { readonly level: 'L1' | Source; readonly loads: number }[]; readonly amatNs: number };
   /** The player's right calls of each kind: the learning objective, measured (rhythm/skills.ts). */
   readonly calls: Tally;
   /** Only when the clock wasn't the rated one, or the chip overheated. */
@@ -107,6 +113,8 @@ export function runReport(f: Finished): RunReport {
   if (setup.l1) compare.push({ cpu: 'no-cache', time: best({ ...rated, cache: undefined }) });
   // An upgraded L1 against the first one: what the upgrades bought.
   if (setup.l1 && !sameShape(setup.l1, L1_BASE)) compare.push({ cpu: 'first-l1', time: best({ ...rated, cache: L1_BASE }) });
+  // The last cache level bought against the CPU without it.
+  if (setup.lowerCaches > 0) compare.push({ cpu: setup.lowerCaches === 1 ? 'no-l2' : 'no-l3', time: best({ ...rated, lowerCaches: setup.lowerCaches - 1 }) });
   if (!setup.singleCycle) {
     // A single-cycle CPU's clock is a quarter of a pipelined one's (its cycle is all five stages long).
     const singleMhz = ratedMhz / 4;
@@ -124,17 +132,25 @@ export function runReport(f: Finished): RunReport {
     singleCycle: setup.singleCycle,
     pairs: p.pairs,
     ramTrips: p.memory.ramTrips,
+    lowerCaches: setup.lowerCaches,
     period,
     cooling: chip.haltedMicros / n / 1e6,
     compare,
     branches: setup.guessing ? { right: p.branches - p.mispredicted, total: p.branches, predictorRight: setup.predictor ? p.branches - p.predictorMisses : undefined } : undefined,
     calls: f.calls,
-    cache: setup.l1 && p.memory.loads > 0 ? { hits: p.memory.hits, loads: p.memory.loads } : undefined,
+    cache: setup.l1 && p.memory.loads > 0 ? cacheReport(p.memory, setup.lowerCaches) : undefined,
     clock:
       chip.cycles > 0 && (f.dials.some((d) => d !== 1) || chip.overheats > 0)
         ? { averageMhz: Number((1 / period / 1e6).toPrecision(3)), peak: Math.round(chip.peak), overheats: chip.overheats, maxDial: chip.maxDial }
         : undefined,
   };
+}
+
+/** A run's loads with a cache: where they were found, at the levels this CPU has, and their average time. */
+function cacheReport(memory: MemorySystem, lowerCaches: number): NonNullable<RunReport['cache']> {
+  const levels: ('L1' | Source)[] = ['L1', ...cachesBelow(lowerCaches).map((level) => level.name), 'RAM'];
+  // Stores go to the write buffer, so every load is in one of these.
+  return { hits: memory.hits, loads: memory.loads, found: levels.map((level) => ({ level, loads: memory.served[level] })), amatNs: memory.averageLoadNs() };
 }
 
 /** Each use's mark in the cycles' bar (the pipeline filling is its empty part), and its name in the key under it. */
@@ -176,7 +192,7 @@ export function resultCard(report: RunReport): Card {
     rows.push({ kind: 'line', left: report.client, part: 'verdict' }, { kind: 'gap' });
   }
   // Where the cycles went: a bar, then its key. A single-cycle CPU's lost cycles are misses, not stalls.
-  const name = (use: CycleUse) => (use === 'stalled' && report.singleCycle ? 'MISSED' : USE_MARKS[use].name);
+  const name = (use: CycleUse) => (use === 'stalled' && report.singleCycle ? 'MISSED' : use === 'ram' && report.lowerCaches > 0 ? 'WAITING ON MEMORY' : USE_MARKS[use].name);
   rows.push(
     { kind: 'line', left: `WHERE THE ${report.cycles} CYCLES WENT`, right: `CPI ${report.cpi.toFixed(2)}`, part: 'cycles' },
     {
@@ -194,6 +210,12 @@ export function resultCard(report: RunReport): Card {
       part: 'cycles',
     },
   );
+  // With a cache: where the loads were found, and their average time (the AMAT).
+  const { cache } = report;
+  if (cache) {
+    const found = cache.found.map(({ level, loads }) => `${level} ${loads}`).join(', ');
+    rows.push({ kind: 'line', left: `LOADS: ${found}`, right: `AMAT ${formatDuration(cache.amatNs / 1e9)}` });
+  }
   const calls = callsLine(report.calls);
   if (calls) rows.push({ kind: 'gap' }, { kind: 'line', left: calls });
   // A paid contract goes back to the board; any other run plays again.

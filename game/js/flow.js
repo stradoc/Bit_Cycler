@@ -41,9 +41,9 @@ export function teachAfterPurchase(scene, lessonId) {
     }
     const tour = lessonId === 'cache' && !getProgress().seenLessons.includes('memwall') ? ['memwall', lessonId] : [lessonId];
     if (lesson.practice) {
-        // The player's own CPU, with the program and cache the lesson is shown on (data/lessons.ts).
-        const { program, l1 } = lesson.options ?? {};
-        const shown = { ...(program ? { program } : {}), ...(l1 ? { l1 } : {}) };
+        // The player's own CPU, with the program and caches the lesson is shown on (data/lessons.ts).
+        const { program, l1, lowerCaches } = lesson.options ?? {};
+        const shown = { ...(program ? { program } : {}), ...(l1 ? { l1 } : {}), ...(lowerCaches !== undefined ? { lowerCaches } : {}) };
         scene.scene.start(tier.scene, { ...tier.options, ...shown, practice: true, returnTo: 'board', tour });
     }
     else {

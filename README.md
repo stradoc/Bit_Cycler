@@ -50,7 +50,7 @@ Add these to the URL, e.g. `http://localhost:8000/?scene=play&autoplay`. Any `?s
 | `?scene=pipeline&forwarding&guessing&predictor=1-bit` (or `2-bit`) | Tiers 5–6 (hardware predictor, SUM GRID) |
 | `&practice` | Practice mode |
 | `&difficulty=hard` | Play at that difficulty (`relaxed` / `easy` / `medium` / `hard`) instead of the settings' |
-| `&cache` / `&cache=lines,ways,blocks` | The L1 cache / with those upgrades (8 lines, 2-way sets, 8-byte blocks; any of them) |
+| `&cache` / `&cache=lines,ways,blocks` / `&cache=l2` | The L1 cache / with those upgrades (8 lines, 2-way sets, 8-byte blocks; any of them) / with the L2 behind it (`l3`: the L2 and L3; mixes with the upgrades: `&cache=ways,l3`) |
 | `&program=SUM WORDS` | Play a program by name (`data/programs.ts`, or a contract's, like `32-BIT SUM #4821`) |
 | `&clock=150` | Start with the clock dial at 50–150% |
 | `&deep` | The deep pipeline (on a pipelined tier): a 1.5x clock, 4 cycles per wrong guess |
@@ -77,12 +77,12 @@ Or type them in the browser's console (F12, then Console) while the game runs; `
 | `cheat.tier(4)` | Set your CPU tier (1–6), on a chip that runs it |
 | `cheat.clock(5)` | Clock upgrade level (0–10; 10 = 4 GHz pipelined), on a chip that runs it |
 | `cheat.cooling(2)` | Cooler: 0 stock, 1 heatsink, 2 fan |
-| `cheat.cache()` / `cheat.cache(false)` | Own / remove the L1 cache |
+| `cheat.cache()` / `cheat.cache(3)` / `cheat.cache(false)` | Own the L1 cache / the L1, L2 and L3 (2: the L1 and L2) / remove them all |
 | `cheat.l1('lines', 'ways')` | The L1 with these upgrades (`'lines'`, `'ways'`, `'blocks'`; none: the first L1) |
 | `cheat.overclock()` / `cheat.overclock(false)` | Own / remove the overclocking upgrade |
 | `cheat.deep('on')` | The deep pipeline: `'on'`, `'off'` (owned) or `'none'` |
 | `cheat.wear(1.2)` | The chip's max clock after overheating (1.0–1.5; the developer screen's row went on 2026-10-31) |
-| `cheat.unlockAll()` | Every part, max clock, fan, overclocking, the L1 cache and its upgrades, $100,000 |
+| `cheat.unlockAll()` | Every part, max clock, fan, overclocking, every cache and the L1's upgrades, $100,000 |
 | `cheat.board()` | New random contracts, sized to your CPU (also clears a new game's tutorial job) |
 | `cheat.time(6)` | Hours of today's workday already used (0–8; past 8 the day is over) |
 | `cheat.endDay()` | Log off: the next morning, with new offers |

@@ -3,7 +3,7 @@ import { GLOSSARY } from '../data/glossary.js';
 import { formatDuration, formatHours, formatMhz, formatMoney } from '../format.js';
 import { addressOf, itemAt } from '../sim/cpu.js';
 import { describe, format, UNIT_ROLES, unitOf } from '../sim/isa.js';
-import { addressSplit, blockOf, cacheBytes, cacheWords, L1_BASE, MEMORY_TIMING, missNs, sameShape, setOf, setsOf, tagOf } from '../sim/memory.js';
+import { addressSplit, blockOf, cacheBytes, cachesBelow, cacheWords, L1_BASE, MEMORY_TIMING, missNs, sameShape, setOf, setsOf, tagOf } from '../sim/memory.js';
 import { THERMAL } from '../sim/thermal.js';
 import { addressBits, bin, hex, LANE_KEYS, MISS_WORDS, STAGE_NAMES } from './layout.js';
 import { SKILLS } from '../rhythm/skills.js';
@@ -145,17 +145,21 @@ export class SongWords {
     /** A memory wait, `counted` of its cycles gone by. */
     waiting(view, counted) {
         const { access } = view;
-        const why = this.setup.l1 ? `MISS: ${MISS_WORDS[access.missKind ?? 'first-use']}` : access.kind === 'store' ? 'STORE: WRITING TO RAM' : 'LOAD: WAITING ON RAM';
-        const ns = this.setup.l1 ? missNs(this.setup.l1) : MEMORY_TIMING.ramNs;
-        return `${why}\n${counted} / ${view.total} CYCLES FROZEN\n${ns} ns = ${access.cycles} AT ${formatMhz(this.run.chip.mhz)}`;
+        const from = this.setup.lowerCaches > 0 ? ` -> ${access.level}` : '';
+        const why = this.setup.l1 ? `MISS: ${MISS_WORDS[access.missKind ?? 'first-use']}${from}` : access.kind === 'store' ? 'STORE: WRITING TO RAM' : 'LOAD: WAITING ON RAM';
+        return `${why}\n${counted} / ${view.total} CYCLES FROZEN\n${access.ns} ns = ${access.cycles} AT ${formatMhz(this.run.chip.mhz)}`;
     }
     /** The deep pipeline refilling after a wrong guess, `counted` of its cycles gone by. */
     refilling(total, counted) {
         return `WRONG GUESS: THE DEEP PIPELINE\nREFILLS ${counted} / ${total} CYCLES\nNO NEW NOTE UNTIL IT'S FULL`;
     }
+    /** What the stats line calls the cycles spent waiting: on RAM, or with caches below the L1, on memory (any level). */
+    waitedWord() {
+        return this.setup.lowerCaches > 0 ? 'WAITING ON MEMORY' : 'WAITING ON RAM';
+    }
     /** The tag over a note waiting on memory. */
     waitingTag(access) {
-        return this.setup.l1 ? 'MISS -> RAM' : access.kind === 'store' ? 'WRITING TO RAM' : 'WAITING ON RAM';
+        return this.setup.l1 ? `MISS -> ${access.level}` : access.kind === 'store' ? 'WRITING TO RAM' : 'WAITING ON RAM';
     }
     /** The tag over a note thrown out of the pipeline. */
     flushedTag() {
@@ -165,11 +169,12 @@ export class SongWords {
     redirectTag(taken) {
         return `REDIRECTED BY BRANCH UNIT\n${taken ? 'TAKEN: JUMPS TO ITS LABEL' : 'NOT TAKEN: ON TO THE NEXT LINE'}`;
     }
-    /** The value on the bus during a wait: the address asked for, then what came back (`back`). */
+    /** The value on the bus during a wait: the address asked for, then what came back (`back`); with caches below the L1, from which. */
     trip(access, back, value) {
         if (access.kind === 'store')
             return back ? 'DONE' : `[${access.address}]`;
-        return back ? `=${value}` : `[${access.address}]?`;
+        const from = this.setup.lowerCaches > 0 ? `${access.level}: ` : '';
+        return back ? `${from}=${value}` : `${from}[${access.address}]?`;
     }
     arrived() {
         return this.setup.l1 ? 'BLOCK ARRIVED:\nGO!' : 'DATA ARRIVED:\nGO!';
@@ -187,7 +192,22 @@ export class SongWords {
         const where = `${what}: ${addressBits(cache, access.address)} ${this.placeWord()} ${setOf(cache, access.address)} TAG ${tagOf(cache, access.address)}`;
         if (access.kind === 'store')
             return `${where} -> ${access.hit ? 'HIT, ' : ''}WRITE BUFFER`;
-        return `${where} -> ${access.hit ? 'HIT' : `MISS (${MISS_WORDS[access.missKind ?? 'first-use']})`}`;
+        if (access.hit)
+            return `${where} -> HIT`;
+        // With caches below the L1, where the block came from (the kind of miss is in the feedback line): the line has no room for both.
+        return `${where} -> MISS ${this.setup.lowerCaches > 0 ? `-> ${access.level}` : `(${MISS_WORDS[access.missKind ?? 'first-use']})`}`;
+    }
+    /** The lookup line before the first load or store: where they look. */
+    lookupStart() {
+        if (!this.setup.l1)
+            return 'LOADS AND STORES GO TO RAM';
+        if (this.setup.lowerCaches === 0)
+            return 'LOADS LOOK IN THE CACHE FIRST';
+        return `LOADS LOOK IN ${['L1', ...this.lowerNames()].join(', THEN ')}, THEN RAM`;
+    }
+    /** The caches below the L1 this CPU has, in the order a miss checks them. */
+    lowerNames() {
+        return cachesBelow(this.setup.lowerCaches).map((level) => level.name);
     }
     /** What an instruction did, in a few characters (shown on its note in WB). */
     result(slot) {
@@ -437,7 +457,9 @@ export class SongWords {
         const lost = {
             stalled: (c) => (report.singleCycle ? `${c} cycles finished nothing: a missed beat or a wrong key wastes the whole cycle.` : `${c} cycles were stalls: waiting for a value that wasn't ready yet, or a missed beat.`),
             flushed: (c) => `${c} cycles were flushed: instructions fetched down the wrong path after a branch, then thrown away.`,
-            ram: (c) => `${c} cycles waited on RAM (${report.ramTrips} trip${report.ramTrips === 1 ? '' : 's'}). Memory is far slower than the CPU: that's the memory wall.`,
+            ram: (c) => report.lowerCaches > 0 && report.cache
+                ? `${c} cycles waited on memory: ${report.cache.found.filter(({ level }) => level !== 'L1').map(({ level, loads }) => `${loads} from ${level === 'RAM' ? 'RAM' : `the ${level}`}`).join(', ')}. The further down, the longer the wait.`
+                : `${c} cycles waited on RAM (${report.ramTrips} trip${report.ramTrips === 1 ? '' : 's'}). Memory is far slower than the CPU: that's the memory wall.`,
             refill: (c) => `${c} cycles refilled the deep pipeline after wrong guesses: more stages means more to refill.`,
             fill: (c) => `${c} cycles were the pipeline filling at the start and emptying at the end, when not every stage has work.`,
         };
@@ -454,6 +476,8 @@ export class SongWords {
             'predictor-alone': (t) => `The predictor alone, with no help from you, would take ${t} an instruction.`,
             'no-cache': (t) => `With no cache, every load going to RAM, a perfect run would take ${t} an instruction.`,
             'first-l1': (t) => `With the first L1 (${this.firstCacheWords()}), a perfect run would take ${t} an instruction.`,
+            'no-l2': (t) => `With the L1 alone, every miss going to RAM, a perfect run would take ${t} an instruction.`,
+            'no-l3': (t) => `Without the L3, every L2 miss going to RAM, a perfect run would take ${t} an instruction.`,
             'single-cycle': (t) => `A single-cycle CPU needs a clock a quarter as fast as yours, so it takes ${t} an instruction.`,
         };
         for (const { cpu, time: t } of report.compare)
@@ -466,8 +490,10 @@ export class SongWords {
         // Your branch guesses are in the calls above; with a predictor, how it would have done without you.
         if (branches?.predictorRight !== undefined)
             steps.push({ say: `The predictor alone would have got ${branches.predictorRight} of ${branches.total} branches right.` });
-        if (cache)
-            steps.push({ say: `The L1 cache already had ${cache.hits} of ${cache.loads} loads (${Math.round((cache.hits / cache.loads) * 100)}%), so those didn't wait on RAM.` });
+        if (cache) {
+            steps.push({ say: `The L1 cache already had ${cache.hits} of ${cache.loads} loads (${Math.round((cache.hits / cache.loads) * 100)}%), so those didn't wait${report.lowerCaches > 0 ? '' : ' on RAM'}.` });
+            steps.push({ say: `On average a load took ${time(cache.amatNs / 1e9)}: the AMAT (average memory access time). A hit takes ${MEMORY_TIMING.l1Ns} ns; each miss adds its trip down.` });
+        }
         if (clock) {
             const hot = clock.overheats > 0 ? ` It overheated, so its top clock is now ${Math.round(clock.maxDial * 100)}%.` : '';
             steps.push({ say: `Your clock averaged ${formatMhz(clock.averageMhz)}, and the chip peaked at ${clock.peak}°C.${hot}` });
@@ -504,31 +530,64 @@ export class SongWords {
             return 'lb is reading memory right now;\nthe value exists at the end of this beat.';
         return `${op} (linked below) hasn't finished it.`;
     }
-    /** Each kind of memory trip, the first time it happens. */
+    /**
+     * The tips a memory trip can bring up, each the first time its kind
+     * happens: the one to say is the first not said yet (PipelineScene.tip), so
+     * what a miss is comes before where it was found.
+     */
     access(access) {
         const at = formatMhz(this.run.chip.mhz);
         if (!this.setup.l1) {
             if (access.cycles <= 1)
-                return undefined;
-            return { id: 'ram', point: 'memory', message: `WAITING ON RAM: memory takes ${MEMORY_TIMING.ramNs} ns,\n${access.cycles} cycles at ${at}. Everything freezes\nuntil it answers. No key needed.` };
+                return [];
+            return [{ id: 'ram', point: 'memory', message: `WAITING ON RAM: memory takes ${MEMORY_TIMING.ramNs} ns,\n${access.cycles} cycles at ${at}. Everything freezes\nuntil it answers. No key needed.` }];
         }
         const cache = this.setup.l1;
         if (access.kind === 'store')
-            return { id: 'buffer', point: 'cache', message: 'STORE: it goes to RAM through the\nwrite buffer, so the CPU never\nwaits for it.' };
+            return [{ id: 'buffer', point: 'cache', message: 'STORE: it goes to RAM through the\nwrite buffer, so the CPU never\nwaits for it.' }];
         if (access.hit) {
             const block = blockOf(cache, access.address) * cache.blockBytes;
-            return { id: 'hit', point: 'cache', message: `HIT: byte ${access.address} came in with its\nblock (bytes ${block}-${block + cache.blockBytes - 1}). No trip to RAM,\nno waiting.` };
+            return [{ id: 'hit', point: 'cache', message: `HIT: byte ${access.address} came in with its\nblock (bytes ${block}-${block + cache.blockBytes - 1}). No trip to RAM,\nno waiting.` }];
         }
         if (access.cycles <= 1)
-            return undefined;
+            return [];
+        const below = this.belowTip(access, at);
         // The first miss is always a first use; the other kinds get a tip of their own when they first come up.
         if (access.missKind === 'conflict') {
-            return { id: 'miss-conflict', point: 'cache', message: `CONFLICT: byte ${access.address} was in the cache,\nbut another block needed ${this.placeWord().toLowerCase()} ${setOf(cache, access.address)}\nand pushed it out.` };
+            return [{ id: 'miss-conflict', point: 'cache', message: `CONFLICT: byte ${access.address} was in the cache,\nbut another block needed ${this.placeWord().toLowerCase()} ${setOf(cache, access.address)}\nand pushed it out.` }, ...below];
         }
         if (access.missKind === 'too-small') {
-            return { id: 'miss-too-small', point: 'cache', message: `TOO SMALL: byte ${access.address} was in the cache,\nbut more blocks came in than its\n${cache.lines} lines hold, and pushed it out.` };
+            return [{ id: 'miss-too-small', point: 'cache', message: `TOO SMALL: byte ${access.address} was in the cache,\nbut more blocks came in than its\n${cache.lines} lines hold, and pushed it out.` }, ...below];
         }
-        return { id: 'miss', point: 'cache', message: `MISS: the cache doesn't hold byte ${access.address}.\nIts whole block comes from RAM:\n${access.cycles} cycles at ${at}. Just watch.` };
+        const from = this.setup.lowerCaches > 0 ? 'from below' : 'from RAM';
+        return [{ id: 'miss', point: 'cache', message: `MISS: the cache doesn't hold byte ${access.address}.\nIts whole block comes ${from}:\n${access.cycles} cycles at ${at}. Just watch.` }, ...below];
+    }
+    /** With caches below the L1: the first time each one answers a miss, and the first time a miss goes past them all to RAM. */
+    belowTip(access, at) {
+        const cache = this.setup.l1;
+        const lower = this.lowerNames();
+        if (!cache || lower.length === 0)
+            return [];
+        if (access.level === 'RAM') {
+            const missed = ['the L1', ...lower.map((name) => `the ${name}`)].join(', ').replace(/, ([^,]*)$/, ' or $1');
+            return [
+                {
+                    id: `miss-past-${lower[lower.length - 1].toLowerCase()}`,
+                    point: 'lookup',
+                    message: `ALL THE WAY TO RAM: byte ${access.address} wasn't\nin ${missed}.\nEach lookup adds its time: ${access.ns} ns,\n${access.cycles} cycles at ${at}.`,
+                },
+            ];
+        }
+        if (access.level !== 'L2' && access.level !== 'L3')
+            return [];
+        const above = access.level === 'L2' ? 'the L1' : 'the L1 and L2';
+        return [
+            {
+                id: `${access.level.toLowerCase()}-hit`,
+                point: 'lookup',
+                message: `${access.level} HIT: ${above} missed byte ${access.address},\nbut the ${access.level} had it: ${access.ns} ns,\n${access.cycles} cycles at ${at}. RAM: ${missNs(cache, lower.length)} ns.`,
+            },
+        ];
     }
     /** Tier 3: a value forwarded into the instruction that needed it. */
     forwarded(reg, producer) {
@@ -592,7 +651,9 @@ export class SongWords {
             conflict: `CONFLICT: ${cache.ways === 1 ? 'another block' : 'other blocks'} using ${place} had pushed it out. A cache that could put blocks anywhere would still hold it.`,
             'too-small': `TOO SMALL: more blocks were in use than the ${cache.lines} lines hold.`,
         };
-        return `Cache MISS, ${why[access.missKind ?? 'first-use']} Its block came from RAM: ${at}.`;
+        const from = access.level === 'RAM' ? 'RAM' : `the ${access.level}`;
+        const below = this.setup.lowerCaches > 0 ? ` (${access.ns} ns: each lookup on the way adds its time)` : '';
+        return `Cache MISS, ${why[access.missKind ?? 'first-use']} Its block came from ${from}${below}: ${at}.`;
     }
     /** A cache line: valid or not, and which block it holds. */
     cacheLine(line) {
@@ -644,8 +705,16 @@ export class SongWords {
         const place = this.placeWord().toLowerCase();
         return {
             title: GLOSSARY.LOOKUP.title,
-            body: `An address splits into ${pattern}: the i bits pick the ${place}, the t bits (the tag) say which block is in it, the o bits pick the byte. Valid + same tag = HIT. Stores go out through a write buffer.`,
+            body: `An address splits into ${pattern}: the i bits pick the ${place}, the t bits (the tag) say which block is in it, the o bits pick the byte. Valid + same tag = HIT.${this.belowWords()} Stores go out through a write buffer.`,
         };
+    }
+    /** What happens after an L1 miss with caches below it: who's asked next, and how long each takes. */
+    belowWords() {
+        const lower = cachesBelow(this.setup.lowerCaches);
+        if (lower.length === 0)
+            return '';
+        const asked = lower.map((level) => `the ${level.name} (${level.ns} ns more)`).join(', then ');
+        return ` On a MISS, ${asked}, then RAM (${MEMORY_TIMING.ramNs} ns): the first that has the block answers.`;
     }
     /** The first L1's shape in words, for the results' comparison. */
     firstCacheWords() {

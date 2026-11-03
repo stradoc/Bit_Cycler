@@ -91,7 +91,7 @@ export class Pipeline {
         this.cpu = cpu;
         this.options = options;
         this.regs = [...cpu.regs];
-        this.memory = new MemorySystem(options.cache);
+        this.memory = new MemorySystem(options.cache, options.lowerCaches);
         this.clockMhz = options.mhz;
         this.stages.IF = this.fetch();
         if (options.singleCycle) {

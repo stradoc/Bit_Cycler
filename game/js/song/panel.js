@@ -96,10 +96,10 @@ export class Panel extends Part {
             this.memTexts.push(clickable(this.text(PANEL_X, y + row * LINE, '', 14).setAlpha(0.8), () => words.memory()));
         }
         y += MEMORY_ROWS * LINE + 12;
-        const lookup = setup.l1 ? 'LOADS LOOK IN THE CACHE FIRST' : 'LOADS AND STORES GO TO RAM';
-        this.lookupText = clickable(this.text(PANEL_X, y, lookup, 13).setAlpha(0.8), () => (setup.l1 ? words.lookupInfo() : GLOSSARY.RAM));
+        this.lookupText = clickable(this.text(PANEL_X, y, words.lookupStart(), 13).setAlpha(0.8), () => (setup.l1 ? words.lookupInfo() : GLOSSARY.RAM));
+        const lookupArea = { x: BOX_X, y: y - 4, w: BOX_W, h: 22 };
         y += 22;
-        this.areas = { listing: listingArea, registers: registersArea, memory: memoryArea, cache: setup.l1 ? cacheArea : memoryArea, stats: { x: BOX_X, y: y - 6, w: BOX_W, h: 64 } };
+        this.areas = { listing: listingArea, registers: registersArea, memory: memoryArea, cache: setup.l1 ? cacheArea : memoryArea, lookup: lookupArea, stats: { x: BOX_X, y: y - 6, w: BOX_W, h: 64 } };
         this.statsText = clickable(this.text(PANEL_X, y, '', 14).setLineSpacing(3), () => GLOSSARY.STATS);
         y += 36;
         this.throughputText = clickable(this.text(PANEL_X, y, '', 14), () => GLOSSARY.THROUGHPUT);
@@ -296,7 +296,7 @@ export class Panel extends Part {
         // A superscalar CPU can finish two a cycle, so its bar is full at 2.
         const filled = Math.min(8, Math.round((run.throughput / (this.view.setup.superscalar ? 2 : 1)) * 8));
         this.throughputText.setText(`THROUGHPUT [${'#'.repeat(filled)}${'.'.repeat(8 - filled)}] ${run.throughput.toFixed(2)}`);
-        const waited = (pipeline.memoryCycles > 0 ? `  WAITING ON RAM ${pipeline.memoryCycles}` : '') + (pipeline.refillCycles > 0 ? `  REFILLS ${pipeline.refillCycles}` : '');
+        const waited = (pipeline.memoryCycles > 0 ? `  ${this.view.words.waitedWord()} ${pipeline.memoryCycles}` : '') + (pipeline.refillCycles > 0 ? `  REFILLS ${pipeline.refillCycles}` : '');
         this.statsText.setText(`CYCLE ${pipeline.cycle}  DONE ${pipeline.instructions}  CPI ${pipeline.cpi.toFixed(2)}  STREAK ${run.streak}\n` +
             `STALLS ${pipeline.stalls}  FLUSHED ${pipeline.flushed}${waited}`);
     }

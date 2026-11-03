@@ -9,8 +9,8 @@
 import { COOLING } from './economy.ts';
 import { programByName } from './programs.ts';
 import { formatDuration, formatMhz, formatMoney } from '../format.ts';
-import { cacheWords, MEMORY_TIMING, missNs, ramCycles, SHOWN_BYTES } from '../sim/memory.ts';
-import { cacheOf, cpuName, ratedMhz, type Progress } from '../sim/progress.ts';
+import { cachesBelow, cacheWords, MEMORY_TIMING, missNs, ramCycles, SHOWN_BYTES } from '../sim/memory.ts';
+import { cacheOf, cpuName, lowerCachesOf, ratedMhz, type Progress } from '../sim/progress.ts';
 import { THERMAL } from '../sim/thermal.ts';
 import { dateLine } from '../sim/workday.ts';
 import type { Era } from '../ui/eras.ts';
@@ -57,6 +57,7 @@ export function bootScript(progress: Progress | null, slot: { readonly id: strin
           ok(`Clock: ${facts.clock}`),
           ok(`Memory: ${SHOWN_BYTES} BYTES, ${facts.ram}`),
           ok(`L1 cache: ${facts.cache}`),
+          ...facts.lower.map((level) => ok(`${level.name} cache: ${level.words}`)),
           ok(`Cooling: ${facts.cooler}`),
           ...(facts.wear ? [{ kind: 'print', text: `Chip worn: ${facts.wear}`, tag: 'WARN', pause: 90 } as const] : []),
         ]
@@ -79,6 +80,7 @@ export function bootScript(progress: Progress | null, slot: { readonly id: strin
         memory,
         print(`RAM:    ${facts.ram}`),
         print(`CACHE:  ${facts.cache}`),
+        ...facts.lower.map((level) => print(`${level.name}:     ${level.words}`)),
         print(`COOLER: ${facts.cooler}`),
         ...(facts.wear ? [print(`WARNING: CHIP WORN, ${facts.wear}`, 300)] : []),
       ]
@@ -132,16 +134,27 @@ export function programListing(progress: Progress | null): string[] {
 }
 
 /** What the boot reports about the player's computer. */
-function hardware(progress: Progress): { cpu: string; clock: string; ram: string; cache: string; cooler: string; wear?: string } {
+function hardware(progress: Progress): {
+  cpu: string;
+  clock: string;
+  ram: string;
+  cache: string;
+  /** The caches below the L1: each one's name, and how it's built and what a lookup in it adds. */
+  lower: { name: string; words: string }[];
+  cooler: string;
+  wear?: string;
+} {
   const mhz = ratedMhz(progress);
   const cache = cacheOf(progress);
-  const cycles = ramCycles(mhz, cache);
-  const ramNs = cache ? missNs(cache) : MEMORY_TIMING.ramNs;
+  const lower = lowerCachesOf(progress);
+  const cycles = ramCycles(mhz, cache, lower);
+  const ramNs = cache ? missNs(cache, lower) : MEMORY_TIMING.ramNs;
   return {
     cpu: cpuName(progress),
     clock: `${formatMhz(mhz)}, A CYCLE EVERY ${formatDuration(1 / (mhz * 1e6))}`,
     ram: `A TRIP TAKES ${ramNs} ns = ${cycles} CYCLE${cycles === 1 ? '' : 'S'}`,
     cache: cache ? cacheWords(cache) : 'NONE',
+    lower: cachesBelow(lower).map((level) => ({ name: level.name, words: `${cacheWords(level.shape)}, +${level.ns} ns` })),
     cooler: COOLING[progress.cooling].name,
     wear: progress.chipMaxDial < THERMAL.maxDial ? `MAX CLOCK ${Math.round(progress.chipMaxDial * 100)}%` : undefined,
   };

@@ -34,18 +34,23 @@ test('upgrades change the boot', () => {
     const text = screen(bootScript(maxed, SLOT, era)).join('\n');
     assert.match(text, /64-BIT, TIER 7 SUPERSCALAR, DEEP PIPELINE/, `era ${era.name}`);
     assert.match(text, /4 GHz, A CYCLE EVERY 0.25 ns/, `era ${era.name}`);
-    // Every L1 upgrade: checking L1 on the way (1 ns), RAM (60) and the second 4 bytes of an 8-byte block (5).
-    assert.match(text, /66 ns = 264 CYCLES/, `era ${era.name}`);
+    // Every cache: checking L1 (1 ns), the L2 (5) and the L3 (12) on the way, RAM (60) and the second 4 bytes of an 8-byte block (5).
+    assert.match(text, /83 ns = 332 CYCLES/, `era ${era.name}`);
     assert.match(text, /64 BYTES: 8 LINES OF 8, 2-WAY/, `era ${era.name}`);
+    assert.match(text, /L2.*128 BYTES: 8 LINES OF 16, 2-WAY, \+5 ns/, `era ${era.name}`);
+    assert.match(text, /L3.*256 BYTES: 4 LINES OF 64, 4-WAY, \+12 ns/, `era ${era.name}`);
     assert.match(text, /FAN/, `era ${era.name}`);
     assert.doesNotMatch(text, /WORN/i, `era ${era.name}`);
   }
 });
 
 test('the first L1 is reported as it was bought', () => {
-  const text = screen(bootScript({ ...maxed, cacheUpgrades: [] }, SLOT, ERAS[0])).join('\n');
+  const text = screen(bootScript({ ...maxed, cacheUpgrades: [], cacheLevels: 1 }, SLOT, ERAS[0])).join('\n');
   assert.match(text, /61 ns = 244 CYCLES/);
   assert.match(text, /16 BYTES: 4 LINES OF 4, DIRECT-MAPPED/);
+  assert.doesNotMatch(text, /L2/);
+  // With the L2 behind it, a trip to RAM checks it on the way: 5 ns longer.
+  assert.match(screen(bootScript({ ...maxed, cacheUpgrades: [], cacheLevels: 2 }, SLOT, ERAS[0])).join('\n'), /66 ns = 264 CYCLES/);
 });
 
 test('a worn chip is reported; no save says so', () => {

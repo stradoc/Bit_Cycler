@@ -451,12 +451,6 @@ function replace(r, L) {
     };
 }
 /**
- * Every kind of program, by the name its programs carry. A contract stores
- * only its program's name ("SUM #4821"), and the program is rebuilt from it,
- * so a kind's place here can change but its name can't: the rebuild finds the
- * kind by name (a list that grows would otherwise turn old jobs into new kinds).
- */
-/**
  * For each item, the total of all the others: one pass adds them up, a
  * second reads them all again and replaces each with the total less itself.
  * The only kind that reads its data twice, so a cache too small for it loses
@@ -505,6 +499,103 @@ function others(r, L) {
         answer: data.map((d, i) => ({ address: i, value: L.wrap(sum - d) })),
     };
 }
+/**
+ * A sum (or checksum) unrolled for a CPU that starts two instructions at
+ * once: two items each pass, into two running totals added together at the
+ * end, so the second load and the pointer step, then the second total and the
+ * branch, can start in pairs (the compiler's trick for multiple issue:
+ * Patterson & Hennessy 4.10, loop unrolling).
+ */
+function unrolledReduce(r, L, kind) {
+    const n = 2 * r.int(4, 7);
+    const [p, end, a1, a2, v1, v2] = r.registers(6);
+    const out = r.int(8 + Math.max(0, n - 8), 15);
+    const data = L.values(r, n, 1, 15);
+    const total = data.reduce((a, b) => (kind === 'add' ? L.wrap(a + b) : a ^ b), 0);
+    return {
+        kind: kind === 'add' ? 'UNROLLED SUM' : 'UNROLLED CHECKSUM',
+        source: [
+            `      addi ${x(p)}, x0, 0`,
+            `      addi ${x(end)}, x0, ${L.at(n)}`,
+            `      addi ${x(a1)}, x0, 0`,
+            `      addi ${x(a2)}, x0, 0`,
+            `loop: ${op(L.load)} ${x(v1)}, 0(${x(p)})`,
+            `      ${op(L.load)} ${x(v2)}, ${L.bytes}(${x(p)})`,
+            `      addi ${x(p)}, ${x(p)}, ${2 * L.bytes}`,
+            `      ${op(kind)} ${x(a1)}, ${x(a1)}, ${x(v1)}`,
+            `      ${op(kind)} ${x(a2)}, ${x(a2)}, ${x(v2)}`,
+            `      bne  ${x(p)}, ${x(end)}, loop`,
+            `      ${op(kind)} ${x(a1)}, ${x(a1)}, ${x(a2)}`,
+            `      ${op(L.store)} ${x(a1)}, ${L.at(out)}(x0)`,
+        ].join('\n'),
+        memory: data,
+        elements: n,
+        verb: kind === 'add' ? 'SUM' : 'CHECKSUM',
+        unit: 'BYTES',
+        roles: {
+            [p]: `the address of the next two ${L.noun}s`,
+            [end]: `the end address (${L.at(n)}): the loop stops when the address reaches it`,
+            [a1]: kind === 'add' ? `the running sum of the first ${L.noun} of each two` : `the checksum of the first ${L.noun} of each two`,
+            [a2]: kind === 'add' ? `the running sum of the second ${L.noun} of each two` : `the checksum of the second ${L.noun} of each two`,
+            [v1]: `the first ${L.noun} just loaded`,
+            [v2]: `the second ${L.noun} just loaded`,
+        },
+        keys: loopKeys(L, p, end, L.at(n), `NEXT TWO ${L.noun.toUpperCase()}S' ADDRESS`),
+        memoryNote: `Addresses ${L.span(0, n)} hold the data${L.sized(n)}, two at a time into two totals. The ${kind === 'add' ? 'sum' : 'checksum'} (${total}) goes to address ${L.at(out)}.`,
+        answer: [{ address: out, value: total }],
+    };
+}
+/**
+ * Copies the data to 16.., then reads the originals again to total them, so
+ * the copy can be checked: like OTHERS, a job that reads its data twice
+ * (TOO SMALL misses on a cache that can't hold it). The same sizes as OTHERS:
+ * bytes fit the first L1, wider data takes 20-32 bytes.
+ */
+function checkedCopy(r, L) {
+    const n = L.bits === 8 ? r.int(8, 12) : r.int(Math.ceil(20 / L.bytes), Math.min(12, Math.floor(32 / L.bytes)));
+    const [p, end, total, v] = r.registers(4);
+    const data = L.values(r, n, 1, 60);
+    const sum = data.reduce((a, b) => L.wrap(a + b), 0);
+    return {
+        kind: 'CHECKED COPY',
+        source: [
+            `      addi ${x(p)}, x0, 0`,
+            `      addi ${x(end)}, x0, ${L.at(n)}`,
+            `      addi ${x(total)}, x0, 0`,
+            `copy: ${op(L.load)} ${x(v)}, 0(${x(p)})`,
+            `      ${op(L.store)} ${x(v)}, ${L.at(16)}(${x(p)})`,
+            `      addi ${x(p)}, ${x(p)}, ${L.bytes}`,
+            `      bne  ${x(p)}, ${x(end)}, copy`,
+            `      addi ${x(p)}, x0, 0`,
+            `check: ${op(L.load)} ${x(v)}, 0(${x(p)})`,
+            `      add  ${x(total)}, ${x(total)}, ${x(v)}`,
+            `      addi ${x(p)}, ${x(p)}, ${L.bytes}`,
+            `      bne  ${x(p)}, ${x(end)}, check`,
+            `      ${op(L.store)} ${x(total)}, ${L.at(15)}(x0)`,
+        ].join('\n'),
+        memory: data,
+        elements: n,
+        verb: 'COPY AND CHECK',
+        unit: 'BYTES',
+        roles: {
+            [p]: `the address of the next ${L.noun} (it goes through them twice)`,
+            [end]: `the end address (${L.at(n)}): each pass stops when the address reaches it`,
+            [total]: `the total of the originals, to check the copy against`,
+            [v]: `the ${L.noun} just loaded`,
+        },
+        keys: loopKeys(L, p, end, L.at(n), `${L.noun.toUpperCase()}'S ADDRESS, TWICE`),
+        memoryNote: `Addresses ${L.span(0, n)} hold the data${L.sized(n)}, copied to ${L.span(16, n)}, then read again: their total (${sum}) goes to address ${L.at(15)}.`,
+        answer: [...data.map((value, i) => ({ address: 16 + i, value })), { address: 15, value: sum }],
+    };
+}
+/**
+ * Every kind of program, by the name its programs carry. A contract stores
+ * only its program's name ("SUM #4821"), and the program is rebuilt from it,
+ * so a kind's place here can change but its name can't: the rebuild finds the
+ * kind by name (a list that grows would otherwise turn old jobs into new kinds).
+ * `showcase` kinds are dealt only to show off a part you own (sim/showcase.ts),
+ * never at random, so the random draw (and every seed's program) stays as it was.
+ */
 const KERNELS = [
     { kind: 'SUM', build: (r, L) => reduce(r, L, 'add') },
     { kind: 'CHECKSUM', build: (r, L) => reduce(r, L, 'xor') },
@@ -520,7 +611,12 @@ const KERNELS = [
     { kind: 'CHANGES', build: changes },
     { kind: 'REPLACE', build: replace },
     { kind: 'OTHERS', build: others },
+    { kind: 'UNROLLED SUM', build: (r, L) => unrolledReduce(r, L, 'add'), showcase: true },
+    { kind: 'UNROLLED CHECKSUM', build: (r, L) => unrolledReduce(r, L, 'xor'), showcase: true },
+    { kind: 'CHECKED COPY', build: checkedCopy, showcase: true },
 ];
+/** The kinds dealt at random (every kind but the showcase ones), in the order the seeds' draw has always used. */
+const DRAWN = KERNELS.filter((kernel) => !kernel.showcase);
 const CLIENTS = {
     SUM: [
         { name: 'FAIRVIEW SAVINGS', verb: 'TOTAL', unit: 'DEPOSITS' },
@@ -581,7 +677,13 @@ const CLIENTS = {
         { name: 'TRUE NORTH RETAIL', verb: 'ALL-BUT-ONE TOTALS OF', unit: 'STORE SALES' },
         { name: 'HILLCREST LEAGUE', verb: 'REST-OF-TEAM TOTALS OF', unit: 'PLAYER SCORES' },
     ],
+    'CHECKED COPY': [
+        { name: 'IRONCLAD ARCHIVES', verb: 'COPY AND CHECK', unit: 'RECORDS' },
+        { name: 'SAFE HARBOR BANK', verb: 'COPY AND VERIFY', unit: 'LEDGER ENTRIES' },
+    ],
 };
+/** An unrolled job is the same job for the same clients, compiled for a CPU that starts two at once. */
+const CLIENTS_OF = { 'UNROLLED SUM': 'SUM', 'UNROLLED CHECKSUM': 'CHECKSUM' };
 /**
  * The program for `seed`, with data `bits` wide: named "<KIND> #<seed>" for
  * bytes, "<BITS>-BIT <KIND> #<seed>" for wider data (a contract stores only the
@@ -592,9 +694,9 @@ export function generateProgram(seed, kind, bits = 8) {
     const r = randomTools(seeded(seed));
     const L = layoutFor(bits);
     // One draw picks the kind, whichever kind is used, so the rest of the seed's choices stay the same as when the program was first made.
-    const drawn = r.pick(KERNELS);
+    const drawn = r.pick(DRAWN);
     const { kind: built, memory: items, answer, ...kernel } = (KERNELS.find((k) => k.kind === kind) ?? drawn).build(r, L);
-    const client = r.pick(CLIENTS[built]);
+    const client = r.pick(CLIENTS[CLIENTS_OF[built] ?? built]);
     const verb = typeof client.verb === 'function' ? client.verb(kernel.verb) : (client.verb ?? kernel.verb);
     // Wider data: its width in the job's words ("32-BIT DEPOSITS"), and each item laid out in memory as bytes.
     const unit = bits === 8 ? client.unit : `${bits}-BIT ${client.unit.replace(/ BYTES$/, ' WORDS')}`;

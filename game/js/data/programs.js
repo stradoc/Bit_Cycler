@@ -201,6 +201,43 @@ rest: lw   x4, 0(x1)
             { reg: 2, tag: 'END', about: 'STOP EACH PASS AT 24' },
         ],
     },
+    // The caches below the L1, each shown on a program whose data outgrows the one above (data/lessons.ts).
+    // The L2's lesson reuses TWO PASSES: its 24 bytes overflow the first L1, but the L2 holds them all.
+    {
+        name: 'SUM BIG NUMBERS',
+        // THE L3: sixteen 64-bit numbers (128 bytes). Each fills two of the first L1's 4-byte blocks, so every load
+        // misses the L1. The L2's 16-byte blocks hold two numbers: without the L3, every other number comes from RAM
+        // (8 trips). The L3's 64-byte blocks hold eight: 2 trips to RAM, and the rest found in the L3 or the L2.
+        source: `
+      addi x1, x0, 0      # x1 = address of the next number
+      addi x2, x0, 128    # x2 = end address: 16 numbers, 8 bytes each
+      addi x3, x0, 0      # x3 = running sum
+loop: ld   x4, 0(x1)
+      add  x3, x3, x4
+      addi x1, x1, 8
+      bne  x1, x2, loop
+      sd   x3, 128(x0)
+    `,
+        memory: asBytes(64, [
+            4200000000, 3100000000, 5600000000, 2700000000, 3900000000, 4800000000, 2500000000, 6100000000,
+            3300000000, 4400000000, 2900000000, 5200000000, 3600000000, 4700000000, 2800000000, 5000000000,
+        ]),
+        elements: 16,
+        verb: 'SUM',
+        unit: '64-BIT NUMBERS',
+        dataBits: 64,
+        roles: {
+            1: 'the address of the next number (8 bytes on each time)',
+            2: 'the end address (128): the loop stops when x1 reaches it',
+            3: 'the running sum',
+            4: 'the number just loaded from memory',
+        },
+        memoryNote: 'Addresses 0-127 hold sixteen 64-bit numbers, 8 bytes each: more than the L1 and as much as the L2 hold. The sum (64800000000) is stored at address 128.',
+        keys: [
+            { reg: 1, tag: 'NEXT', about: "NEXT NUMBER'S ADDRESS, FROM 0" },
+            { reg: 2, tag: 'END', about: 'STOP WHEN x1 REACHES 128' },
+        ],
+    },
     {
         name: 'BAKERY TILL',
         // A new game's first job (the tutorial): each core instruction (addi, lb, sub, sb, add, bne) comes up once,

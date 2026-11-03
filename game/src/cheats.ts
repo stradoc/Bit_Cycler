@@ -1,5 +1,5 @@
 import { cheatFlags } from './cheatFlags.ts';
-import { CACHE_UPGRADES, CHIPS, CLOCK, COOLING } from './data/economy.ts';
+import { CACHE_UPGRADES, CHIPS, CLOCK, COOLING, MEMORY_PARTS } from './data/economy.ts';
 import { TAUGHT_IDS } from './data/tours.ts';
 import { formatMhz, formatMoney } from './format.ts';
 import { activeSlot, getProgress, newGame, slotName, updateProgress } from './save.ts';
@@ -19,12 +19,12 @@ const HELP = `Bit Cycler cheats (type in this console):
   cheat.tier(4)         set your CPU tier (1-7): gives or removes parts (and fits a chip that runs them)
   cheat.clock(5)        clock upgrade level (0-${CLOCK.factors.length - 1}), on a chip that runs it
   cheat.cooling(2)      cooler (0 stock, 1 heatsink, 2 fan)
-  cheat.cache()         own the L1 cache (false to remove)
-  cheat.l1('ways')      the L1 with these upgrades: 'lines', 'ways', 'blocks' (none: the first one)
+  cheat.cache(3)        own the caches: 1 the L1, 2 with the L2, 3 with the L3 too (no number: the L1; 0 or false: none)
+  cheat.l1('ways')      the L1 with these upgrades: 'lines', 'ways', 'blocks' (none: the first one); keeps the L2 and L3
   cheat.overclock()     own the overclocking upgrade (false to remove)
   cheat.deep('on')      the deep pipeline: 'on', 'off' (owned) or 'none'
   cheat.wear(1.2)       chip's max clock after overheating (1.0-1.5)
-  cheat.unlockAll()     every part, max clock, fan, overclocking, the L1 cache and its upgrades, $100,000
+  cheat.unlockAll()     every part, max clock, fan, overclocking, every cache and the L1's upgrades, $100,000
   cheat.board()         new random contracts
   cheat.time(6)         hours of today's workday already used (0-8; past 8 the day is over)
   cheat.endDay()        log off: the next morning, with new offers
@@ -45,7 +45,7 @@ export function installCheats(game: Phaser.Game): void {
     const tier = tierOf(p);
     return (
       `${slotName(activeSlot())} | ${formatMoney(p.money)} | ${bitsName(p.wordBits).toLowerCase()} | tier ${tier.number} ${tier.name} | ${formatMhz(ratedMhz(p))} (clock level ${p.clockLevel}) | ` +
-      `${COOLING[p.cooling].name} | overclocking ${p.overclocking ? 'yes' : 'no'} | deep pipeline ${p.deepPipeline} | L1 cache ${p.cacheLevels > 0 ? 'yes' : 'no'} | ` +
+      `${COOLING[p.cooling].name} | overclocking ${p.overclocking ? 'yes' : 'no'} | deep pipeline ${p.deepPipeline} | caches ${p.cacheLevels > 0 ? MEMORY_PARTS.slice(0, p.cacheLevels).map((part) => part.id.toUpperCase()).join(' ') : 'none'} | ` +
       `max clock ${Math.round(p.chipMaxDial * 100)}%`
     );
   };
@@ -64,10 +64,10 @@ export function installCheats(game: Phaser.Game): void {
     cooling: (level: number) => change((p) => ({ ...p, cooling: clampInt(level, COOLING.length - 1) })),
     overclock: (on = true) => change((p) => ({ ...p, overclocking: on })),
     deep: (state: 'none' | 'off' | 'on' = 'on') => change((p) => ({ ...p, deepPipeline: ['none', 'off', 'on'].includes(state) ? state : 'on' })),
-    cache: (on = true) => change((p) => ({ ...p, cacheLevels: on ? 1 : 0 })),
+    cache: (levels: number | boolean = 1) => change((p) => ({ ...p, cacheLevels: clampInt(levels === true ? 1 : Number(levels), MEMORY_PARTS.length) })),
     l1: (...upgrades: string[]) => {
       const ids = CACHE_UPGRADES.filter((upgrade) => upgrades.includes(upgrade.id)).map((upgrade) => upgrade.id);
-      return change((p) => ({ ...p, cacheLevels: 1, cacheUpgrades: ids }));
+      return change((p) => ({ ...p, cacheLevels: Math.max(1, p.cacheLevels), cacheUpgrades: ids }));
     },
     wear: (maxDial: number) => change((p) => ({ ...p, chipMaxDial: Math.min(THERMAL.maxDial, Math.max(1, maxDial)) })),
     unlockAll: () => change(withEverything),

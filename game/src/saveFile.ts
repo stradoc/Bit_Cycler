@@ -6,6 +6,7 @@ import { cleanSkillLog } from './rhythm/skills.ts';
 
 import { CACHE_UPGRADES, CLOCK, COOLING, CPU_PARTS, GRADES, MEMORY_PARTS, WORKDAY } from './data/economy.ts';
 import { chipByBits, fitChip, NEW_GAME, type Contract, type DayRecord, type Progress } from './sim/progress.ts';
+import { SHOWCASES } from './sim/showcase.ts';
 import { THERMAL } from './sim/thermal.ts';
 
 const GAME = 'bit-cycler';
@@ -62,12 +63,14 @@ function cleanProgress(raw: Record<string, unknown>): Progress {
     cacheUpgrades: Array.isArray(progress.cacheUpgrades)
       ? [...new Set(progress.cacheUpgrades)].filter((id) => CACHE_UPGRADES.some((upgrade) => upgrade.id === id))
       : [],
+    // Saves from before the shop kept a log start with none (sim/showcase.ts then goes by the parts' own order).
+    bought: Array.isArray(progress.bought) ? progress.bought.filter((key, i, keys) => typeof key === 'string' && keys.lastIndexOf(key) === i).slice(-64) : [],
     cooling: Math.round(clamp(progress.cooling, 0, COOLING.length - 1, 0)),
     overclocking: progress.overclocking === true,
     deepPipeline: progress.deepPipeline === 'on' || progress.deepPipeline === 'off' ? progress.deepPipeline : 'none',
     chipMaxDial: clamp(progress.chipMaxDial, 1, THERMAL.maxDial, THERMAL.maxDial),
     // Contracts saved before deadlines existed are dropped; the board refills when loaded.
-    board: Array.isArray(progress.board) ? progress.board.filter(isContract) : [],
+    board: Array.isArray(progress.board) ? progress.board.filter(isContract).map(cleanContract) : [],
     nextId: Math.round(clamp(progress.nextId, 1, Number.MAX_SAFE_INTEGER, 1)),
     seenLessons: Array.isArray(progress.seenLessons) ? progress.seenLessons.filter((id) => typeof id === 'string') : [],
     // Saves from before tips were remembered: none given yet.
@@ -90,6 +93,12 @@ function cleanProgress(raw: Record<string, unknown>): Progress {
 
 function isDayRecord(value: unknown): value is DayRecord {
   return isObject(value) && ['day', 'out', 'jobs', 'late', 'earned'].every((key) => typeof value[key] === 'number');
+}
+
+/** A contract as saved: what it shows off is kept only if it's a part a job can show (sim/showcase.ts). */
+function cleanContract(contract: Contract): Contract {
+  const { shows, ...rest } = contract;
+  return SHOWCASES.some((part) => part.id === shows) ? { ...rest, shows } : rest;
 }
 
 function isContract(value: unknown): value is Contract {

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CACHE_UPGRADES, CHIPS, CLOCK, DATA_WIDTHS, GRADES, WORKDAY } from '../game/src/data/economy.ts';
+import { CACHE_UPGRADES, CHIPS, CLOCK, DATA_WIDTHS, GRADES, MEMORY_PARTS, WORKDAY } from '../game/src/data/economy.ts';
 import { bitsOf } from '../game/src/sim/generator.ts';
 import { programByName } from '../game/src/data/programs.ts';
 import { formatCount, formatDuration, formatMhz, formatMoney } from '../game/src/format.ts';
@@ -19,6 +19,7 @@ import {
   isLocked,
   isTight,
   jobItems,
+  lowerCachesOf,
   NEW_GAME,
   newContract,
   pastMemoryWall,
@@ -251,6 +252,38 @@ test("the L1's upgrades: on sale once the L1 is in, in any order, each with its 
   const colliding = 'ADD TWO LISTS';
   assert.ok(cpiFor(colliding, ways) < cpiFor(colliding, cached), `${cpiFor(colliding, ways)} vs ${cpiFor(colliding, cached)}`);
   assert.deepEqual(withEverything(NEW_GAME).cacheUpgrades, CACHE_UPGRADES.map((upgrade) => upgrade.id));
+});
+
+test('the L2 and L3: each on sale after the level above it, once the chip is wide enough, each with its lesson', () => {
+  const item = (p: Progress, key: string) => shopItems(p).find((i) => i.key === key);
+  const l1: Progress = { ...NEW_GAME, wordBits: 16, parts: ['pipeline'], money: 10_000, clockLevel: 4, cacheLevels: 1 };
+  assert.ok(pastMemoryWall(l1));
+  // The L2 needs the 32-bit chip: wide data outgrows the L1.
+  assert.equal(item(l1, 'l2')?.state, 'later');
+  assert.match(item(l1, 'l2')?.about ?? '', /32-bit chip/);
+  const wide: Progress = { ...l1, wordBits: 32 };
+  assert.equal(item({ ...wide, cacheLevels: 0 }, 'l2')?.state, 'later', 'not before the L1');
+  assert.equal(item(wide, 'l2')?.state, 'buy');
+  assert.equal(item(wide, 'l2')?.lessonId, 'l2');
+  const l2 = buy(wide, 'l2');
+  assert.ok(l2);
+  assert.equal(l2.cacheLevels, 2);
+  assert.equal(lowerCachesOf(l2), 1);
+  assert.equal(l2.money, 10_000 - MEMORY_PARTS[1].price);
+  // The L3 needs the L2 and the 64-bit chip.
+  assert.equal(item(l2, 'l3')?.state, 'later');
+  assert.equal(item({ ...l2, wordBits: 64, cacheLevels: 1 }, 'l3')?.state, 'later', 'not before the L2');
+  const l3 = buy({ ...l2, wordBits: 64 }, 'l3');
+  assert.ok(l3);
+  assert.equal(lowerCachesOf(l3), 2);
+  assert.equal(item(l3, 'l3')?.state, 'owned');
+  assert.equal(item(l3, 'l3')?.lessonId, 'l3');
+  // The shop lists the L1, its upgrades, then the levels below it.
+  const keys = shopItems(l3).filter((i) => i.group === 'MEMORY').map((i) => i.key);
+  assert.deepEqual(keys, ['l1', ...CACHE_UPGRADES.map((upgrade) => upgrade.id), 'l2', 'l3']);
+  // The board's estimates use them: a 32-bit job that outgrows the L1 is quicker with the L2 behind it.
+  const fast: Progress = { ...wide, clockLevel: 9 };
+  assert.ok(cpiFor('TWO PASSES', { ...fast, cacheLevels: 2 }) < cpiFor('TWO PASSES', fast));
 });
 
 test('the board is endless: finishing a contract pays and puts a new one in its place', () => {

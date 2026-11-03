@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CLOCK, COOLING } from '../game/src/data/economy.ts';
+import { CLOCK, COOLING, MEMORY_PARTS } from '../game/src/data/economy.ts';
 import { parseSave, saveText } from '../game/src/saveFile.ts';
 import { fillBoard, NEW_GAME, withEverything, type Progress } from '../game/src/sim/progress.ts';
 import { THERMAL } from '../game/src/sim/thermal.ts';
@@ -63,7 +63,7 @@ test('an edited save is pulled back into range', () => {
   assert.equal(p.money, 0);
   assert.deepEqual(p.parts, ['pipeline']);
   assert.equal(p.clockLevel, CLOCK.factors.length - 1);
-  assert.equal(p.cacheLevels, 1);
+  assert.equal(p.cacheLevels, MEMORY_PARTS.length); // the L1, the L2 and the L3: no more levels to own
   // Each L1 upgrade once, unknown ones dropped, in the order bought.
   assert.deepEqual(p.cacheUpgrades, ['ways', 'lines']);
   assert.equal(p.cooling, 0);

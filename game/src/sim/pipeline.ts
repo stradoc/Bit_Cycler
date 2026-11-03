@@ -54,6 +54,8 @@ export type PipelineOptions = {
   readonly singleCycle?: boolean;
   /** The L1 data cache, as it's built (sim/memory.ts): loads that hit don't wait for RAM. None if left out. */
   readonly cache?: CacheShape;
+  /** How many of the caches below the L1 (LOWER_CACHES: 1 the L2, 2 the L2 and L3) an L1 miss checks before RAM. None without an L1. */
+  readonly lowerCaches?: number;
   /**
    * Cycles a wrong guess costs (1 without: the 5-stage pipeline decides a
    * branch in ID, so only the one instruction fetched behind it is thrown
@@ -210,7 +212,7 @@ export class Pipeline {
     this.cpu = cpu;
     this.options = options;
     this.regs = [...cpu.regs];
-    this.memory = new MemorySystem(options.cache);
+    this.memory = new MemorySystem(options.cache, options.lowerCaches);
     this.clockMhz = options.mhz;
     this.stages.IF = this.fetch();
     if (options.singleCycle) {
