@@ -66,8 +66,9 @@ Upgrades follow microprocessor history and stay with the CPU and its control log
 - [x] Generator: data bigger than the cache that's read more than once (OTHERS, 2026-11-02: wide data outgrows the first L1)
 - [ ] Later: choosing the cache's shape (block size, associativity)
 
-**Windows**
+**Launchers**
 - [x] `Play Bit Cycler.bat` works on a Windows machine (the user, 2026-11-01)
+- [ ] `Play Bit Cycler.command` works on a Mac (added 2026-11-03, untested)
 
 **Teaching**
 - [ ] The deep pipeline: balance its price, clock gain and wrong-guess cost by playing; decide whether its loads should wait longer too (deeper pipelines lengthen data hazards as well); draw it on the shop's chip

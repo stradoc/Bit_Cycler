@@ -128,6 +128,14 @@ Technology and design decisions, with the reason for each (`RULES.md` rule 3). A
 | 2026-10-28 | **An old-terminal look that modernizes by era**: green CRT (8-bit) → DOS app (16-bit) → mid-90s desktop with a dark mode (32-bit) → terminal window on an LCD (64-bit). Era styling, not a claim that word size changes the screen (since 2026-10-31 the save's chip picks the era); generic, with no real products, logos or system fonts | Fits the hardware theme; each era looks like a computer of its time, without imitating any company |
 | 2026-10-29 | The retro eras draw a 960×540 canvas stretched with chunky pixels; the 32- and 64-bit eras draw at the screen's resolution, the 64-bit one with smooth motion; **the CRT's scanlines and vignette are an overlay at the screen's own resolution** | Each era should feel like its time; the overlay stays fine over chunky pixels |
 | 2026-10-30 | **The glow adds to the picture** (Phaser's bloom runs at half strength, the result doubled) and **the CRT overlay blends as soft light** | Phaser's bloom averages the picture with its blur, which halved the letters' brightness; this keeps the halo and makes the letters bright |
+| 2026-11-03 | **Mac players start the game by double-clicking `Play Bit Cycler.command`**, which runs `tools/serve-mac.py` (Python's own web server, the twin of `serve-windows.ps1`: localhost only, ports 8000-8020, no caching) and opens the browser | User: "can you add an executable for mac? similar to the .bat already present". Python is already the project's `npm run serve` tool; macOS asks to install Apple's Command Line Tools the first time if it has no Python yet |
+
+## 2026-11-03
+
+### A double-click launcher for Mac
+- **Why** (user: "can you add an executable for mac? similar to the .bat already present").
+- **`Play Bit Cycler.command`** (repo root, executable in git) runs **`tools/serve-mac.py`** with `python3`: it serves `game/` on the first free port from 8000 (localhost only, the right types so the modules load, no caching so updates show), opens the default browser, and runs until its Terminal window is closed. `.gitattributes` keeps `.command` files' Unix line endings. The team README says how, including macOS's first-run block (**Privacy & Security > Open Anyway**).
+- Checked on Windows: the server answers with the page and `text/javascript` modules; the launcher's shell syntax is valid. **Not yet checked on a Mac.**
 
 ## 2026-11-02
 

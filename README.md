@@ -4,9 +4,9 @@ A tycoon + rhythm game where every beat is one CPU clock cycle. CSC 3501 (Comput
 
 This README is for the team: setup, commands and testing tools. How to play is in `game/README.md` (it ships with the game), how the code is organized and how to add features in `CLAUDE.md`, the rules in `RULES.md`, the plan in `ROADMAP.md`, and history and decisions in `CHANGELOG.md`.
 
-## Just playing (Windows)
+## Just playing (Windows or Mac)
 
-Download the repo (**Code > Download ZIP** on GitHub, then unzip it) and double-click **`Play Bit Cycler.bat`**. It serves the game with Windows' own PowerShell (nothing to install) and opens it in your browser; close the window that opens to stop. Windows may warn that the file came from the internet the first time: choose **More info > Run anyway**. On another computer, follow Setup below and `npm run serve`. (The game can't be played by opening `game/index.html` directly: browsers only run its modules from a web address.)
+Download the repo (**Code > Download ZIP** on GitHub, then unzip it) and double-click **`Play Bit Cycler.bat`**. It serves the game with Windows' own PowerShell (nothing to install) and opens it in your browser; close the window that opens to stop. Windows may warn that the file came from the internet the first time: choose **More info > Run anyway**. On a Mac, double-click **`Play Bit Cycler.command`** instead: it serves the game with Python's own web server and opens it the same way (if the Mac has no Python yet, it offers to install Apple's Command Line Tools: accept, then double-click again). macOS blocks it the first time because it came from the internet: go to **System Settings > Privacy & Security** and choose **Open Anyway** (on older macOS, right-click the file and choose **Open**). On another computer, follow Setup below and `npm run serve`. (The game can't be played by opening `game/index.html` directly: browsers only run its modules from a web address.)
 
 ## Setup
 
