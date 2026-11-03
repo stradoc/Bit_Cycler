@@ -65,32 +65,9 @@ Add these to the URL, e.g. `http://localhost:8000/?scene=play&autoplay`. Any `?s
 
 ## Testing cheats
 
-The **developer screen** (backquote, `` ` ``, on the main menu) has them all, and changes the save you're playing (the active slot), as the console cheats do: the CPU, money, the day's hours and the end of the day, lessons, and START THIS SAVE OVER (Enter twice). To test without touching a campaign, export it first (SAVES) or play another slot.
+The **developer screen** (backquote, `` ` ``, on the main menu) has them all, and changes the save you're playing (the active slot), To test without touching a campaign, export it first (SAVES) or play another slot.
 
 Or type them in the browser's console (F12, then Console) while the game runs; `cheat.help()` lists them. Each changes the active save and redraws the screen:
-
-| Cheat | Effect |
-| --- | --- |
-| `cheat.status()` | What you have now |
-| `cheat.money(5000)` | Set your money |
-| `cheat.chip(32)` | Your CPU chip (8, 16, 32, 64): sets the era, drops parts it can't run |
-| `cheat.tier(4)` | Set your CPU tier (1–6), on a chip that runs it |
-| `cheat.clock(5)` | Clock upgrade level (0–10; 10 = 4 GHz pipelined), on a chip that runs it |
-| `cheat.cooling(2)` | Cooler: 0 stock, 1 heatsink, 2 fan |
-| `cheat.cache()` / `cheat.cache(3)` / `cheat.cache(false)` | Own the L1 cache / the L1, L2 and L3 (2: the L1 and L2) / remove them all |
-| `cheat.l1('lines', 'ways')` | The L1 with these upgrades (`'lines'`, `'ways'`, `'blocks'`; none: the first L1) |
-| `cheat.overclock()` / `cheat.overclock(false)` | Own / remove the overclocking upgrade |
-| `cheat.deep('on')` | The deep pipeline: `'on'`, `'off'` (owned) or `'none'` |
-| `cheat.wear(1.2)` | The chip's max clock after overheating (1.0–1.5; the developer screen's row went on 2026-10-31) |
-| `cheat.unlockAll()` | Every part, max clock, fan, overclocking, every cache and the L1's upgrades, $100,000 |
-| `cheat.board()` | New random contracts, sized to your CPU (also clears a new game's tutorial job) |
-| `cheat.time(6)` | Hours of today's workday already used (0–8; past 8 the day is over) |
-| `cheat.endDay()` | Log off: the next morning, with new offers |
-| `cheat.lessons()` / `cheat.lessons(false)` | Mark every lesson and tour (the board's too) seen / unseen, in this save |
-| `cheat.autoplay()` / `cheat.autoplay(false)` | Songs play themselves |
-| `cheat.temp(94)` | Set the chip's temperature mid-song |
-| `cheat.reset()` | New game in the active slot (wipes it) |
-
 ## Layout
 
 | Path | What it is |
