@@ -1,11 +1,11 @@
 import { cheatFlags } from '../cheatFlags.js';
 import { CACHE_UPGRADES, CHIPS, CLOCK, COOLING, MEMORY_PARTS } from '../data/economy.js';
-import { LESSONS } from '../data/lessons.js';
+import { isWip, LESSONS } from '../data/lessons.js';
 import { TIERS } from '../data/tiers.js';
 import { folderPath } from '../data/menuFiles.js';
 import { TAUGHT_IDS } from '../data/tours.js';
 import { openLesson } from '../flow.js';
-import { formatHours, formatMhz, formatMoney } from '../format.js';
+import { formatHours, formatMhz, formatMoney, wipLabel } from '../format.js';
 import { activeSlot, getProgress, hasSave, newGame, slotName, updateProgress } from '../save.js';
 import { bitsName, cacheOf, chipOf, deepActive, fillBoard, fitChip, lowerCachesOf, ratedMhz, tierOf, withEverything, withTier, withWordBits } from '../sim/progress.js';
 import { cachesBelow, cacheWords } from '../sim/memory.js';
@@ -139,7 +139,7 @@ export class DevScene extends Screen {
             endday: ['END THE DAY', dateLine(p)],
             board: ['DEAL NEW CONTRACTS'],
             everything: ['UNLOCK EVERYTHING'],
-            lesson: ['OPEN LESSON', LESSONS[LESSON_IDS[this.lesson]].title.slice(0, 40)],
+            lesson: ['OPEN LESSON', wipLabel(LESSONS[LESSON_IDS[this.lesson]].title, isWip(LESSON_IDS[this.lesson])).slice(0, 40)],
             seen: ['LESSONS AND TOURS SEEN', `${p.seenLessons.length} OF ${TAUGHT_IDS.length}`],
             play: ['PLAY: CONTRACT BOARD'],
             practice: ['PRACTICE THIS TIER'],

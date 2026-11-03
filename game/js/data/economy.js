@@ -124,8 +124,8 @@ export const CLOCK = {
  * The L1 goes on sale once your clock outruns RAM (a trip takes over a
  * cycle); each level after it once your chip is `bits` wide, when the data
  * outgrows the level above (a 32-bit job's 128 bytes, a 64-bit job's 256).
- * `later` is what the shop says before it's on sale. Prices are provisional
- * until the balance pass.
+ * `later` is what the shop says before it's on sale. `wip`: still being
+ * reworked (WIP_PARTS). Prices are provisional until the balance pass.
  */
 export const MEMORY_PARTS = [
     {
@@ -134,6 +134,7 @@ export const MEMORY_PARTS = [
         price: 500,
         bits: 8,
         lessonId: 'cache',
+        wip: false,
         about: 'A tiny, fast memory beside the CPU: 4 lines of 4 bytes. A load it holds needs no trip to RAM; a miss brings in the whole 4-byte block, so the next bytes hit. Stores go out through a write buffer and never wait.',
         later: 'RAM keeps up with your clock for now: a trip fits in one cycle. Once a faster clock makes loads wait for RAM, this goes on sale.',
     },
@@ -143,6 +144,7 @@ export const MEMORY_PARTS = [
         price: 800,
         bits: 32,
         lessonId: 'l2',
+        wip: true,
         about: "A second, bigger cache behind the L1: 8 lines of 16 bytes, 2-way. When the L1 misses, the L2 answers in 5 ns instead of RAM's 60; each miss on the way to RAM takes 5 ns longer.",
         later: 'A bigger cache behind the L1, for wide data. Needs the L1 cache and the 32-bit chip.',
     },
@@ -152,6 +154,7 @@ export const MEMORY_PARTS = [
         price: 1500,
         bits: 64,
         lessonId: 'l3',
+        wip: true,
         about: 'A third cache behind the L2: 4 lines of 64 bytes, room for a whole 64-bit job. When the L2 misses, the L3 answers in 12 ns more; each miss on the way to RAM takes 12 ns longer.',
         later: 'The biggest cache, behind the L2. Needs the L2 cache and the 64-bit chip.',
     },
@@ -163,8 +166,9 @@ export const MEMORY_PARTS = [
  * more blocks (fewer TOO SMALL), two lines per set let two blocks share a place
  * (fewer CONFLICT; the same 16 bytes, so only the placement rule changes),
  * bigger blocks bring in more neighbours per miss (fewer FIRST USE) at a
- * slightly longer miss. Lines and blocks each double the cache. Prices are
- * provisional until the balance pass.
+ * slightly longer miss. Lines and blocks each double the cache. All three are
+ * still being reworked (`wip`, WIP_PARTS). Prices are provisional until the
+ * balance pass.
  */
 export const CACHE_UPGRADES = [
     {
@@ -174,6 +178,7 @@ export const CACHE_UPGRADES = [
         field: 'lines',
         value: 8,
         lessonId: 'morelines',
+        wip: true,
         about: 'Twice the lines, so twice the blocks fit: data you come back to is still there. Fewer TOO SMALL misses.',
     },
     {
@@ -183,6 +188,7 @@ export const CACHE_UPGRADES = [
         field: 'ways',
         value: 2,
         lessonId: 'twoway',
+        wip: true,
         about: 'Pairs the lines into sets: a block can go in either line of its set, so two blocks no longer push each other out. Fewer CONFLICT misses.',
     },
     {
@@ -192,9 +198,18 @@ export const CACHE_UPGRADES = [
         field: 'blockBytes',
         value: 8,
         lessonId: 'bigblocks',
+        wip: true,
         about: 'Each miss brings in 8 bytes instead of 4, so more of the next data is already there. Fewer FIRST USE misses; each trip to RAM takes 5 ns longer.',
     },
 ];
+/**
+ * Work in progress: parts that are in the game but still being reworked
+ * (`wip` above). The shop and BRIEFS mark them and their lessons WIP. The
+ * L1's upgrades and the L2 and L3 (user, 2026-11-02): first-use misses
+ * interrupt the song too often once the data is wide, and TICK's lessons
+ * on them are too technical for players new to computers (ROADMAP.md).
+ */
+export const WIP_PARTS = [...MEMORY_PARTS, ...CACHE_UPGRADES].filter((part) => part.wip);
 /** Unlocks H (overclocking past the rated clock) in songs. Underclocking (G) is always allowed. */
 export const OVERCLOCKING_PRICE = 400;
 /** Coolers: how far above ambient a busy chip settles at its rated clock (°C; 30 with the stock cooler). */

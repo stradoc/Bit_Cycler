@@ -1,11 +1,11 @@
 import { cheatFlags } from '../cheatFlags.ts';
 import { CACHE_UPGRADES, CHIPS, CLOCK, COOLING, MEMORY_PARTS, type CacheUpgradeId } from '../data/economy.ts';
-import { LESSONS } from '../data/lessons.ts';
+import { isWip, LESSONS } from '../data/lessons.ts';
 import { TIERS } from '../data/tiers.ts';
 import { folderPath } from '../data/menuFiles.ts';
 import { TAUGHT_IDS } from '../data/tours.ts';
 import { openLesson } from '../flow.ts';
-import { formatHours, formatMhz, formatMoney } from '../format.ts';
+import { formatHours, formatMhz, formatMoney, wipLabel } from '../format.ts';
 import { activeSlot, getProgress, hasSave, newGame, slotName, updateProgress } from '../save.ts';
 import { bitsName, cacheOf, chipOf, deepActive, fillBoard, fitChip, lowerCachesOf, ratedMhz, tierOf, withEverything, withTier, withWordBits, type Progress } from '../sim/progress.ts';
 import { cachesBelow, cacheWords } from '../sim/memory.ts';
@@ -159,7 +159,7 @@ export class DevScene extends Screen {
       endday: ['END THE DAY', dateLine(p)],
       board: ['DEAL NEW CONTRACTS'],
       everything: ['UNLOCK EVERYTHING'],
-      lesson: ['OPEN LESSON', LESSONS[LESSON_IDS[this.lesson]].title.slice(0, 40)],
+      lesson: ['OPEN LESSON', wipLabel(LESSONS[LESSON_IDS[this.lesson]].title, isWip(LESSON_IDS[this.lesson])).slice(0, 40)],
       seen: ['LESSONS AND TOURS SEEN', `${p.seenLessons.length} OF ${TAUGHT_IDS.length}`],
       play: ['PLAY: CONTRACT BOARD'],
       practice: ['PRACTICE THIS TIER'],

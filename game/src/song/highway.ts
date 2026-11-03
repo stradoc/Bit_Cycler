@@ -15,6 +15,7 @@ import {
   laneCenter,
   LANES_W,
   LOOKAHEAD,
+  REFETCH_BEATS,
   NOTE_H,
   NOTE_W,
   noteKey,
@@ -246,16 +247,21 @@ export class Highway extends Part {
       wanted.push({ slot, k });
     }
 
-    // A note whose instruction is still coming keeps its place when it's numbered again (fetched again after a flush).
+    // A note whose instruction is still coming keeps its place when it's numbered again (fetched again after a
+    // flush or a wrong chord): the same instruction, wanted about where it already is. A later run of the same line
+    // (the line after a loop, once the loop goes round again) is another note: this one slides out of its lane.
     const gone = [...this.notes].filter(([key]) => !wanted.some(({ slot }) => noteKey(slot) === key));
     const keep = new Set<string>();
     for (const { slot, k } of wanted) {
       const key = noteKey(slot);
       keep.add(key);
       const target = due + k;
-      const same = this.notes.has(key) ? -1 : gone.findIndex(([, old]) => old.pc === slot.pc);
+      const same = this.notes.has(key) ? -1 : gone.findIndex(([, old]) => old.pc === slot.pc && Math.abs(old.target - target) <= REFETCH_BEATS);
       if (same >= 0) {
-        this.notes.set(key, { ...gone[same][1], key });
+        // Under its new number only: left under the old one too, the slide-out below would take this note with it.
+        const [oldKey, old] = gone[same];
+        this.notes.delete(oldKey);
+        this.notes.set(key, { ...old, key });
         gone.splice(same, 1);
       }
       const view = this.notes.get(key) ?? this.createNote(key, slot, target);

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { CACHE_UPGRADES, CHIPS, CLOCK, DATA_WIDTHS, GRADES, MEMORY_PARTS, WORKDAY } from '../game/src/data/economy.ts';
 import { bitsOf } from '../game/src/sim/generator.ts';
 import { programByName } from '../game/src/data/programs.ts';
+import { isWip, LESSONS } from '../game/src/data/lessons.ts';
 import { formatCount, formatDuration, formatMhz, formatMoney } from '../game/src/format.ts';
 import {
   bitsName,
@@ -284,6 +285,14 @@ test('the L2 and L3: each on sale after the level above it, once the chip is wid
   // The board's estimates use them: a 32-bit job that outgrows the L1 is quicker with the L2 behind it.
   const fast: Progress = { ...wide, clockLevel: 9 };
   assert.ok(cpiFor('TWO PASSES', { ...fast, cacheLevels: 2 }) < cpiFor('TWO PASSES', fast));
+});
+
+test('parts still being reworked are marked WIP in the shop, and their lessons too', () => {
+  const all = shopItems({ ...withEverything(NEW_GAME), money: 0 });
+  const name = (key: string) => all.find((item) => item.key === key)?.name ?? '';
+  for (const key of ['lines', 'ways', 'blocks', 'l2', 'l3']) assert.match(name(key), / \(WIP\)$/, key);
+  for (const key of ['l1', 'superscalar', 'clock']) assert.doesNotMatch(name(key), /WIP/, key);
+  assert.deepEqual(Object.keys(LESSONS).filter(isWip).sort(), ['bigblocks', 'l2', 'l3', 'morelines', 'twoway']);
 });
 
 test('the board is endless: finishing a contract pays and puts a new one in its place', () => {

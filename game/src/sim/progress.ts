@@ -30,7 +30,7 @@ import { programByName, TUTORIAL_PROGRAM } from '../data/programs.ts';
 import { generateProgram } from './generator.ts';
 import { showcaseJob } from './showcase.ts';
 import type { SkillJob } from '../rhythm/skills.ts';
-import { formatDuration, formatMhz } from '../format.ts';
+import { formatDuration, formatMhz, wipLabel } from '../format.ts';
 import { tierByNumber, type Tier } from '../data/tiers.ts';
 import { cpuFor, trace } from './cpu.ts';
 import { cacheShape, cacheWords, ramCycles, type CacheShape } from './memory.ts';
@@ -530,7 +530,7 @@ export function shopItems(progress: Progress): ShopItem[] {
     items.push({
       key: part.id,
       group: 'MEMORY',
-      name: part.name,
+      name: wipLabel(part.name, part.wip),
       price: part.price,
       state: owned ? 'owned' : ready ? 'buy' : 'later',
       lessonId: part.lessonId,
@@ -575,7 +575,7 @@ function cacheUpgradeItem(progress: Progress, upgrade: (typeof CACHE_UPGRADES)[n
   return {
     key: upgrade.id,
     group: 'MEMORY',
-    name: upgrade.name,
+    name: wipLabel(upgrade.name, upgrade.wip),
     price: upgrade.price,
     state: owned ? 'owned' : hasCache(progress) ? 'buy' : 'later',
     lessonId: upgrade.lessonId,

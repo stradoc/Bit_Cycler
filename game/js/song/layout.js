@@ -19,6 +19,8 @@ export const NOTE_W = LANE_W - 8;
 export const NOTE_H = 26;
 /** How many instructions past IF get falling notes. */
 export const LOOKAHEAD = 6;
+/** How near (beats) an instruction fetched again must be wanted to its old note for that note to carry on as its own. */
+export const REFETCH_BEATS = 2;
 /** How far a flushed note is pushed out of its slot, toward the middle of the highway. */
 export const FLUSH_SHIFT = 56;
 export const LANE_KEYS = { ALU: 'D', MEM: 'F', BRANCH: 'J' };

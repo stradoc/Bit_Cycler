@@ -36,6 +36,10 @@ export function formatDuration(seconds) {
     }
     return `${trim(seconds * 1e9)} ns`;
 }
+/** A name marked as work in progress when `wip`: "L2 CACHE: 128 BYTES (WIP)". */
+export function wipLabel(name, wip) {
+    return wip ? `${name} (WIP)` : name;
+}
 /** A time of day, from seconds since midnight: 13 * 3600 + 40 * 60 -> "1:40 PM" (past midnight it carries on: "1:15 AM"). */
 export function formatClock(seconds) {
     const minutes = Math.floor(seconds / 60);

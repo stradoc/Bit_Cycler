@@ -5,7 +5,7 @@ import { BASE_MHZ, CACHE_UPGRADES, CHIPS, DATA_WIDTHS, CLOCK, CONTRACTS_PER_GRAD
 import { programByName, TUTORIAL_PROGRAM } from '../data/programs.js';
 import { generateProgram } from './generator.js';
 import { showcaseJob } from './showcase.js';
-import { formatDuration, formatMhz } from '../format.js';
+import { formatDuration, formatMhz, wipLabel } from '../format.js';
 import { tierByNumber } from '../data/tiers.js';
 import { cpuFor, trace } from './cpu.js';
 import { cacheShape, cacheWords, ramCycles } from './memory.js';
@@ -378,7 +378,7 @@ export function shopItems(progress) {
         items.push({
             key: part.id,
             group: 'MEMORY',
-            name: part.name,
+            name: wipLabel(part.name, part.wip),
             price: part.price,
             state: owned ? 'owned' : ready ? 'buy' : 'later',
             lessonId: part.lessonId,
@@ -425,7 +425,7 @@ function cacheUpgradeItem(progress, upgrade) {
     return {
         key: upgrade.id,
         group: 'MEMORY',
-        name: upgrade.name,
+        name: wipLabel(upgrade.name, upgrade.wip),
         price: upgrade.price,
         state: owned ? 'owned' : hasCache(progress) ? 'buy' : 'later',
         lessonId: upgrade.lessonId,

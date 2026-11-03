@@ -1,10 +1,10 @@
 import { powerOff, stopHum } from '../audio/sound.js';
 import { programListing } from '../data/boot.js';
-import { LESSONS } from '../data/lessons.js';
+import { isWip, LESSONS } from '../data/lessons.js';
 import { BOARD_TOUR_ID, CALENDAR_TOUR_ID, FIRST_DAY_ID, WELCOME_TOUR } from '../data/tours.js';
 import { openLesson } from '../flow.js';
 import { banner, commandLine, CREDITS, listCommand, listingFooter, listingLine, readCommand, README } from '../data/menuFiles.js';
-import { formatMoney } from '../format.js';
+import { formatMoney, wipLabel } from '../format.js';
 import { activeSlot, CAMPAIGN_SLOTS, getProgress, hasSave, newGame, slotName } from '../save.js';
 import { getSettings, updateSettings } from '../settings.js';
 import { skillReport } from '../rhythm/skills.js';
@@ -175,7 +175,7 @@ export class TitleScene extends Screen {
             lessonId: lesson.id,
             name: lesson.id.toUpperCase().slice(0, 8),
             ext: 'EXE',
-            note: lesson.title.replace(/^LESSON \d+: /, '').slice(0, 26),
+            note: wipLabel(lesson.title.replace(/^LESSON \d+: /, ''), isWip(lesson.id)).slice(0, 26),
             value: seen(progress.seenLessons.includes(lesson.id)),
             about: lesson.practice ? `TICK TEACHES ${lesson.title} ON THE SONG SCREEN, THEN A PRACTICE.` : `TICK EXPLAINS ${lesson.title} ON THE SONG SCREEN.`,
         }));
