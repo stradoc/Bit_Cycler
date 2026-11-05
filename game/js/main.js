@@ -1,14 +1,23 @@
 import { installCheats } from './cheats.js';
 import { keepKeyboardFocus } from './input/keyFocus.js';
 import { BoardScene } from './scenes/BoardScene.js';
-import { BriefingScene } from './scenes/BriefingScene.js';
+import { BootScene } from './scenes/BootScene.js';
+import { CalendarScene } from './scenes/CalendarScene.js';
+import { DevScene } from './scenes/DevScene.js';
+import { MotionsScene } from './scenes/MotionsScene.js';
 import { PipelineScene } from './scenes/PipelineScene.js';
+import { SavesScene } from './scenes/SavesScene.js';
+import { SettingsScene } from './scenes/SettingsScene.js';
 import { ShopScene } from './scenes/ShopScene.js';
 import { TitleScene } from './scenes/TitleScene.js';
 import { applyEra, fitCamera, HEIGHT, isHires, loadFonts, showFps, WIDTH } from './visual/display.js';
-import { currentEra } from './visual/terminal.js';
+import { currentEra, ERAS, previewEra } from './ui/eras.js';
 keepKeyboardFocus();
 await loadFonts();
+// ?era=1..4 in the URL shows that era instead of the save's, until the page reloads (previews and testing).
+const eraParam = Number(new URLSearchParams(location.search).get('era'));
+if (eraParam >= 1 && eraParam <= ERAS.length)
+    previewEra(eraParam - 1);
 const game = new Phaser.Game({
     type: Phaser.AUTO,
     parent: 'game',
@@ -26,7 +35,8 @@ const game = new Phaser.Game({
     },
     // Keyboard is handled in input/keys.ts; Phaser's plugin double-fires keys within a frame.
     input: { keyboard: false },
-    scene: [TitleScene, BoardScene, ShopScene, BriefingScene, PipelineScene],
+    // The first scene starts the game: the intro, then the main menu ('title').
+    scene: [BootScene, TitleScene, SettingsScene, SavesScene, DevScene, MotionsScene, BoardScene, CalendarScene, ShopScene, PipelineScene],
 });
 installCheats(game);
 if (new URLSearchParams(location.search).has('fps'))
@@ -43,11 +53,11 @@ window.addEventListener('resize', () => {
             fitCamera(scene.cameras.main);
     }, 200);
 });
-// Dev shortcut: ?scene=play jumps straight into a scene.
+// Dev shortcut: ?scene=play jumps straight into a scene, skipping the intro (?scene=title: the main menu).
 const startScene = new URLSearchParams(location.search).get('scene');
 if (startScene) {
     game.events.once(Phaser.Core.Events.READY, () => {
-        game.scene.stop('title');
+        game.scene.stop('boot');
         // ?scene=play was the old tier 1 screen: it's the pipeline scene in single-cycle mode now.
         game.scene.start(startScene === 'play' ? 'pipeline' : startScene, startScene === 'play' ? { singleCycle: true } : undefined);
     });

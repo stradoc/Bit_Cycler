@@ -1,12 +1,12 @@
 import type { Predictor } from '../sim/pipeline.ts';
 
-// The CPU tiers playable so far. The shop will unlock these; for now the
-// title screen switches between them with T.
+// The CPU tiers: each CPU part bought in the shop is the next tier
+// (sim/progress.ts `tierOf`), and its options set up the song's hardware.
 
 export type Tier = {
   readonly number: number;
   readonly name: string;
-  /** Lesson (briefing) shown before the tier is first played. */
+  /** The lesson (TICK's tour, data/tours.ts) played before the tier is first played. */
   readonly lessonId: string;
   /** Scene that plays the tier. */
   readonly scene: 'pipeline';
@@ -22,6 +22,8 @@ export type TierOptions = {
   readonly guessing?: boolean;
   /** A hardware predictor guesses first; the player can override it. */
   readonly predictor?: Predictor;
+  /** Two instructions can start together, a chord (sim/pipeline.ts pairCheck). */
+  readonly superscalar?: boolean;
   /** Program name (see data/programs.ts); SUM ARRAY by default. */
   readonly program?: string;
 };
@@ -38,6 +40,10 @@ export const TIERS: readonly Tier[] = [
   {
     number: 6, name: '2-BIT PREDICTOR', lessonId: 'tier6', scene: 'pipeline',
     options: { forwarding: true, guessing: true, predictor: '2-bit', program: 'SUM GRID' },
+  },
+  {
+    number: 7, name: 'SUPERSCALAR', lessonId: 'tier7', scene: 'pipeline',
+    options: { forwarding: true, guessing: true, predictor: '2-bit', superscalar: true, program: 'SUM PAIRS' },
   },
 ];
 

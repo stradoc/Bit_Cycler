@@ -2,8 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PROGRAMS } from '../game/src/data/programs.ts';
 import { assemble } from '../game/src/sim/assembler.ts';
-import { Cpu, trace } from '../game/src/sim/cpu.ts';
-import { describe, format, tokens, unitOf } from '../game/src/sim/isa.ts';
+import { Cpu, itemAt, trace, writeItem } from '../game/src/sim/cpu.ts';
+import { describe, format, keepsTotal, tokens, unitOf } from '../game/src/sim/isa.ts';
 
 const sumArray = PROGRAMS[0];
 
@@ -81,4 +81,33 @@ test('lb sign-extends to the register width', () => {
   const cpu = new Cpu(assemble('lb x1, 0(x0)'), 16, [0xff]);
   cpu.step();
   assert.equal(cpu.regs[1], 0xffff); // -1 in 16 bits
+});
+
+test('an add into its own register keeps a running total only if nothing else in its loop writes that register', () => {
+  const sum = assemble('addi x3, x0, 0\nloop: lb x4, 0(x1)\nadd x3, x3, x4\naddi x1, x1, 1\nbne x1, x2, loop\nsb x3, 8(x0)', 8);
+  assert.equal(keepsTotal(sum, 2), true);
+  const mix = assemble('loop: lb x6, 0(x1)\nlb x7, 1(x1)\nadd x6, x6, x7\nsb x6, 0(x1)\naddi x1, x1, 2\nbne x1, x2, loop', 8);
+  assert.equal(keepsTotal(mix, 2), false, 'x6 is loaded afresh each time round');
+  const once = assemble('addi x3, x0, 1\nadd x3, x3, x3', 8);
+  assert.equal(keepsTotal(once, 1), false, 'not in a loop');
+});
+
+test('wide loads and stores move 2, 4 or 8 bytes, little-endian, and registers are as wide as the data', () => {
+  // A halfword and a word, stored and read back; bytes in memory lowest first.
+  const cpu = new Cpu(assemble('addi x1, x0, 1000\nsh x1, 0(x0)\nlh x2, 0(x0)\naddi x3, x0, -2\nsw x3, 4(x0)\nlw x4, 4(x0)'), 32);
+  while (!cpu.halted) cpu.step();
+  assert.deepEqual(Array.from(cpu.memory.slice(0, 8)), [0xe8, 0x03, 0, 0, 0xfe, 0xff, 0xff, 0xff]);
+  assert.equal(cpu.regs[2], 1000);
+  assert.equal(cpu.regs[4], -2); // 32-bit registers hold signed numbers
+  // 16-bit registers wrap round like bytes do: 0 - 1 is 65535.
+  const half = new Cpu(assemble('addi x1, x0, -1'), 16);
+  half.step();
+  assert.equal(half.regs[1], 65535);
+  // 64-bit: a number past 32 bits, and a negative one, through memory and back.
+  const big = new Cpu(assemble('ld x1, 0(x0)\nadd x1, x1, x1\nsd x1, 8(x0)\nsub x2, x0, x1\nsd x2, 16(x0)'), 64);
+  writeItem(big.memory, 0, 8, 2 ** 40 + 5);
+  while (!big.halted) big.step();
+  assert.equal(itemAt(big.memory, 8, 64), 2 ** 41 + 10);
+  assert.equal(itemAt(big.memory, 16, 64), -(2 ** 41 + 10));
+  assert.equal(new Set(['lb', 'lh', 'lw', 'ld'].map((op) => unitOf(assemble(`${op} x1, 0(x0)`).instructions[0]))).size, 1);
 });

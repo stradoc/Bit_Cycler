@@ -1,12 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PROGRAMS } from '../game/src/data/programs.ts';
+import { programByName, PROGRAMS } from '../game/src/data/programs.ts';
 import { NORMAL_WINDOWS } from '../game/src/rhythm/judge.ts';
 import { PipelineRun } from '../game/src/rhythm/pipelineRun.ts';
 import { assemble } from '../game/src/sim/assembler.ts';
-import { Cpu } from '../game/src/sim/cpu.ts';
+import { Cpu, cpuFor as programCpu } from '../game/src/sim/cpu.ts';
 import { unitOf } from '../game/src/sim/isa.ts';
-import { Cache, cyclesFor, freezeBeats, lineOf, MemorySystem, ramCycles, tagOf } from '../game/src/sim/memory.ts';
+import { addressSplit, Cache, cacheShape, cacheWords, cyclesFor, freezeBeats, L1_BASE, LOWER_CACHES, MemorySystem, missNs, ramCycles, setOf, tagOf } from '../game/src/sim/memory.ts';
 import { perfectRun, type PipelineOptions } from '../game/src/sim/pipeline.ts';
 import { Chip } from '../game/src/sim/thermal.ts';
 
@@ -26,28 +26,37 @@ test('RAM takes a fixed 60 ns, so its cycles grow with the clock', () => {
   // Overclocked 10% past 4 GHz: 264, not 265 (no rounding creep).
   assert.equal(ramCycles(4000 * 1.1), 264);
   // With a cache, a miss checks L1 (1 ns) on the way: 61 ns.
-  assert.equal(ramCycles(4000, true), 244);
+  assert.equal(ramCycles(4000, L1_BASE), 244);
   assert.equal(cyclesFor(0.5, 4000), 2);
 });
 
-test('a memory wait is drawn over 2, 3 or 5 beats on a log scale, never more beats than cycles', () => {
+test('a memory wait gets a beat more each time its cycles about triple, never more beats than cycles', () => {
   assert.equal(freezeBeats(0), 0);
   assert.equal(freezeBeats(1), 1); // one cycle is one beat, as always
   assert.equal(freezeBeats(2), 2);
   assert.equal(freezeBeats(9), 2);
   assert.equal(freezeBeats(10), 3);
-  assert.equal(freezeBeats(99), 3);
+  assert.equal(freezeBeats(31), 3);
+  assert.equal(freezeBeats(32), 4);
+  assert.equal(freezeBeats(99), 4);
   assert.equal(freezeBeats(100), 5);
-  assert.equal(freezeBeats(243), 5);
+  assert.equal(freezeBeats(243), 5); // the L1 alone at 4 GHz: a trip to RAM is 5 beats, as before the L2
+  assert.equal(freezeBeats(316), 5);
+  assert.equal(freezeBeats(317), 6);
+  // At the 32-bit chip's top clock and the 64-bit chip's, the levels each take longer than the one before: 3, 4 and 5 beats.
+  for (const mhz of [2000, 4000]) {
+    const beats = (from: 'L2' | 'L3' | 'RAM') => freezeBeats(cyclesFor(missNs(L1_BASE, 2, from), mhz) - 1);
+    assert.deepEqual([beats('L2'), beats('L3'), beats('RAM')], [3, 4, 5], `${mhz} MHz`);
+  }
 });
 
 test('an address splits into tag, line and offset: tttt ii oo', () => {
   // 13 = 0000 11 01: line 3, tag 0. 21 = 0001 01 01: line 1, tag 1.
-  assert.deepEqual([lineOf(13), tagOf(13)], [3, 0]);
-  assert.deepEqual([lineOf(21), tagOf(21)], [1, 1]);
+  assert.deepEqual([setOf(L1_BASE, 13), tagOf(L1_BASE, 13)], [3, 0]);
+  assert.deepEqual([setOf(L1_BASE, 21), tagOf(L1_BASE, 21)], [1, 1]);
   // 0 and 16 are a cache-full apart: same line, different tags.
-  assert.deepEqual([lineOf(0), tagOf(0)], [0, 0]);
-  assert.deepEqual([lineOf(16), tagOf(16)], [0, 1]);
+  assert.deepEqual([setOf(L1_BASE, 0), tagOf(L1_BASE, 0)], [0, 0]);
+  assert.deepEqual([setOf(L1_BASE, 16), tagOf(L1_BASE, 16)], [0, 1]);
 });
 
 test('reading bytes in order: one miss per 4-byte block, then hits (spatial locality)', () => {
@@ -73,18 +82,18 @@ test('more blocks than the cache holds, reused: capacity misses (too small)', ()
   // Blocks 0-4 (5 blocks, the cache holds 4), then block 0 again: even a cache
   // that could put blocks anywhere would have pushed it out by now.
   for (const address of [0, 4, 8, 12, 16]) cache.read(address);
-  assert.deepEqual(cache.read(0), { hit: false, missKind: 'too-small', evicted: 4 });
+  assert.deepEqual(cache.read(0), { hit: false, line: 0, missKind: 'too-small', evicted: 4 });
 });
 
 test('stores are write-through with no write allocate: a store miss leaves the cache alone', () => {
-  const memory = new MemorySystem(true);
+  const memory = new MemorySystem(L1_BASE);
   const store = memory.access('store', 8, 4000);
   assert.deepEqual([store.level, store.cycles, store.hit], ['BUFFER', 1, false]);
   const load = memory.access('load', 8, 4000);
   assert.deepEqual([load.level, load.cycles, load.missKind], ['RAM', 244, 'first-use']);
   assert.equal(memory.access('store', 9, 4000).hit, true);
   // Without a cache, a store waits for RAM like a load.
-  assert.equal(new MemorySystem(false).access('store', 8, 4000).cycles, 240);
+  assert.equal(new MemorySystem().access('store', 8, 4000).cycles, 240);
 });
 
 /** Cycles a perfect run of SUM ARRAY takes on this hardware. */
@@ -108,7 +117,7 @@ test('SUM ARRAY: every load and store waits for RAM once the clock outruns it', 
 });
 
 test('SUM ARRAY with the L1 cache at 4 GHz: one miss, three hits, and the store goes to the buffer', () => {
-  const run = perfectRun(cpuFor(), { forwarding: true, mhz: 4000, cache: true });
+  const run = perfectRun(cpuFor(), { forwarding: true, mhz: 4000, cache: L1_BASE });
   // The first load misses (61 ns = 244 cycles, 243 frozen); bytes 1-3 came in with it.
   assert.equal(run.cycles, 35 + 243);
   assert.deepEqual([run.memory.loads, run.memory.hits, run.memory.misses, run.memory.stores], [4, 3, 1, 1]);
@@ -154,6 +163,171 @@ test('in a song, a long memory wait freezes for 5 beats, ignores presses, and co
   assert.equal(chip.cycles, run.pipeline.cycle - 1);
   while (!run.done) play();
   assert.equal(run.pipeline.cycles, 1230);
-  assert.equal(run.memoryBeats, 25);
+  assert.equal(run.waitBeats, 25);
   assert.equal(run.pipeline.cpu.memory[8], 17);
+});
+
+// ---- the L1's upgrades (data/economy.ts CACHE_UPGRADES): the cache's shape as data ----
+
+test('each upgrade changes one thing about the L1, in any order', () => {
+  assert.deepEqual(cacheShape([]), L1_BASE);
+  assert.deepEqual(cacheShape(['lines']), { lines: 8, blockBytes: 4, ways: 1 });
+  assert.deepEqual(cacheShape(['ways']), { lines: 4, blockBytes: 4, ways: 2 });
+  assert.deepEqual(cacheShape(['blocks']), { lines: 4, blockBytes: 8, ways: 1 });
+  assert.deepEqual(cacheShape(['blocks', 'lines', 'ways']), cacheShape(['ways', 'blocks', 'lines']));
+  assert.equal(cacheWords(L1_BASE), '16 BYTES: 4 LINES OF 4, DIRECT-MAPPED');
+  // 2-way pairs the same 4 lines: still 16 bytes.
+  assert.equal(cacheWords(cacheShape(['ways'])), '16 BYTES: 4 LINES OF 4, 2-WAY');
+  assert.equal(cacheWords(cacheShape(['lines', 'ways', 'blocks'])), '64 BYTES: 8 LINES OF 8, 2-WAY');
+});
+
+test("an 8-bit address splits by the cache's shape: tag, set (or line), offset", () => {
+  const split = (upgrades: Parameters<typeof cacheShape>[0]) => Object.values(addressSplit(cacheShape(upgrades)));
+  assert.deepEqual(split([]), [4, 2, 2]); // tttt ii oo
+  assert.deepEqual(split(['lines']), [3, 3, 2]); // 8 lines: one more line bit
+  assert.deepEqual(split(['ways']), [5, 1, 2]); // 2 sets: one set bit, one more tag bit
+  assert.deepEqual(split(['blocks']), [3, 2, 3]); // 8-byte blocks: one more offset bit
+  assert.deepEqual(split(['lines', 'ways', 'blocks']), [3, 2, 3]); // 4 sets of 8-byte blocks
+  // 22 = 0001 01 10 in the first L1; in 2-way sets 00010 1 10: set 1, tag 2.
+  const ways = cacheShape(['ways']);
+  assert.deepEqual([setOf(L1_BASE, 22), tagOf(L1_BASE, 22)], [1, 1]);
+  assert.deepEqual([setOf(ways, 22), tagOf(ways, 22)], [1, 2]);
+});
+
+test('2-way: two blocks that share a set both fit, and the one used longest ago makes room', () => {
+  const cache = new Cache(cacheShape(['ways']));
+  // Blocks 0 (bytes 0-3) and 4 (16-19) both need set 0: direct-mapped they'd push each other out.
+  const results = [0, 16, 1, 17].map((address) => cache.read(address));
+  assert.deepEqual(results.map((r) => r.hit), [false, false, true, true]);
+  assert.deepEqual(results.map((r) => r.line), [0, 1, 0, 1]);
+  // Block 8 (32-35) needs set 0 too: block 0 was used longest ago (17 came after 1), so it goes.
+  assert.deepEqual(cache.read(32), { hit: false, line: 0, missKind: 'first-use', evicted: 0 });
+  assert.equal(cache.read(16).hit, true);
+  // A cache that put any block anywhere would have kept block 0 (only 3 blocks in use): a conflict.
+  assert.equal(cache.read(0).missKind, 'conflict');
+});
+
+test('8 lines: five blocks read again all still fit', () => {
+  const cache = new Cache(cacheShape(['lines']));
+  for (const address of [0, 4, 8, 12, 16]) cache.read(address);
+  // The first L1 lost block 0 here (too small); with 8 lines block 4 has a line of its own.
+  assert.deepEqual(cache.read(0), { hit: true, line: 0 });
+  assert.equal(cache.read(16).line, 4);
+});
+
+test('8-byte blocks: one miss per 8 bytes in order, each 5 ns longer', () => {
+  const big = cacheShape(['blocks']);
+  const cache = new Cache(big);
+  const results = Array.from({ length: 10 }, (_, address) => cache.read(address));
+  assert.deepEqual(results.map((r) => r.hit), [false, true, true, true, true, true, true, true, false, true]);
+  // 1 ns for L1, 60 for RAM, 5 more for the second 4 bytes: 66 ns, 264 cycles at 4 GHz.
+  assert.equal(missNs(big), 66);
+  assert.equal(ramCycles(4000, big), 264);
+  // A 64-bit number fits in one 8-byte block: one trip, not the two it takes in 4-byte blocks.
+  assert.equal(new MemorySystem(big).access('load', 8, 4000, 8).cycles, 264);
+  assert.equal(new MemorySystem(L1_BASE).access('load', 8, 4000, 8).cycles, 2 * 244);
+});
+
+/** A program's loads on a cache: how many missed, and of each kind (a perfect run at 4 GHz). */
+function misses(program: string, upgrades: Parameters<typeof cacheShape>[0]) {
+  const run = perfectRun(programCpu(programByName(program)), { forwarding: true, mhz: 4000, cache: cacheShape(upgrades) });
+  const without = perfectRun(programCpu(programByName(program)), { forwarding: true });
+  // Every trip to RAM freezes the pipeline for its cycles beyond the MEMORY stage's one.
+  assert.equal(run.cycles, without.cycles + run.memory.ramTrips * (ramCycles(4000, cacheShape(upgrades)) - 1), program);
+  return { misses: run.memory.misses, ...run.memory.missKinds };
+}
+
+test("each upgrade's practice program: the misses it fixes, counted by hand", () => {
+  // SUM WORDS: six 32-bit numbers, each a 4-byte block of its own: 6 first uses. In 8-byte blocks, two to a block: 3.
+  assert.deepEqual(misses('SUM WORDS', []), { misses: 6, 'first-use': 6, conflict: 0, 'too-small': 0 });
+  assert.deepEqual(misses('SUM WORDS', ['blocks']), { misses: 3, 'first-use': 3, conflict: 0, 'too-small': 0 });
+  // ADD TWO LISTS: 6 pairs 16 bytes apart. Blocks 0, 1 (first list) and 4, 5 (second) are first uses;
+  // every other load finds the other list's block in its line: 8 conflicts. 2-way sets hold both.
+  assert.deepEqual(misses('ADD TWO LISTS', []), { misses: 12, 'first-use': 4, conflict: 8, 'too-small': 0 });
+  assert.deepEqual(misses('ADD TWO LISTS', ['ways']), { misses: 4, 'first-use': 4, conflict: 0, 'too-small': 0 });
+  // TWO PASSES: six 32-bit numbers (blocks 0-5), read twice. By the second pass lines 0 and 1 hold blocks 4 and 5:
+  // blocks 0 and 1 miss, 2 and 3 hit, then 4 and 5 miss again (0 and 1 took their lines): 4 too small. 8 lines hold all six.
+  assert.deepEqual(misses('TWO PASSES', []), { misses: 10, 'first-use': 6, conflict: 0, 'too-small': 4 });
+  assert.deepEqual(misses('TWO PASSES', ['lines']), { misses: 6, 'first-use': 6, conflict: 0, 'too-small': 0 });
+  // Each program leaves its answer, whatever the cache.
+  const sums = perfectRun(programCpu(programByName('TWO PASSES')), { forwarding: true, mhz: 4000, cache: L1_BASE }).cpu;
+  assert.equal(sums.regs[3], 203000);
+});
+
+// The caches below the L1 (LOWER_CACHES): the L2, then the L3.
+
+test('a miss checks each level below the L1 in turn, each adding its lookup, and the first that has the block answers', () => {
+  // The L1 check (1 ns), the L2 (5), the L3 (12), RAM (60).
+  assert.equal(missNs(L1_BASE, 1, 'L2'), 6);
+  assert.equal(missNs(L1_BASE, 1), 66);
+  assert.equal(missNs(L1_BASE, 2, 'L3'), 18);
+  assert.equal(missNs(L1_BASE, 2), 78);
+  assert.equal(ramCycles(4000, L1_BASE, 2), 312);
+  // A bigger L1 block takes longer only from RAM: inside the chip, a cache hands over the whole block at once.
+  const big = cacheShape(['blocks']);
+  assert.equal(missNs(big, 2), 83);
+  assert.equal(missNs(big, 2, 'L2'), 6);
+  assert.throws(() => missNs(L1_BASE, 1, 'L3'));
+  assert.deepEqual(LOWER_CACHES.map((level) => cacheWords(level.shape)), ['128 BYTES: 8 LINES OF 16, 2-WAY', '256 BYTES: 4 LINES OF 64, 4-WAY']);
+});
+
+test('the L2 keeps the 16-byte block a miss brought from RAM: the next three 4-byte blocks come from it', () => {
+  const memory = new MemorySystem(L1_BASE, 1);
+  const loads = [0, 4, 8, 12, 16].map((address) => memory.access('load', address, 4000));
+  assert.deepEqual(loads.map((load) => load.level), ['RAM', 'L2', 'L2', 'L2', 'RAM']);
+  assert.deepEqual(loads.map((load) => [load.ns, load.cycles]), [[66, 264], [6, 24], [6, 24], [6, 24], [66, 264]]);
+  // Each was an L1 miss, the first use of its 4-byte block; only the trips past the L2 count as trips to RAM.
+  assert.deepEqual(loads.map((load) => load.missKind), ['first-use', 'first-use', 'first-use', 'first-use', 'first-use']);
+  assert.equal(memory.ramTrips, 2);
+  assert.deepEqual(memory.served, { L1: 0, L2: 3, L3: 0, RAM: 2, BUFFER: 0 });
+  // A block the L1 has lost is still in the L2 (every level a miss passed keeps a copy).
+  for (const address of [20, 24, 28, 32]) memory.access('load', address, 4000);
+  assert.equal(memory.access('load', 0, 4000).level, 'L2');
+});
+
+test('the L3 answers what the L2 has lost or never had: its 64-byte blocks hold four of the L2\'s', () => {
+  const memory = new MemorySystem(L1_BASE, 2);
+  const levels = [0, 16, 32, 48, 64].map((address) => memory.access('load', address, 4000).level);
+  assert.deepEqual(levels, ['RAM', 'L3', 'L3', 'L3', 'RAM']);
+  assert.equal(memory.access('load', 16, 4000).ns, missNs(L1_BASE, 2, 'L2'));
+});
+
+test('stores go through every level and allocate in none; without an L1 there are no levels below it', () => {
+  const memory = new MemorySystem(L1_BASE, 2);
+  assert.equal(memory.access('store', 40, 4000).level, 'BUFFER');
+  assert.equal(memory.access('load', 40, 4000).level, 'RAM');
+  assert.equal(new MemorySystem(undefined, 2).lower.length, 0);
+  assert.equal(new MemorySystem(undefined, 2).access('load', 0, 4000).cycles, 240);
+});
+
+test("an item wider than the L1's blocks: one trip down for each, the second found in the L2 the first one filled", () => {
+  const load = new MemorySystem(L1_BASE, 1).access('load', 0, 4000, 8);
+  assert.deepEqual([load.level, load.ns, load.cycles], ['RAM', 66 + 6, 264 + 24]);
+});
+
+/** A program's loads on the first L1 with `lower` caches below it: where each was found, and their average time. */
+function levelsOf(program: string, lower: number) {
+  const run = perfectRun(programCpu(programByName(program)), { forwarding: true, mhz: 4000, cache: L1_BASE, lowerCaches: lower });
+  const { L1, L2, L3, RAM } = run.memory.served;
+  return { L1, L2, L3, RAM, amat: run.memory.averageLoadNs(), waited: run.memoryCycles };
+}
+
+test("the L2's and L3's practice programs: where every load is found, counted by hand, and the AMAT", () => {
+  // TWO PASSES (24 bytes, read twice): the L1 alone misses 10 of 12 loads, all to RAM (61 ns): AMAT = 1 + 10/12 x 60 = 51 ns.
+  // The L2's two 16-byte blocks hold all six numbers: 2 trips to RAM, the other 8 misses found in the L2.
+  // AMAT = 1 + 10/12 x (5 + 2/10 x 60) = 15.17 ns.
+  assert.deepEqual(levelsOf('TWO PASSES', 0), { L1: 2, L2: 0, L3: 0, RAM: 10, amat: 51, waited: 10 * 243 });
+  const l2 = levelsOf('TWO PASSES', 1);
+  assert.deepEqual([l2.L1, l2.L2, l2.RAM, l2.waited], [2, 8, 2, 2 * 263 + 8 * 23]);
+  assert.ok(Math.abs(l2.amat - (1 + (10 / 12) * (5 + (2 / 10) * 60))) < 1e-9);
+  // SUM BIG NUMBERS (sixteen 64-bit numbers, each two 4-byte L1 blocks, so every load misses the L1):
+  // with the L2, every other number starts a 16-byte block from RAM (66 + 6 ns); the others are two L2 hits (12 ns).
+  const before = levelsOf('SUM BIG NUMBERS', 1);
+  assert.deepEqual([before.L1, before.L2, before.RAM], [0, 8, 8]);
+  assert.equal(before.amat, (8 * 72 + 8 * 12) / 16);
+  // With the L3, RAM sends 64 bytes (8 numbers): 2 trips, and each L2 block after the first in them comes from the L3.
+  const after = levelsOf('SUM BIG NUMBERS', 2);
+  assert.deepEqual([after.L1, after.L2, after.L3, after.RAM], [0, 8, 6, 2]);
+  assert.equal(after.amat, (2 * (78 + 6) + 6 * (18 + 6) + 8 * 12) / 16);
+  assert.equal(perfectRun(programCpu(programByName('SUM BIG NUMBERS')), { forwarding: true }).cpu.regs[3], 64_800_000_000);
 });

@@ -1,4 +1,4 @@
-import { blip } from './sfx.js';
+import { cueOn } from './cues.js';
 import { beatAtTime, timeOfBeat } from './timing.js';
 // How far ahead (seconds) beats are scheduled, and how often (ms) we top up.
 // setInterval only wakes the scheduler; the beat times themselves come from
@@ -12,7 +12,8 @@ export class Conductor {
     bpm;
     /** Player calibration (seconds). Positive = the player hears audio later than reported. */
     offset = 0;
-    clickVolume = 0.15;
+    /** The metronome's loudness: 1 as designed (alone, for calibration), lower under music, 0 silent. */
+    clickLevel = 1;
     /** Called as each beat is scheduled, with its exact audio time (for music). */
     onBeat;
     /** Beat times follow the current tempo from this anchor (the beat and audio time of the last tempo change). */
@@ -21,6 +22,8 @@ export class Conductor {
     previous;
     nextBeat = 0;
     timer;
+    /** While paused (the pause menu): the beat it stopped on. */
+    pausedBeat;
     constructor(ctx, bpm) {
         this.ctx = ctx;
         this.bpm = bpm;
@@ -37,6 +40,28 @@ export class Conductor {
         if (this.timer !== undefined)
             clearInterval(this.timer);
         this.timer = undefined;
+    }
+    /**
+     * Stops the beat where it is (the pause menu): nothing more is scheduled,
+     * and every reading gives the beat it stopped on until resume(). The audio
+     * keeps running; only the beat waits.
+     */
+    pause() {
+        if (this.pausedBeat !== undefined)
+            return;
+        this.pausedBeat = this.currentBeat();
+        this.stop();
+    }
+    /** Carries on from the beat it stopped on, as of now: no beat is skipped or played twice. */
+    resume() {
+        const beat = this.pausedBeat;
+        if (beat === undefined)
+            return;
+        this.pausedBeat = undefined;
+        this.anchor = { beat, time: this.heardTime() - this.offset };
+        this.previous = undefined;
+        this.schedule();
+        this.timer = setInterval(() => this.schedule(), SCHEDULE_INTERVAL_MS);
     }
     /**
      * Changes the tempo from the next unscheduled beat on, so every beat stays
@@ -60,6 +85,8 @@ export class Conductor {
      * moment it happened, independent of frame rate.
      */
     beatAt(performanceMs) {
+        if (this.pausedBeat !== undefined)
+            return this.pausedBeat;
         const time = this.heardTime(performanceMs) - this.offset;
         const { bpm, anchor } = this.previous && time < this.anchor.time ? this.previous : { bpm: this.bpm, anchor: this.anchor };
         return anchor.beat + beatAtTime(time, anchor.time, bpm);
@@ -88,7 +115,7 @@ export class Conductor {
         return timeOfBeat(beat - this.anchor.beat, this.anchor.time, this.bpm);
     }
     click(beat, time) {
-        blip(this.ctx, beat % 4 === 0 ? 1760 : 880, time, 0.05, 'square', this.clickVolume);
+        cueOn(this.ctx, beat % 4 === 0 ? 'downbeat' : 'beat', { at: time, volume: this.clickLevel });
     }
 }
 //# sourceMappingURL=conductor.js.map

@@ -30,7 +30,7 @@ export const GLOSSARY = {
   },
   MEMORY_UNIT: {
     title: 'MEMORY UNIT',
-    body: 'Moves bytes between registers and memory: lb loads a byte into a register, sb stores one back.',
+    body: 'Moves numbers between registers and memory: lb loads a byte into a register, sb stores one back. Wider data moves more at once: lh / sh 2 bytes, lw / sw 4 (a WORD), ld / sd 8.',
   },
   BRANCH: {
     title: 'BRANCH UNIT',
@@ -70,7 +70,7 @@ export const GLOSSARY = {
   },
   THROUGHPUT: {
     title: 'THROUGHPUT',
-    body: 'Instructions finished per cycle over the last 8 cycles. 1.00 means the pipeline is full and one instruction finishes every cycle.',
+    body: 'Instructions finished per cycle over the last 8 cycles. 1.00 means the pipeline is full and one instruction finishes every cycle. A superscalar CPU can reach 2.00: two a cycle.',
   },
   STATS: {
     title: 'CYCLES AND CPI',

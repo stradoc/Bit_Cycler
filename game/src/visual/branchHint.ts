@@ -1,4 +1,4 @@
-import type { Era } from './terminal.ts';
+import type { Era } from '../ui/eras.ts';
 
 /** The hint color for an outcome: the color of the key that guesses it (J not taken, K taken). */
 export function hintColor(era: Era, taken: boolean): number {

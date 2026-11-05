@@ -40,6 +40,28 @@ export function formatDuration(seconds: number): string {
   return `${trim(seconds * 1e9)} ns`;
 }
 
+/** A name marked as work in progress when `wip`: "L2 CACHE: 128 BYTES (WIP)". */
+export function wipLabel(name: string, wip: boolean): string {
+  return wip ? `${name} (WIP)` : name;
+}
+
+/** A time of day, from seconds since midnight: 13 * 3600 + 40 * 60 -> "1:40 PM" (past midnight it carries on: "1:15 AM"). */
+export function formatClock(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const hour24 = Math.floor(minutes / 60) % 24;
+  const hour = hour24 % 12 === 0 ? 12 : hour24 % 12;
+  return `${hour}:${String(minutes % 60).padStart(2, '0')} ${hour24 < 12 ? 'AM' : 'PM'}`;
+}
+
+/** A span of the workday in hours and minutes: "3 H 20 MIN", "4 H", "45 MIN", "UNDER 1 MIN" (the tutorial job), "0 MIN". */
+export function formatHours(seconds: number): string {
+  if (seconds > 0 && seconds < 60) return 'UNDER 1 MIN';
+  const minutes = Math.floor(seconds / 60);
+  const [h, m] = [Math.floor(minutes / 60), minutes % 60];
+  if (h === 0) return `${m} MIN`;
+  return m === 0 ? `${h} H` : `${h} H ${m} MIN`;
+}
+
 /** 4 -> "4 MHz", 2000 -> "2 GHz". */
 export function formatMhz(mhz: number): string {
   return mhz >= 1000 ? `${trim(mhz / 1000)} GHz` : `${trim(mhz)} MHz`;
@@ -48,6 +70,15 @@ export function formatMhz(mhz: number): string {
 /** 1240 -> "$1,240". */
 export function formatMoney(dollars: number): string {
   return `$${Math.round(dollars).toLocaleString('en-US')}`;
+}
+
+const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+
+/** When a save was made, in local time: "OCT 30 14:02". */
+export function formatSavedAt(ms: number): string {
+  const date = new Date(ms);
+  const two = (n: number) => String(n).padStart(2, '0');
+  return `${MONTHS[date.getMonth()]} ${date.getDate()} ${two(date.getHours())}:${two(date.getMinutes())}`;
 }
 
 /** Up to 3 significant figures, without trailing zeros: 2.40 -> "2.4", 317.2 -> "317". */

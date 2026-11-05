@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { PROGRAMS } from '../game/src/data/programs.ts';
 import { judge, NORMAL_WINDOWS } from '../game/src/rhythm/judge.ts';
 import { PipelineRun } from '../game/src/rhythm/pipelineRun.ts';
-import { tempoForClock } from '../game/src/rhythm/tempo.ts';
+import { DIFFICULTIES, tempoForClock } from '../game/src/rhythm/tempo.ts';
 import { assemble } from '../game/src/sim/assembler.ts';
 import { Cpu } from '../game/src/sim/cpu.ts';
 import { unitOf, type Unit } from '../game/src/sim/isa.ts';
@@ -84,7 +84,9 @@ test('tempo grows 20 BPM per 10x clock, from 75 BPM at 1 MHz', () => {
   assert.equal(tempoForClock(1000), 135);
   assert.ok(Math.abs(tempoForClock(4) - 87.0) < 0.1); // pipelined, no clock upgrades
   assert.ok(Math.abs(tempoForClock(4000) - 147.0) < 0.1); // pipelined, fully upgraded
-  assert.equal(tempoForClock(1, true), 60); // relaxed / practice
+  assert.equal(tempoForClock(1, DIFFICULTIES.relaxed.speed), 60); // relaxed / practice
+  assert.ok(Math.abs(tempoForClock(1, DIFFICULTIES.medium.speed) - 86.25) < 1e-9);
+  assert.equal(tempoForClock(1, DIFFICULTIES.hard.speed), 112.5);
 });
 
 test('an overheated chip stops the clock: presses are ignored, notes come later, and no cycle runs', () => {

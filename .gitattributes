@@ -1,0 +1,5 @@
+# Windows files keep Windows line endings, whatever the computer that checks them out.
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+# Mac launchers keep Unix line endings (a script with Windows ones won't run).
+*.command text eol=lf

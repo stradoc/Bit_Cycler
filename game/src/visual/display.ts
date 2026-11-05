@@ -8,7 +8,8 @@
 // vignette) is drawn at the screen's own resolution, so it stays fine even
 // when the game under it is chunky.
 
-import type { Era } from './terminal.ts';
+import { getSettings } from '../settings.ts';
+import type { Era } from '../ui/eras.ts';
 
 export const WIDTH = 960;
 export const HEIGHT = 540;
@@ -61,10 +62,10 @@ function nativeScale(): number {
 
 /** Sets the canvas up for an era: its size, how the browser stretches it, and the font texts use. */
 export function applyEra(game: Phaser.Game, era: Era): void {
-  smooth = era.smooth;
-  hires = era.hires;
+  smooth = era.screen.smooth;
+  hires = era.screen.hires;
   font = era.font;
-  frame = era.window ? FRAMES[era.window.style] : NO_FRAME;
+  frame = era.screen.frame ? FRAMES[era.screen.frame.style] : NO_FRAME;
   const next = hires ? nativeScale() : 1;
   if (next !== scale || game.scale.width !== WIDTH * next) {
     scale = next;
@@ -76,16 +77,24 @@ export function applyEra(game: Phaser.Game, era: Era): void {
 }
 
 let crt: HTMLDivElement | undefined;
+/** The overlay's "no change" value in soft light. */
+const NEUTRAL = 128;
 
 /**
  * The CRT eras' screen: scanlines, faint red / green / blue phosphor stripes
  * and a darkened edge, drawn over the canvas at the screen's own resolution
- * (one stripe or line per screen pixel) and multiplied, so black stays black.
+ * (one stripe or line per screen pixel). Blended as soft light, like real
+ * phosphor: black stays black, the dim glow shows the scanlines, and bright
+ * letters keep their full brightness (multiplying darkened them by a third).
+ * In soft light, mid gray (128) changes nothing and darker values darken.
+ * The CRT effects setting scales them down, to nothing at 0.
  */
 function crtOverlay(game: Phaser.Game, era: Era): void {
+  const scanlines = era.screen.scanlines * getSettings().crt;
+  const vignette = era.screen.vignette * getSettings().crt;
   if (!crt) {
     const overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;pointer-events:none;z-index:2;mix-blend-mode:multiply;image-rendering:pixelated';
+    overlay.style.cssText = 'position:fixed;pointer-events:none;z-index:2;mix-blend-mode:soft-light;image-rendering:pixelated';
     document.body.append(overlay);
     crt = overlay;
     // Follows the canvas, which the scale manager moves and resizes with the window.
@@ -101,7 +110,7 @@ function crtOverlay(game: Phaser.Game, era: Era): void {
     };
     follow();
   }
-  if (era.scanlines <= 0) {
+  if (scanlines <= 0) {
     crt.style.display = 'none';
     return;
   }
@@ -110,18 +119,18 @@ function crtOverlay(game: Phaser.Game, era: Era): void {
   [tile.width, tile.height] = [3, 3];
   const ctx = tile.getContext('2d');
   if (ctx) {
-    const stripe = Math.round(255 * (1 - era.scanlines * 0.45));
-    [`rgb(255,${stripe},${stripe})`, `rgb(${stripe},255,${stripe})`, `rgb(${stripe},${stripe},255)`].forEach((color, x) => {
+    const stripe = Math.round(NEUTRAL * (1 - scanlines * 0.45));
+    [`rgb(${NEUTRAL},${stripe},${stripe})`, `rgb(${stripe},${NEUTRAL},${stripe})`, `rgb(${stripe},${stripe},${NEUTRAL})`].forEach((color, x) => {
       ctx.fillStyle = color;
       ctx.fillRect(x, 0, 1, 2);
     });
-    const line = Math.round(255 * (1 - era.scanlines));
+    const line = Math.round(NEUTRAL * (1 - scanlines * 1.5));
     ctx.fillStyle = `rgb(${line},${line},${line})`;
     ctx.fillRect(0, 2, 3, 1);
   }
   const dot = 3 / (window.devicePixelRatio || 1);
   crt.style.display = 'block';
-  crt.style.backgroundImage = `radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,${era.vignette}) 100%), url(${tile.toDataURL()})`;
+  crt.style.backgroundImage = `radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,${vignette}) 100%), url(${tile.toDataURL()})`;
   crt.style.backgroundSize = `100% 100%, ${dot}px ${dot}px`;
 }
 

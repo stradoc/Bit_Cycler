@@ -281,3 +281,19 @@ test('single-cycle CPU (tier 1): CPI 1, no hazards, and branches never fetch the
   assert.ok(results.every((r) => r.flushed.length === 0));
   assert.equal(p.regs[3], 17); // written straight away, no write-back delay
 });
+
+test('the deep pipeline: each wrong guess costs its extra cycles refilling, and a right guess costs nothing', () => {
+  // A loop of 3 passes: its branch is taken twice, then not. Guessing "not taken" (no predictor) is wrong twice.
+  const source = 'addi x1, x0, 0\naddi x2, x0, 3\nloop: addi x1, x1, 1\nbne x1, x2, loop';
+  const cpu = () => new Cpu(assemble(source, 8), 8);
+  const shallow = perfectRun(cpu(), { forwarding: true });
+  const deep = perfectRun(cpu(), { forwarding: true, wrongGuessCycles: 4 });
+  assert.equal(shallow.mispredicted, 2);
+  assert.equal(deep.cycles - shallow.cycles, 2 * 3, 'two wrong guesses, 3 extra cycles each');
+  assert.equal(deep.refillCycles, 6);
+  assert.equal(deep.memoryCycles, 0);
+  assert.equal(deep.flushed, shallow.flushed, 'the same instruction is thrown away; the rest is refilling');
+  assert.equal(deep.instructions, shallow.instructions);
+  // Guessed right every time, depth costs nothing.
+  assert.equal(perfectRun(cpu(), { forwarding: true, wrongGuessCycles: 4 }, 'perfect').cycles, perfectRun(cpu(), { forwarding: true }, 'perfect').cycles);
+});

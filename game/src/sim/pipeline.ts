@@ -1,6 +1,6 @@
 import type { Cpu, Step } from './cpu.ts';
-import { destReg, sourceRegs, type Branch, type Instruction } from './isa.ts';
-import { MemorySystem, type Access } from './memory.ts';
+import { destReg, isBranch, isLoad, sourceRegs, unitOf, type Instruction } from './isa.ts';
+import { MemorySystem, type Access, type CacheShape } from './memory.ts';
 
 // The classic 5-stage in-order pipeline from Patterson & Hennessy:
 //   IF  fetch   ID  decode + read registers (branches resolve here)
@@ -11,6 +11,13 @@ import { MemorySystem, type Access } from './memory.ts';
 // Loads and stores reach memory in MEM (sim/memory.ts). An access slower than
 // a cycle freezes the whole pipeline until it's done: every stage holds, so
 // the distances between instructions (and their hazards) don't change.
+// Superscalar (tier 7): the instruction in ID and the one behind it in IF can
+// start together, a pair, when each goes to a different unit, the second
+// doesn't need the first's result, and the first isn't a branch. The second
+// then travels beside the first (its partner in EX, MEM and WB), and fetch
+// brings in two to refill. Like the i960CA, one instruction per unit a cycle;
+// Patterson & Hennessy's static two-issue CPU (section 4.10) is stricter (one
+// ALU-or-branch with one load-or-store).
 
 export const STAGES = ['IF', 'ID', 'EX', 'MEM', 'WB'] as const;
 export type Stage = (typeof STAGES)[number];
@@ -45,21 +52,45 @@ export type PipelineOptions = {
    * branch is decided before the next instruction is fetched.
    */
   readonly singleCycle?: boolean;
-  /** The L1 data cache: loads that hit don't wait for RAM. */
-  readonly cache?: boolean;
+  /** The L1 data cache, as it's built (sim/memory.ts): loads that hit don't wait for RAM. None if left out. */
+  readonly cache?: CacheShape;
+  /** How many of the caches below the L1 (LOWER_CACHES: 1 the L2, 2 the L2 and L3) an L1 miss checks before RAM. None without an L1. */
+  readonly lowerCaches?: number;
+  /**
+   * Cycles a wrong guess costs (1 without: the 5-stage pipeline decides a
+   * branch in ID, so only the one instruction fetched behind it is thrown
+   * away). The deep pipeline decides it further from fetch: after the flush,
+   * the front of the pipeline takes the extra cycles to refill, and nothing
+   * new reaches ID meanwhile.
+   */
+  readonly wrongGuessCycles?: number;
   /**
    * The clock (MHz), which sets how many cycles a trip to RAM takes. Without
    * one, memory keeps up with any clock. A song changes it as the dial turns.
    */
   readonly mhz?: number;
+  /** Superscalar (tier 7): two instructions can start together, each to a different unit (pairCheck). */
+  readonly superscalar?: boolean;
 };
+
+/** Why the instructions in ID and IF can't start together. */
+export type PairBlock =
+  | 'no-second' // nothing behind the first (or no superscalar hardware)
+  | 'branch-first' // the first is a branch: what comes after it isn't known yet
+  | 'same-unit' // both need the same unit, and there's only one of each
+  | 'depends' // the second needs the first's result
+  | 'hazard'; // one of them is waiting for an older instruction's result
+
+export type PairCheck = { readonly ok: true } | { readonly ok: false; readonly reason: PairBlock };
+
+/** The stages a pair's second instruction travels through beside its first. */
+export type PartnerStage = 'EX' | 'MEM' | 'WB';
 
 /** A predictor's guess for a branch, and whether it's sure (2-bit strong states; 1-bit is always sure). */
 export type Guess = { readonly taken: boolean; readonly sure: boolean };
 
 const INITIAL_COUNTER: Record<Predictor, number> = { '1-bit': 0, '2-bit': 1 };
 
-const isBranch = (instr: Instruction | undefined): instr is Branch => instr?.op === 'beq' || instr?.op === 'bne';
 
 export type Hazard = {
   /** The register the instruction in ID needs. */
@@ -74,6 +105,9 @@ export type CycleEvent =
   | { readonly kind: 'idle' } // nothing in ID (pipeline filling, or after a flush)
   | { readonly kind: 'issued'; readonly slot: Slot }
   | { readonly kind: 'stalled'; readonly needed: boolean } // needed = false: a wasted bubble
+  | { readonly kind: 'paired'; readonly slot: Slot; readonly partner: Slot }
+  /** Started together when they couldn't be: both are thrown away and fetched again. */
+  | { readonly kind: 'pair-violation'; readonly slot: Slot; readonly partner: Slot | null; readonly reason: PairBlock }
   | {
       readonly kind: 'hazard-violation';
       readonly slot: Slot;
@@ -90,6 +124,8 @@ export type CycleResult = {
   readonly flushed: readonly Slot[];
   /** Instruction that reached WB this cycle. */
   readonly committed?: Slot;
+  /** ...and the second of its pair, beside it. */
+  readonly committedPartner?: Slot;
   /** A branch was decided this cycle: was the guess about it wrong? */
   readonly mispredicted?: boolean;
   /** ...and with a predictor, what the predictor guessed (the player may have overridden it). */
@@ -110,7 +146,7 @@ export function stallsNeeded(
 ): number {
   // Without forwarding, a value is only readable once its producer reaches WB.
   if (!forwarding) return 3 - distance;
-  const load = producer.op === 'lb';
+  const load = isLoad(producer);
   // Branches compare in ID, so they need their operands a stage earlier.
   if (consumer.op === 'beq' || consumer.op === 'bne') return load ? 3 - distance : 2 - distance;
   // A load's data only exists after MEM: the load-use hazard.
@@ -125,6 +161,10 @@ export class Pipeline {
   readonly regs: number[];
   readonly options: PipelineOptions;
   stages: Record<Stage, Slot | null> = { IF: null, ID: null, EX: null, MEM: null, WB: null };
+  /** Superscalar: the second instruction of each pair, beside the first in EX, MEM and WB. */
+  partners: Record<PartnerStage, Slot | null> = { EX: null, MEM: null, WB: null };
+  /** Pairs started (two instructions in one cycle). */
+  pairs = 0;
   /** Current clock cycle, starting at 1 with the first instruction in IF. */
   cycle = 1;
   /** Instructions that reached WB. */
@@ -141,6 +181,10 @@ export class Pipeline {
   memoryWait = 0;
   /** Cycles spent frozen waiting for memory so far. */
   memoryCycles = 0;
+  /** Cycles left refilling the deep pipeline's front after a wrong guess (nothing reaches ID). */
+  refillWait = 0;
+  /** Cycles spent refilling so far. */
+  refillCycles = 0;
   /** The last access to reach memory, and the instruction making it. */
   lastAccess: { readonly slot: Slot; readonly access: Access } | undefined;
   /** Branches decided, and how many of them were guessed wrong. */
@@ -159,6 +203,8 @@ export class Pipeline {
   private readonly fetchGuesses = new Map<number, boolean>();
   /** The guess made for the branch in ID, if any (otherwise it's guessed not taken). */
   private prediction: { seq: number; taken: boolean } | null = null;
+  /** The guess made for a branch starting as the second of a pair (in IF), for this cycle. */
+  private partnerPrediction: { seq: number; taken: boolean } | null = null;
   private fetchPc = 0;
   private nextSeq = 0;
 
@@ -166,7 +212,7 @@ export class Pipeline {
     this.cpu = cpu;
     this.options = options;
     this.regs = [...cpu.regs];
-    this.memory = new MemorySystem(options.cache ?? false);
+    this.memory = new MemorySystem(options.cache, options.lowerCaches);
     this.clockMhz = options.mhz;
     this.stages.IF = this.fetch();
     if (options.singleCycle) {
@@ -183,7 +229,13 @@ export class Pipeline {
 
   get done(): boolean {
     const { IF, ID, EX, MEM } = this.stages;
-    return this.fetchPc >= this.cpu.program.instructions.length && !IF && !ID && !EX && !MEM && this.memoryWait === 0;
+    const partners = this.partners.EX || this.partners.MEM;
+    return this.fetchPc >= this.cpu.program.instructions.length && !IF && !ID && !EX && !MEM && !partners && this.waitLeft === 0;
+  }
+
+  /** Cycles left with nothing able to move on: waiting for memory, then refilling after a wrong guess. */
+  get waitLeft(): number {
+    return this.memoryWait + this.refillWait;
   }
 
   /** Average cycles per instruction so far, counting the cycles to fill the pipeline. */
@@ -191,7 +243,7 @@ export class Pipeline {
     return this.instructions === 0 ? 0 : this.cycles / this.instructions;
   }
 
-  /** Stages holding a real instruction (0-5): how full the pipeline is. */
+  /** Stages holding a real instruction (0-5): how full the pipeline is (a pair counts once). */
   get occupancy(): number {
     return STAGES.filter((stage) => this.stages[stage] !== null).length;
   }
@@ -200,18 +252,53 @@ export class Pipeline {
   hazard(): Hazard | null {
     const consumer = this.stages.ID;
     if (!consumer || this.options.singleCycle) return null;
+    return this.hazardFor(consumer.instr);
+  }
+
+  /**
+   * The worst hazard an instruction about to start would have with the older
+   * ones still computing (in EX or MEM, a pair's second included), as if it
+   * were in ID: the one in ID, or the one behind it starting beside it.
+   */
+  private hazardFor(consumer: Instruction): Hazard | null {
     let worst: Hazard | null = null;
-    for (const reg of sourceRegs(consumer.instr)) {
+    for (const reg of sourceRegs(consumer)) {
       if (reg === 0) continue; // x0 is constant
-      for (const [stage, distance] of [['EX', 1], ['MEM', 2]] as const) {
-        const producer = this.stages[stage];
-        if (!producer || destReg(producer.instr) !== reg) continue;
-        const stalls = stallsNeeded(producer.instr, consumer.instr, distance, this.options.forwarding);
+      for (const [producer, distance] of this.producers()) {
+        if (destReg(producer.instr) !== reg) continue;
+        const stalls = stallsNeeded(producer.instr, consumer, distance, this.options.forwarding);
         if (stalls > 0 && (!worst || stalls > worst.stalls)) worst = { reg, producer, stalls };
         break; // the nearest (newest) producer is the one that matters
       }
     }
     return worst;
+  }
+
+  /** The older instructions still computing, newest first (in each stage a pair's second is the newer), with their distance: 1 in EX, 2 in MEM. */
+  private producers(): [Slot, 1 | 2][] {
+    return (['EX', 'MEM'] as const).flatMap((stage, i) =>
+      [this.partners[stage], this.stages[stage]].filter((slot): slot is Slot => slot !== null).map((slot): [Slot, 1 | 2] => [slot, i === 0 ? 1 : 2]),
+    );
+  }
+
+  /**
+   * Whether the instruction in ID and the one behind it (in IF) can start
+   * together this cycle, and if not, why: the first must be free to go and
+   * not a branch, they must need different units, the second mustn't need
+   * the first's result, and the second must be free to go too.
+   */
+  pairCheck(): PairCheck {
+    const first = this.stages.ID;
+    const second = this.stages.IF;
+    const no = (reason: PairBlock): PairCheck => ({ ok: false, reason });
+    if (!this.options.superscalar || this.options.singleCycle || !first || !second) return no('no-second');
+    if (this.hazard()) return no('hazard');
+    if (isBranch(first.instr)) return no('branch-first');
+    if (unitOf(first.instr) === unitOf(second.instr)) return no('same-unit');
+    const wrote = destReg(first.instr);
+    if (wrote !== undefined && wrote !== 0 && sourceRegs(second.instr).includes(wrote)) return no('depends');
+    if (this.hazardFor(second.instr)) return no('hazard');
+    return { ok: true };
   }
 
   /**
@@ -247,9 +334,9 @@ export class Pipeline {
     return guess && fetched !== undefined ? { ...guess, taken: fetched } : guess;
   }
 
-  /** Whether the branch in ID will be taken (undefined if ID holds no branch). */
-  branchOutcome(): boolean | undefined {
-    const instr = this.stages.ID?.instr;
+  /** Whether the branch in ID (or `stage` IF: a pair's second) will be taken (undefined if it holds no branch). */
+  branchOutcome(stage: 'ID' | 'IF' = 'ID'): boolean | undefined {
+    const instr = this.stages[stage]?.instr;
     if (!isBranch(instr)) return undefined;
     // Older instructions have all executed already, so the CPU's registers hold the values it compares.
     const equal = this.cpu.regs[instr.rs1] === this.cpu.regs[instr.rs2];
@@ -273,6 +360,17 @@ export class Pipeline {
   }
 
   /**
+   * The player's guess for a branch starting as the second of a pair (in IF),
+   * this cycle: fetch goes on from its target if it's guessed taken.
+   */
+  predictPartner(taken: boolean): void {
+    const branch = this.stages.IF;
+    if (!branch || !isBranch(branch.instr)) return;
+    this.partnerPrediction = { seq: branch.seq, taken };
+    this.fetchPc = taken ? branch.instr.target : branch.pc + 1;
+  }
+
+  /**
    * The next `count` instructions fetch will bring in, following the
    * predictor's current guesses (not taken without one). Their seq numbers are
    * the ones they'll get when fetched.
@@ -286,9 +384,15 @@ export class Pipeline {
     return slots;
   }
 
-  /** Which stage holds the instruction with this seq, if any. */
+  /** The instructions in `stage`: its own, and (EX, MEM, WB) the second of a pair beside it, older first. */
+  inStage(stage: Stage): Slot[] {
+    const partner = stage === 'EX' || stage === 'MEM' || stage === 'WB' ? this.partners[stage] : null;
+    return [this.stages[stage], partner].filter((slot): slot is Slot => slot !== null);
+  }
+
+  /** Which stage holds the instruction with this seq, if any (a pair's second is in the stage beside its first). */
   stageOf(seq: number): Stage | undefined {
-    return STAGES.find((stage) => this.stages[stage]?.seq === seq);
+    return STAGES.find((stage) => this.stages[stage]?.seq === seq) ?? (['EX', 'MEM', 'WB'] as const).find((stage) => this.partners[stage]?.seq === seq);
   }
 
   /**
@@ -302,43 +406,129 @@ export class Pipeline {
     const forwarded: { reg: number; producer: Slot }[] = [];
     for (const reg of new Set(sourceRegs(consumer.instr))) {
       if (reg === 0) continue;
-      const producer = (['EX', 'MEM'] as const)
-        .map((stage) => this.stages[stage])
-        .find((slot) => slot && destReg(slot.instr) === reg);
+      const producer = this.producers().find(([slot]) => destReg(slot.instr) === reg)?.[0];
       if (producer) forwarded.push({ reg, producer });
     }
     return forwarded;
   }
 
-  /** The correct choice this cycle (used by autoplay and tests). */
-  bestAction(): 'issue' | 'stall' {
-    return this.hazard() ? 'stall' : 'issue';
+  /** The correct choice this cycle (used by autoplay and tests): stall for a hazard, else start a pair if one can, else issue. */
+  bestAction(): 'issue' | 'stall' | 'pair' {
+    if (this.hazard()) return 'stall';
+    return this.pairCheck().ok ? 'pair' : 'issue';
   }
 
-  /** Spends up to `cycles` of the current memory wait, the whole pipeline frozen. Returns how many it spent. */
-  wait(cycles = this.memoryWait): number {
-    const spent = Math.max(0, Math.min(cycles, this.memoryWait));
-    this.cycle += spent;
-    this.memoryCycles += spent;
-    this.memoryWait -= spent;
-    return spent;
+  /**
+   * Superscalar: the instructions (by seq) that will start as the second of
+   * a pair over the next `cycles` if they're played perfectly from here, so
+   * the song can draw a chord from the moment its notes appear, not only once
+   * both reach the front. Played on a copy that keeps up with any clock:
+   * memory waits change when pairs start, never which ones do.
+   */
+  plannedPartners(cycles: number): Set<number> {
+    const partners = new Set<number>();
+    if (!this.options.superscalar || this.options.singleCycle) return partners;
+    const copy = this.copy();
+    for (let i = 0; i < cycles && !copy.done; i++) {
+      if (copy.waitLeft > 0) {
+        copy.wait();
+        continue;
+      }
+      const { event } = copy.step(copy.bestAction());
+      if (event.kind === 'paired') partners.add(event.partner.seq);
+    }
+    return partners;
   }
 
-  /** Advances one clock cycle. `action` is the player's choice for the instruction in ID. */
-  step(action: 'issue' | 'stall'): CycleResult {
+  /** A copy to play ahead on: the same state, with memory that keeps up with any clock (no new waits). */
+  private copy(): Pipeline {
+    const copy = new Pipeline(this.cpu.clone(), { ...this.options, mhz: undefined });
+    copy.regs.splice(0, copy.regs.length, ...this.regs);
+    copy.stages = { ...this.stages };
+    copy.partners = { ...this.partners };
+    copy.cycle = this.cycle;
+    copy.memoryWait = this.memoryWait;
+    copy.refillWait = this.refillWait;
+    for (const [pc, outcomes] of this.history) copy.history.set(pc, [...outcomes]);
+    for (const [pc, counter] of this.counters) copy.counters.set(pc, counter);
+    copy.fetchGuesses.clear();
+    for (const [seq, guess] of this.fetchGuesses) copy.fetchGuesses.set(seq, guess);
+    copy.prediction = this.prediction;
+    copy.partnerPrediction = this.partnerPrediction;
+    copy.fetchPc = this.fetchPc;
+    copy.nextSeq = this.nextSeq;
+    return copy;
+  }
+
+  /**
+   * Spends up to `cycles` of the current wait (memory first, then a refill),
+   * nothing able to move on. Returns how many it spent. A refill holds the
+   * whole pipeline too: what's ahead of the refetched instruction is only the
+   * bubble and the branch, which writes no register, so holding it changes no
+   * later hazard and costs the same cycles as bubbles drifting through.
+   */
+  wait(cycles = this.waitLeft): number {
+    const memory = Math.max(0, Math.min(cycles, this.memoryWait));
+    const refill = Math.max(0, Math.min(cycles - memory, this.refillWait));
+    this.cycle += memory + refill;
+    this.memoryCycles += memory;
+    this.memoryWait -= memory;
+    this.refillCycles += refill;
+    this.refillWait -= refill;
+    return memory + refill;
+  }
+
+  /**
+   * Advances one clock cycle. `action` is the player's choice for the
+   * instruction in ID: issue it, stall, or (superscalar) start it and the one
+   * behind it together as a pair.
+   */
+  step(action: 'issue' | 'stall' | 'pair'): CycleResult {
     if (this.done) throw new Error('pipeline is done');
-    if (this.memoryWait > 0) throw new Error('pipeline is frozen, waiting for memory');
-    if (this.options.singleCycle) return this.stepSingleCycle(action);
+    if (this.waitLeft > 0) throw new Error('pipeline is frozen, waiting for memory or refilling');
+    if (this.options.singleCycle) return this.stepSingleCycle(action === 'stall' ? 'stall' : 'issue');
     const { IF, ID, EX, MEM } = this.stages;
     const flushed: Slot[] = [];
     let event: CycleEvent;
     let nextEX: Slot | null = null; // a bubble unless something issues
+    let nextPartner: Slot | null = null;
     let mispredicted: boolean | undefined;
     let predicted: boolean | undefined;
     let nextID: Slot | null;
     let nextIF: Slot | null;
+    const check = action === 'pair' ? this.pairCheck() : undefined;
 
-    if (!ID) {
+    if (ID && check && !check.ok && !this.hazard()) {
+      // Started together when they couldn't be: both are thrown away and fetched again.
+      event = { kind: 'pair-violation', slot: ID, partner: IF, reason: check.reason };
+      flushed.push(ID);
+      if (IF) flushed.push(IF);
+      this.fetchPc = ID.pc;
+      nextID = null;
+      nextIF = this.fetch();
+    } else if (ID && IF && check?.ok) {
+      // A pair: both start, in program order, and fetch brings in two behind them.
+      const first = this.issue(ID);
+      const second = this.issue(IF);
+      event = { kind: 'paired', slot: first, partner: second };
+      nextEX = first;
+      nextPartner = second;
+      this.pairs++;
+      const decided = this.decideBranch(second, this.partnerPrediction);
+      mispredicted = decided?.mispredicted;
+      predicted = decided?.predicted;
+      if (mispredicted) {
+        // What was fetched behind the branch is on the wrong path.
+        const wrong = this.fetch();
+        if (wrong) flushed.push(wrong);
+        this.fetchPc = second.step?.taken ? this.cpu.pc : second.pc + 1;
+        nextID = null;
+        nextIF = this.fetch();
+      } else {
+        nextID = this.fetch();
+        nextIF = this.fetch();
+      }
+    } else if (!ID) {
       event = { kind: 'idle' };
       nextID = IF;
       nextIF = this.fetch();
@@ -370,24 +560,9 @@ export class Pipeline {
         event = { kind: 'issued', slot: issued };
         nextEX = issued;
         const taken = issued.step?.taken;
-        if (taken !== undefined) {
-          // A branch is decided here. Fetch followed the guess: the player's, else the predictor's, else not taken.
-          predicted = this.fetchGuesses.get(issued.seq);
-          this.fetchGuesses.delete(issued.seq);
-          const guessedTaken = this.prediction?.seq === issued.seq ? this.prediction.taken : (predicted ?? false);
-          mispredicted = guessedTaken !== taken;
-          this.branches++;
-          if (mispredicted) this.mispredicted++;
-          this.history.set(issued.pc, [...(this.history.get(issued.pc) ?? []), taken]);
-          if (predicted !== undefined) {
-            if (predicted !== taken) this.predictorMisses++;
-            if (guessedTaken !== predicted) {
-              this.overrides++;
-              if (!mispredicted) this.overridesRight++;
-            }
-            this.train(issued.pc, taken);
-          }
-        }
+        const decided = this.decideBranch(issued, this.prediction);
+        mispredicted = decided?.mispredicted;
+        predicted = decided?.predicted;
         if (mispredicted) {
           // The instruction fetched behind the branch is on the wrong path.
           if (IF) flushed.push(IF);
@@ -402,14 +577,48 @@ export class Pipeline {
     }
 
     const committed = MEM ?? undefined;
+    const committedPartner = this.partners.MEM ?? undefined;
     if (committed) this.commit(committed);
+    if (committedPartner) this.commit(committedPartner);
+    const enteringMem = [EX, this.partners.EX];
     this.flushed += flushed.length;
     this.stages = { IF: nextIF, ID: nextID, EX: nextEX, MEM: EX, WB: MEM };
+    this.partners = { EX: nextPartner, MEM: this.partners.EX, WB: this.partners.MEM };
     if (this.prediction && this.prediction.seq !== nextID?.seq) this.prediction = null;
+    this.partnerPrediction = null;
     this.cycle++;
-    // The instruction now entering MEM reaches memory next cycle; if that takes longer, everything waits.
-    const access = this.reachMemory(EX);
-    return { event, flushed, committed, mispredicted, predicted, access };
+    // The instruction now entering MEM reaches memory next cycle (a pair holds at most one load or store); if that takes longer, everything waits.
+    const access = this.reachMemory(enteringMem.find((slot) => slot?.step?.loaded !== undefined || slot?.step?.stored !== undefined) ?? null);
+    // A deep pipeline's wrong guess: its front refills (during a memory wait, the refill overlaps it).
+    if (mispredicted) this.refillWait = Math.max(0, (this.options.wrongGuessCycles ?? 1) - 1 - this.memoryWait);
+    return { event, flushed, committed, committedPartner, mispredicted, predicted, access };
+  }
+
+  /**
+   * A branch decided as it starts (in ID, or as a pair's second): fetch
+   * followed the guess, the player's (`guess`, if it's for this branch), else
+   * the predictor's, else not taken. Counts it, keeps its history and trains
+   * the predictor. Undefined if `slot` isn't a branch.
+   */
+  private decideBranch(slot: Slot, guess: { seq: number; taken: boolean } | null): { mispredicted: boolean; predicted?: boolean } | undefined {
+    const taken = slot.step?.taken;
+    if (taken === undefined) return undefined;
+    const predicted = this.fetchGuesses.get(slot.seq);
+    this.fetchGuesses.delete(slot.seq);
+    const guessedTaken = guess?.seq === slot.seq ? guess.taken : (predicted ?? false);
+    const mispredicted = guessedTaken !== taken;
+    this.branches++;
+    if (mispredicted) this.mispredicted++;
+    this.history.set(slot.pc, [...(this.history.get(slot.pc) ?? []), taken]);
+    if (predicted !== undefined) {
+      if (predicted !== taken) this.predictorMisses++;
+      if (guessedTaken !== predicted) {
+        this.overrides++;
+        if (!mispredicted) this.overridesRight++;
+      }
+      this.train(slot.pc, taken);
+    }
+    return { mispredicted, predicted };
   }
 
   /**
@@ -455,7 +664,7 @@ export class Pipeline {
   private reachMemory(slot: Slot | null): CycleResult['access'] {
     const address = slot?.step?.loaded ?? slot?.step?.stored;
     if (!slot || address === undefined) return undefined;
-    const access = this.memory.access(slot.step?.loaded !== undefined ? 'load' : 'store', address, this.clockMhz);
+    const access = this.memory.access(slot.step?.loaded !== undefined ? 'load' : 'store', address, this.clockMhz, slot.step?.size ?? 1);
     this.memoryWait = access.cycles - 1;
     this.lastAccess = { slot, access };
     return this.lastAccess;
@@ -507,13 +716,18 @@ export class Pipeline {
 export function perfectRun(cpu: Cpu, options: PipelineOptions, guesses: 'hardware' | 'perfect' = 'hardware'): Pipeline {
   const pipeline = new Pipeline(cpu.clone(), options);
   while (!pipeline.done) {
-    if (pipeline.memoryWait > 0) {
+    if (pipeline.waitLeft > 0) {
       pipeline.wait();
       continue;
     }
     const action = pipeline.bestAction();
-    const taken = pipeline.branchOutcome();
-    if (action === 'issue' && guesses === 'perfect' && taken !== undefined) pipeline.predict(taken);
+    if (guesses === 'perfect' && action !== 'stall') {
+      // The branch starting this cycle: the one in ID, or a pair's second.
+      const taken = pipeline.branchOutcome();
+      if (taken !== undefined) pipeline.predict(taken);
+      const second = action === 'pair' ? pipeline.branchOutcome('IF') : undefined;
+      if (second !== undefined) pipeline.predictPartner(second);
+    }
     pipeline.step(action);
   }
   return pipeline;

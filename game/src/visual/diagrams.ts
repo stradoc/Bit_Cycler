@@ -1,18 +1,107 @@
+import { DEEP_PIPELINE } from '../data/economy.ts';
 import type { DiagramId } from '../data/lessons.ts';
-import { PROGRAMS } from '../data/programs.ts';
+import { programByName, PROGRAMS } from '../data/programs.ts';
 import { formatMhz } from '../format.ts';
 import { assemble } from '../sim/assembler.ts';
-import { Cpu } from '../sim/cpu.ts';
+import { cpuFor, trace } from '../sim/cpu.ts';
 import { tokens } from '../sim/isa.ts';
-import { Cache, MEMORY_TIMING, ramCycles } from '../sim/memory.ts';
-import { perfectRun } from '../sim/pipeline.ts';
+import { Cache, cacheBytes, cachesBelow, cacheShape, cyclesFor, L1_BASE, LOWER_CACHES, MEMORY_TIMING, MemorySystem, missNs, ramCycles, type CacheShape, type MemoryLevel, type MissKind, type Source } from '../sim/memory.ts';
+import { perfectRun, type PipelineOptions } from '../sim/pipeline.ts';
 import { Chip, relativePower, steadyTemperature, THERMAL } from '../sim/thermal.ts';
 import { branchHint, hintColor } from './branchHint.ts';
 import { codeLine } from './codeLine.ts';
-import { cssColor, type Era } from './terminal.ts';
+import { cssColor, type Era } from '../ui/eras.ts';
 import { textBase } from './display.ts';
 
 type Parts = Phaser.GameObjects.GameObject[];
+
+/** A load in a program, as the caches saw it: where it was found, and how long it took (ns). */
+type Load = { readonly op: string; readonly address: number; readonly hit: boolean; readonly missKind?: MissKind; readonly level: MemoryLevel; readonly ns: number };
+
+/**
+ * Every load a program makes, in order, on an L1 of this shape with `lower`
+ * caches below it (its stores go through too: a hit refreshes its line).
+ */
+function loadsOn(program: string, shape: CacheShape, lower = 0): Load[] {
+  const memory = new MemorySystem(shape, lower);
+  const loads: Load[] = [];
+  for (const step of trace(cpuFor(programByName(program)))) {
+    if (step.loaded !== undefined) {
+      const access = memory.access('load', step.loaded, undefined, step.size);
+      loads.push({ op: step.instr.op, address: step.loaded, hit: access.hit ?? false, missKind: access.missKind, level: access.level, ns: access.ns });
+    } else if (step.stored !== undefined) memory.access('store', step.stored, undefined, step.size);
+  }
+  return loads;
+}
+
+const MISS_SHORT: Readonly<Record<MissKind, string>> = { 'first-use': 'first use', conflict: 'conflict', 'too-small': 'too small' };
+
+/**
+ * A row of loads under a label: a before or after in an upgrade's picture.
+ * With the L1 alone, HIT or MISS (and why); with caches below it (`levels`),
+ * where each was found (HIT in the L1, L2, L3 or RAM) and how long it took.
+ */
+function missRow(s: Sketch, cx: number, y: number, label: string, loads: readonly Load[], levels = false): void {
+  const w = Math.min(70, 720 / loads.length);
+  s.text(cx, y - 32, label, 13, 0.85, true);
+  loads.forEach((load, i) => {
+    const x = cx + (i - (loads.length - 1) / 2) * w;
+    const far = load.level === 'RAM';
+    s.box(x, y, w - 6, 26, !load.hit && (far || !levels), !load.hit && far);
+    s.hintText(x, y, load.hit ? 'HIT' : levels ? load.level : 'MISS', load.hit, 13);
+    if (levels) s.text(x, y + 22, `${load.ns} ns`, 10, 0.75);
+    else if (!load.hit && load.missKind) s.text(x, y + 22, MISS_SHORT[load.missKind], 10, 0.75);
+  });
+}
+
+/** Loads' average time (ns, to a tenth): the AMAT of a picture's row. */
+const averageNs = (loads: readonly Load[]) => Number((loads.reduce((ns, load) => ns + load.ns, 0) / loads.length).toFixed(1));
+
+/**
+ * A new cache level's picture: `program`'s loads on the first L1 without the
+ * `lower`th level below it and with it, each cell where it was found, and the
+ * trips to RAM and average load time each way.
+ */
+function newLevel(s: Sketch, cx: number, cy: number, program: string, lower: number, without: string, withIt: string): void {
+  const [before, after] = [loadsOn(program, L1_BASE, lower - 1), loadsOn(program, L1_BASE, lower)];
+  missRow(s, cx, cy - 64, without, before, true);
+  missRow(s, cx, cy + 28, withIt, after, true);
+  const trips = (loads: readonly Load[]) => loads.filter((load) => load.level === 'RAM').length;
+  s.text(cx, cy + 96, `${trips(before)} TRIPS TO RAM -> ${trips(after)}, AN AVERAGE LOAD ${averageNs(before)} -> ${averageNs(after)} ns`, 15, 1, true);
+}
+
+/** Where each level is in TICK's comparison: the desk, the shelf in the room, the bookcase down the hall, the library across town. */
+const PLACES: Readonly<Record<'L1' | Source, string>> = { L1: 'your desk', L2: 'the shelf', L3: 'down the hall', RAM: 'across town' };
+
+/**
+ * The memory hierarchy with `lower` caches below the L1: each level's size,
+ * TICK's comparison, and how long a load takes when it's found there (ns, and
+ * cycles at 4 GHz), from the game's own timings.
+ */
+function ladder(s: Sketch, cx: number, cy: number, lower: number): void {
+  const levels: { name: string; bytes: number; from?: 'L1' | Source }[] = [
+    { name: 'CPU', bytes: 0 },
+    { name: 'L1', bytes: cacheBytes(L1_BASE), from: 'L1' },
+    ...cachesBelow(lower).map((level) => ({ name: level.name, bytes: cacheBytes(level.shape), from: level.name })),
+    { name: 'RAM', bytes: 256, from: 'RAM' as const },
+  ];
+  const gap = 720 / (levels.length - 1);
+  levels.forEach((level, i) => {
+    const x = cx - 360 + i * gap;
+    const y = cy - 40;
+    if (i > 0) s.arrow(x - gap + 58, y, x - 58, y);
+    s.box(x, y, 104, 64, i < 2, i === 0);
+    s.text(x, y - 12, level.name, 20, 1, true);
+    if (level.bytes > 0) s.text(x, y + 14, `${level.bytes} BYTES`, 12, 0.8);
+    if (!level.from) return;
+    const ns = level.from === 'L1' ? MEMORY_TIMING.l1Ns : missNs(L1_BASE, lower, level.from);
+    s.text(x, y + 52, PLACES[level.from], 13, 0.85);
+    s.text(x, y + 76, `${ns} ns`, 16, 1, true);
+    // A hit fits in the MEMORY stage's own cycle; anything further freezes the pipeline for its cycles.
+    s.text(x, y + 98, level.from === 'L1' ? 'in the MEMORY stage' : `${cyclesFor(ns, 4000)} cycles at 4 GHz`, 11, 0.75);
+  });
+  s.text(cx, cy + 112, 'EACH LEVEL DOWN: BIGGER, FURTHER, SLOWER', 14, 1, true);
+}
 
 /** Small drawing kit for lesson diagrams, in the current era's colors. */
 class Sketch {
@@ -702,7 +791,7 @@ const DIAGRAMS: Record<DiagramId, (s: Sketch, cx: number, cy: number) => void> =
     const spec = PROGRAMS[0];
     const clocks = [32, 64, 128, 256, 1000, 4000];
     const ns = clocks.map((mhz) => {
-      const run = perfectRun(new Cpu(assemble(spec.source), 8, spec.memory), { forwarding: true, mhz });
+      const run = perfectRun(cpuFor(spec), { forwarding: true, mhz });
       return (run.cpi / mhz) * 1000;
     });
     const scale = 300 / Math.max(...ns);
@@ -757,8 +846,8 @@ const DIAGRAMS: Record<DiagramId, (s: Sketch, cx: number, cy: number) => void> =
     s.arrow(cx - 30, cy - 20, cx + 145, cy - 20);
     s.text(cx - 190, cy + 34, 'HIT: inside the', 12, 0.9);
     s.text(cx - 190, cy + 50, 'MEMORY stage', 12, 0.9);
-    s.text(cx + 58, cy + 34, `MISS: ${MEMORY_TIMING.l1Ns + MEMORY_TIMING.ramNs} ns`, 12, 0.9);
-    s.text(cx + 58, cy + 50, `(${ramCycles(4000, true)} cycles at 4 GHz)`, 12, 0.9);
+    s.text(cx + 58, cy + 34, `MISS: ${missNs(L1_BASE)} ns`, 12, 0.9);
+    s.text(cx + 58, cy + 50, `(${ramCycles(4000, L1_BASE)} cycles at 4 GHz)`, 12, 0.9);
   },
 
   // Memory's blocks and the line each one must go in
@@ -852,14 +941,98 @@ const DIAGRAMS: Record<DiagramId, (s: Sketch, cx: number, cy: number) => void> =
   // SUM ARRAY at 4 GHz with and without the cache (the game's own runs)
   cachescore(s, cx, cy) {
     const spec = PROGRAMS[0];
-    const run = (cache: boolean) => perfectRun(new Cpu(assemble(spec.source), 8, spec.memory), { forwarding: true, mhz: 4000, cache });
-    const [plain, cached] = [run(false), run(true)];
+    const run = (cache?: CacheShape) => perfectRun(cpuFor(spec), { forwarding: true, mhz: 4000, cache });
+    const [plain, cached] = [run(), run(L1_BASE)];
     const ns = (cpi: number) => (cpi * 0.25 * plain.instructions).toFixed(0);
     s.box(cx, cy - 56, 640, 46, true);
     s.text(cx, cy - 56, 'CPU TIME = INSTRUCTIONS x CPI x CLOCK PERIOD', 20, 1, true);
     s.text(cx, cy + 6, `NO CACHE (4 GHz): ${plain.instructions} x ${plain.cpi.toFixed(2)} x 0.25 ns = ${ns(plain.cpi)} ns`, 16, 0.7);
     s.text(cx, cy + 38, `L1 CACHE (4 GHz): ${cached.instructions} x ${cached.cpi.toFixed(2)} x 0.25 ns = ${ns(cached.cpi)} ns`, 16);
     s.text(cx, cy + 74, `${(plain.cpi / cached.cpi).toFixed(1)}x FASTER: ${plain.memory.ramTrips} TRIPS TO RAM BECOME ${cached.memory.ramTrips}`, 16, 1, true);
+  },
+
+  // MORE LINES: TWO PASSES's loads on the first L1 and with 8 lines (the game's own caches)
+  morelines(s, cx, cy) {
+    const [before, after] = [loadsOn('TWO PASSES', L1_BASE), loadsOn('TWO PASSES', cacheShape(['lines']))];
+    missRow(s, cx, cy - 64, 'FIRST L1: 4 LINES (16 BYTES)', before);
+    missRow(s, cx, cy + 28, '8 LINES (32 BYTES)', after);
+    const second = (loads: readonly Load[]) => loads.slice(loads.length / 2).filter((load) => !load.hit).length;
+    s.text(cx, cy + 96, `THE SECOND PASS: ${second(before)} MISSES -> ${second(after)}, ALL 24 BYTES STILL THERE`, 15, 1, true);
+  },
+
+  // 2-WAY: ADD TWO LISTS's loads, one line per block against two-way sets
+  twoway(s, cx, cy) {
+    const [before, after] = [loadsOn('ADD TWO LISTS', L1_BASE), loadsOn('ADD TWO LISTS', cacheShape(['ways']))];
+    missRow(s, cx, cy - 64, 'FIRST L1: ONE LINE PER BLOCK', before);
+    missRow(s, cx, cy + 28, '2-WAY: TWO LINES PER SET', after);
+    const misses = (loads: readonly Load[]) => loads.filter((load) => !load.hit).length;
+    s.text(cx, cy + 96, `THE SAME 16 BYTES: ${misses(before)} MISSES -> ${misses(after)}`, 15, 1, true);
+  },
+
+  // Blocks and the set each must go in: blocks 0 and 4 share set 0, and both fit
+  sets(s, cx, cy) {
+    const blockX = (b: number) => cx - 315 + b * 90;
+    for (let b = 0; b < 8; b++) {
+      s.box(blockX(b), cy - 60, 80, 30, b % 2 === 0 && b % 4 === 0);
+      s.text(blockX(b), cy - 60, `${b * 4}-${b * 4 + 3}`, 13);
+    }
+    s.text(cx, cy - 92, 'MEMORY, IN 4-BYTE BLOCKS', 12, 0.7);
+    const lineX = (i: number) => cx - 160 + i * 90 + (i >= 2 ? 50 : 0);
+    for (let i = 0; i < 4; i++) {
+      s.box(lineX(i), cy + 50, 80, 30, i < 2);
+      s.text(lineX(i), cy + 50, `SET ${i >> 1}`, 13);
+    }
+    s.text(cx - 115, cy + 84, 'SET 0: TWO LINES', 12, 0.7);
+    s.text(cx + 75, cy + 84, 'SET 1: TWO LINES', 12, 0.7);
+    s.arrow(blockX(0), cy - 44, lineX(0), cy + 34);
+    s.arrow(blockX(4), cy - 44, lineX(1), cy + 34);
+    s.text(cx + 330, cy + 4, 'block number', 12, 0.8);
+    s.text(cx + 330, cy + 22, 'mod 2 = its set', 12, 0.8);
+  },
+
+  // BIGGER BLOCKS: SUM WORDS's loads in 4-byte and 8-byte blocks
+  bigblocks(s, cx, cy) {
+    const big = cacheShape(['blocks']);
+    const [before, after] = [loadsOn('SUM WORDS', L1_BASE), loadsOn('SUM WORDS', big)];
+    missRow(s, cx, cy - 64, 'FIRST L1: 4-BYTE BLOCKS, ONE NUMBER EACH', before);
+    missRow(s, cx, cy + 28, '8-BYTE BLOCKS: TWO NUMBERS EACH', after);
+    const misses = (loads: readonly Load[]) => loads.filter((load) => !load.hit).length;
+    s.text(cx, cy + 96, `${misses(before)} MISSES -> ${misses(after)}, EACH ${missNs(L1_BASE)} -> ${missNs(big)} ns`, 15, 1, true);
+  },
+
+  // THE L2: the levels with a shelf in the room
+  shelf(s, cx, cy) {
+    ladder(s, cx, cy, 1);
+  },
+
+  // THE L2: TWO PASSES's loads on the L1 alone and with the L2 behind it (the game's own caches)
+  l2loads(s, cx, cy) {
+    newLevel(s, cx, cy, 'TWO PASSES', 1, 'THE L1 ALONE: EVERY MISS GOES TO RAM', 'WITH THE L2: ITS 16-BYTE BLOCKS HOLD ALL 24 BYTES');
+  },
+
+  // The average memory access time, worked out on TWO PASSES's loads, without and with the L2
+  amat(s, cx, cy) {
+    const [before, after] = [loadsOn('TWO PASSES', L1_BASE), loadsOn('TWO PASSES', L1_BASE, 1)];
+    const n = before.length;
+    const l1Misses = after.filter((load) => !load.hit).length;
+    const ramLoads = after.filter((load) => load.level === 'RAM').length;
+    const [l2] = LOWER_CACHES;
+    s.box(cx, cy - 76, 720, 46, true);
+    s.text(cx, cy - 76, 'AMAT = HIT TIME + MISS RATE x MISS PENALTY', 20, 1, true);
+    s.text(cx, cy - 22, 'AVERAGE MEMORY ACCESS TIME: HOW LONG A LOAD TAKES, ON AVERAGE', 12, 0.75);
+    s.text(cx, cy + 14, `L1 ALONE: ${MEMORY_TIMING.l1Ns} + ${l1Misses}/${n} x ${MEMORY_TIMING.ramNs} = ${averageNs(before)} ns`, 16, 0.75);
+    s.text(cx, cy + 48, `WITH THE L2: ${MEMORY_TIMING.l1Ns} + ${l1Misses}/${n} x (${l2.ns} + ${ramLoads}/${l1Misses} x ${MEMORY_TIMING.ramNs}) = ${averageNs(after)} ns`, 16);
+    s.text(cx, cy + 82, "THE L2'S MISS PENALTY IS RAM; THE L1'S IS NOW THE L2, MOSTLY", 13, 0.8);
+  },
+
+  // THE L3: the levels with a bookcase down the hall
+  library(s, cx, cy) {
+    ladder(s, cx, cy, 2);
+  },
+
+  // THE L3: SUM BIG NUMBERS's loads with the L2 and with the L3 too
+  l3loads(s, cx, cy) {
+    newLevel(s, cx, cy, 'SUM BIG NUMBERS', 2, 'L1 AND L2: RAM SENDS 16 BYTES, 2 NUMBERS', 'WITH THE L3: RAM SENDS 64 BYTES, 8 NUMBERS');
   },
 
   // Perfect guesses vs always guessing not taken
@@ -869,6 +1042,55 @@ const DIAGRAMS: Record<DiagramId, (s: Sketch, cx: number, cy: number) => void> =
     s.text(cx, cy + 6, 'ALWAYS NOT TAKEN (TIER 3): 20 x 1.75 x 0.25 µs = 8.8 µs', 16, 0.7);
     s.text(cx, cy + 38, 'EVERY GUESS RIGHT:         20 x 1.60 x 0.25 µs = 8.0 µs', 16);
     s.text(cx, cy + 74, '3 LOOP BRANCHES GUESSED RIGHT = 3 CYCLES SAVED', 16, 1, true);
+  },
+
+  // Five stages against ten: the clock ticks once per stage, and a wrong guess throws away the stages fetched before the branch is decided
+  deep(s, cx, cy) {
+    const rows = [
+      { label: '5 STAGES', stages: ['IF', 'ID', 'EX', 'MEM', 'WB'], decided: 1, w: 96, y: cy - 62, clock: 'CLOCK 1x' },
+      { label: '10 STAGES', stages: ['F1', 'F2', 'F3', 'D1', 'D2', 'E1', 'E2', 'M1', 'M2', 'WB'], decided: DEEP_PIPELINE.wrongGuessCycles, w: 46, y: cy + 40, clock: `CLOCK ${DEEP_PIPELINE.clockFactor}x` },
+    ];
+    for (const row of rows) {
+      const left = cx - 250;
+      s.text(cx - 340, row.y, row.label, 14, 0.8);
+      row.stages.forEach((stage, i) => s.cell(left + row.w / 2 + i * (row.w + 4), row.y, stage, i === row.decided, row.w, 30));
+      // The stages behind the branch: on a wrong guess, everything in them was the wrong path.
+      const wasted = row.decided * (row.w + 4) - 4;
+      s.polyline([[left, row.y + 22], [left + wasted, row.y + 22]]);
+      s.text(left + wasted / 2, row.y + 36, `WRONG GUESS: ${row.decided} THROWN AWAY`, 12, 0.8);
+      s.text(cx + 330, row.y, row.clock, 14, 0.8);
+    }
+    s.text(cx, cy + 116, 'bright: where the branch is decided', 12, 0.6);
+  },
+
+  // The trade-off on SUM GRID, from the game's own model: the job's time with 5 stages and with 10 (at a faster clock)
+  deeptrade(s, cx, cy) {
+    const spec = PROGRAMS[1];
+    const cycles = (options: Omit<PipelineOptions, 'forwarding'>, guesses: 'hardware' | 'perfect') =>
+      perfectRun(cpuFor(spec), { forwarding: true, ...options }, guesses).cycles;
+    const rows = [
+      { label: 'ALWAYS GUESSING NOT TAKEN', options: {}, guesses: 'hardware' as const },
+      { label: '2-BIT PREDICTOR', options: { predictor: '2-bit' as const }, guesses: 'hardware' as const },
+      { label: 'GUESSING RIGHT EVERY TIME', options: {}, guesses: 'perfect' as const },
+    ].map((row) => {
+      const shallow = cycles(row.options, row.guesses);
+      const deep = cycles({ ...row.options, wrongGuessCycles: DEEP_PIPELINE.wrongGuessCycles }, row.guesses);
+      return { ...row, shallow, deep, deepTime: deep / DEEP_PIPELINE.clockFactor };
+    });
+    const longest = Math.max(...rows.flatMap((row) => [row.shallow, row.deepTime]));
+    const left = cx - 150;
+    s.text(cx, cy - 112, 'TIME FOR THE JOB (IN 5-STAGE CYCLES)', 13, 0.7);
+    rows.forEach((row, i) => {
+      const y = cy - 70 + i * 66;
+      s.text(cx - 300, y + 9, row.label, 13, 0.85);
+      const bar = (value: number, at: number, bright: boolean, words: string) => {
+        const w = Math.max(4, (300 * value) / longest);
+        s.box(left + w / 2, at, w, 14, bright);
+        s.text(left + w + 12, at, words, 12, 0.8).setOrigin(0, 0.5);
+      };
+      bar(row.shallow, y, false, `5 STAGES: ${row.shallow}`);
+      bar(row.deepTime, y + 18, true, `10 STAGES: ${row.deep} / ${DEEP_PIPELINE.clockFactor} = ${Math.round(row.deepTime)}`);
+    });
   },
 };
 

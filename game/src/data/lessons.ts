@@ -1,8 +1,12 @@
+import { cacheShape, L1_BASE, type CacheShape } from '../sim/memory.ts';
+import { WIP_PARTS } from './economy.ts';
 import type { TierOptions } from './tiers.ts';
 
-// Briefings shown before a concept is played. Each page teaches ONE idea:
-// a picture, at most three short lines, and an everyday comparison.
-// The last page of each lesson explains how the concept plays.
+// The lessons: what TICK teaches, one idea at a time, as a tour of the song
+// screen (data/tours.ts SONG_TOURS, keyed by these ids), holding up these
+// pictures (visual/diagrams.ts) and pointing at the real screen. A lesson
+// plays the first time its idea comes up, and any lesson can be played again
+// from BRIEFS on the main menu.
 
 export type DiagramId =
   | 'cpu' | 'clock' | 'units' | 'storage' | 'highway' | 'score'
@@ -14,420 +18,51 @@ export type DiagramId =
   | 'counter2' | 'misses2' | 'weak2' | 'when2' | 'score2'
   | 'overclock' | 'power' | 'throttle' | 'damage'
   | 'ramtrip' | 'wallchart' | 'floor' | 'freezeplay'
-  | 'desk' | 'lines' | 'address' | 'locality' | 'misskinds' | 'cacheplay' | 'cachescore';
-
-export type LessonPage = {
-  readonly title: string;
-  readonly diagram: DiagramId;
-  readonly lines: readonly string[];
-  readonly analogy: string;
-};
+  | 'desk' | 'lines' | 'address' | 'locality' | 'misskinds' | 'cacheplay' | 'cachescore'
+  | 'morelines' | 'twoway' | 'sets' | 'bigblocks'
+  | 'shelf' | 'l2loads' | 'amat' | 'library' | 'l3loads'
+  | 'deep' | 'deeptrade';
 
 export type Lesson = {
   readonly id: string;
   readonly title: string;
-  /** Scene that practices and plays this lesson's concept, and options for it. */
+  /** The screen its tour plays on, and how that song is set up. */
   readonly scene: 'pipeline';
-  readonly options?: TierOptions;
-  readonly pages: readonly LessonPage[];
+  /**
+   * How its song is set up. A practice right after buying (flow.ts) runs on
+   * the player's own CPU, but keeps the lesson's `program`, `l1` and
+   * `lowerCaches`: the L1's upgrades and the caches below it are each shown on
+   * a program made for what they fix, on the first L1 with just that change,
+   * so the difference is plain.
+   */
+  readonly options?: TierOptions & { readonly l1?: CacheShape; readonly lowerCaches?: number; readonly deep?: boolean };
+  /** A practice follows the tour (a new kind of CPU); without one, the tour explains and the game goes on. */
+  readonly practice: boolean;
 };
 
-export const TIER1_LESSON: Lesson = {
-  id: 'tier1',
-  title: 'LESSON 1: HOW A CPU RUNS A PROGRAM',
-  scene: 'pipeline',
-  options: { singleCycle: true },
-  pages: [
-    {
-      title: 'A CPU FOLLOWS INSTRUCTIONS',
-      diagram: 'cpu',
-      lines: [
-        'A program is a list of tiny instructions.',
-        'The CPU runs them one at a time, in order,',
-        'unless an instruction tells it to jump.',
-      ],
-      analogy: 'Like a cook following a recipe, one step at a time.',
-    },
-    {
-      title: 'THE CLOCK',
-      diagram: 'clock',
-      lines: [
-        'A clock ticks to keep every part in step.',
-        'Each tick is one CYCLE. Early CPUs ticked about',
-        'a million times a second (1 MHz). Today: billions.',
-      ],
-      analogy: 'In this game, every BEAT of the music is one clock cycle.',
-    },
-    {
-      title: 'THREE KINDS OF WORK',
-      diagram: 'units',
-      lines: [
-        'Each instruction goes to the part of the CPU',
-        'built for its job. These parts are called',
-        'FUNCTIONAL UNITS.',
-      ],
-      analogy: 'Like a kitchen: one station chops, one cooks, one plates.',
-    },
-    {
-      title: 'REGISTERS AND MEMORY',
-      diagram: 'storage',
-      lines: [
-        'Registers (x0-x7) are tiny but instant.',
-        'Memory is big but slower to reach.',
-        'x0 is special: it is always 0.',
-      ],
-      analogy: 'Registers are your hands. Memory is the shelf behind you.',
-    },
-    {
-      title: 'HOW IT PLAYS',
-      diagram: 'highway',
-      lines: [
-        'Instructions fall toward the line.',
-        'When one reaches it, press its unit ON THE BEAT:',
-        'D = ALU      F = MEM      J = BRANCH',
-      ],
-      analogy: 'Wrong key or off the beat? The CPU STALLS and wastes a cycle.',
-    },
-    {
-      title: 'YOUR SCORE',
-      diagram: 'score',
-      lines: [
-        'CPI = average Cycles Per Instruction.',
-        'A perfect run has CPI 1.00.',
-        'Every stall adds a cycle and raises CPI.',
-      ],
-      analogy: 'Fewer wasted cycles = a faster program.',
-    },
-  ],
-};
+export const LESSONS: Readonly<Record<string, Lesson>> = Object.fromEntries(
+  ([
+    { id: 'tier1', title: 'LESSON 1: HOW A CPU RUNS A PROGRAM', scene: 'pipeline', options: { singleCycle: true }, practice: true },
+    { id: 'tier2', title: 'LESSON 2: PIPELINING', scene: 'pipeline', practice: true },
+    { id: 'tier3', title: 'LESSON 3: FORWARDING', scene: 'pipeline', options: { forwarding: true }, practice: true },
+    { id: 'tier4', title: 'LESSON 4: BRANCH PREDICTION', scene: 'pipeline', options: { forwarding: true, guessing: true }, practice: true },
+    { id: 'tier5', title: 'LESSON 5: A 1-BIT PREDICTOR', scene: 'pipeline', options: { forwarding: true, guessing: true, predictor: '1-bit', program: 'SUM GRID' }, practice: true },
+    { id: 'tier6', title: 'LESSON 6: A 2-BIT PREDICTOR', scene: 'pipeline', options: { forwarding: true, guessing: true, predictor: '2-bit', program: 'SUM GRID' }, practice: true },
+    { id: 'tier7', title: 'LESSON 7: TWO AT ONCE (SUPERSCALAR)', scene: 'pipeline', options: { forwarding: true, guessing: true, predictor: '2-bit', superscalar: true, program: 'SUM PAIRS' }, practice: true },
+    // Explained once, on the song screen, as the upgrade arrives (or the clock first outruns RAM); no practice of their own.
+    { id: 'overclock', title: 'OVERCLOCKING', scene: 'pipeline', practice: false },
+    { id: 'memwall', title: 'THE MEMORY WALL', scene: 'pipeline', options: { forwarding: true }, practice: false },
+    { id: 'cache', title: 'THE L1 CACHE', scene: 'pipeline', options: { forwarding: true, l1: L1_BASE }, practice: true },
+    { id: 'morelines', title: 'L1: 8 LINES', scene: 'pipeline', options: { forwarding: true, l1: cacheShape(['lines']), program: 'TWO PASSES' }, practice: true },
+    { id: 'twoway', title: 'L1: 2-WAY SETS', scene: 'pipeline', options: { forwarding: true, l1: cacheShape(['ways']), program: 'ADD TWO LISTS' }, practice: true },
+    { id: 'bigblocks', title: 'L1: 8-BYTE BLOCKS', scene: 'pipeline', options: { forwarding: true, l1: cacheShape(['blocks']), program: 'SUM WORDS' }, practice: true },
+    { id: 'l2', title: 'THE L2 CACHE', scene: 'pipeline', options: { forwarding: true, l1: L1_BASE, lowerCaches: 1, program: 'TWO PASSES' }, practice: true },
+    { id: 'l3', title: 'THE L3 CACHE', scene: 'pipeline', options: { forwarding: true, l1: L1_BASE, lowerCaches: 2, program: 'SUM BIG NUMBERS' }, practice: true },
+    { id: 'deep', title: 'THE DEEP PIPELINE', scene: 'pipeline', options: { forwarding: true, guessing: true, deep: true }, practice: true },
+  ] satisfies Lesson[]).map((lesson) => [lesson.id, lesson]),
+);
 
-export const TIER2_LESSON: Lesson = {
-  id: 'tier2',
-  title: 'LESSON 2: PIPELINING',
-  scene: 'pipeline',
-  pages: [
-    {
-      title: 'PIPELINING',
-      diagram: 'laundry',
-      lines: ['Tier 1 ran one instruction at a time.', 'A pipeline overlaps them, like laundry.'],
-      analogy: 'Wash load 2 while load 1 dries.',
-    },
-    {
-      title: 'FIVE STAGES',
-      diagram: 'stages',
-      lines: ['Each instruction moves one stage per beat.', 'Short stages let the clock run 4x faster.'],
-      analogy: 'Five instructions in flight at once.',
-    },
-    {
-      title: 'WAIT FOR YOUR DATA',
-      diagram: 'stall',
-      lines: ['If it needs a register the one ahead', "hasn't written yet, it must STALL (wait)."],
-      analogy: 'Like waiting for an ingredient to finish cooking.',
-    },
-    {
-      title: 'HOW IT PLAYS',
-      diagram: 'pipeplay',
-      lines: ['Routed notes slide down through EX, MEM, WB.', 'A LINK to a note below means: press SPACE.'],
-      analogy: 'Route too early: FLUSH. Stall for nothing: a wasted cycle.',
-    },
-    {
-      title: 'YOUR SCORE',
-      diagram: 'speedup',
-      lines: ['Stalls raise CPI, but cycles are 4x shorter,', 'so the pipeline still finishes first.'],
-      analogy: 'The music builds as your pipeline fills.',
-    },
-  ],
-};
-
-export const TIER3_LESSON: Lesson = {
-  id: 'tier3',
-  title: 'LESSON 3: FORWARDING',
-  scene: 'pipeline',
-  options: { forwarding: true },
-  pages: [
-    {
-      title: 'HAND IT OVER',
-      diagram: 'forward',
-      lines: ['A result exists at the end of EXECUTE,', 'two stages before it is written back.'],
-      analogy: 'Forwarding wires pass it straight to the next instruction.',
-    },
-    {
-      title: 'LOADS STILL WAIT',
-      diagram: 'loaduse',
-      lines: ["A load's value comes out of MEMORY,", 'one stage too late: it still needs 1 stall.'],
-      analogy: 'The load-use hazard: the one forwarding cannot fix.',
-    },
-    {
-      title: 'HOW IT PLAYS',
-      diagram: 'forwardplay',
-      lines: ['Most links are gone: route straight away.', 'Watch forwarded values jump up the wire.'],
-      analogy: 'A link now usually means a load: stall once.',
-    },
-    {
-      title: 'YOUR SCORE',
-      diagram: 'speedup3',
-      lines: ['Fewer stalls means a lower CPI', 'at the same 4 MHz clock.'],
-      analogy: 'Results compare you with tier 2 and tier 1.',
-    },
-  ],
-};
-
-export const TIER4_LESSON: Lesson = {
-  id: 'tier4',
-  title: 'LESSON 4: BRANCH PREDICTION',
-  scene: 'pipeline',
-  options: { forwarding: true, guessing: true },
-  pages: [
-    {
-      title: 'WHAT A BRANCH DOES',
-      diagram: 'branchread',
-      lines: ['bne x1, x2, loop means "Branch if Not Equal":', 'if x1 and x2 are different, jump back to loop:', '(TAKEN). If they are equal, carry on (NOT TAKEN).'],
-      analogy: 'Like "keep stirring until the timer reaches zero".',
-    },
-    {
-      title: 'HOW A LOOP ENDS',
-      diagram: 'loopend',
-      lines: ['Each pass adds 1 to x1. x2 holds where to stop (4).', 'While x1 is below 4, the branch jumps back.', 'When x1 reaches 4, it is the last pass: NOT TAKEN.'],
-      analogy: 'A loop always repeats, except the very last time.',
-    },
-    {
-      title: 'A FORK IN THE ROAD',
-      diagram: 'fork',
-      lines: ['The branch is decided in DECODE, but the next', 'instruction is fetched in that same beat,', 'before the CPU knows the answer.'],
-      analogy: 'So the CPU has to guess which way the road goes.',
-    },
-    {
-      title: 'GUESS RIGHT, GUESS WRONG',
-      diagram: 'guess',
-      lines: ['Right guess: the next instruction is already there.', 'Wrong guess: the one fetched is thrown away', '(flushed), and the right one starts a beat late.'],
-      analogy: 'Until now the CPU always guessed NOT TAKEN.',
-    },
-    {
-      title: 'HOW TO GUESS',
-      diagram: 'howguess',
-      lines: ['Usually: TAKEN. Loops repeat far more than they end.', 'Last pass: x1 is one below x2 in REGISTERS (its +1', 'is still on the way, marked <-EX or <-MEM): NOT TAKEN.'],
-      analogy: 'The glow shows what it did last time; the registers show what it will do.',
-    },
-    {
-      title: 'HOW IT PLAYS',
-      diagram: 'guessplay',
-      lines: ['Route a branch with J (guess NOT TAKEN)', 'or K (guess TAKEN).', 'The bright key is the hint; the dim one goes against it.'],
-      analogy: 'Loops jump back every time except the last.',
-    },
-    {
-      title: 'YOUR SCORE',
-      diagram: 'speedup4',
-      lines: ['Each right guess on a taken branch', 'saves the cycle a flush would cost.'],
-      analogy: 'Results show how many guesses you got right.',
-    },
-  ],
-};
-
-export const TIER5_LESSON: Lesson = {
-  id: 'tier5',
-  title: 'LESSON 5: A 1-BIT PREDICTOR',
-  scene: 'pipeline',
-  options: { forwarding: true, guessing: true, predictor: '1-bit', program: 'SUM GRID' },
-  pages: [
-    {
-      title: 'THE CPU GUESSES FOR YOU',
-      diagram: 'table1',
-      lines: ['Real CPUs guess on their own. A predictor is a small', 'table with one bit per branch: what it did last time.', 'Fetch follows that guess.'],
-      analogy: 'It does what you did on tier 4, without being asked.',
-    },
-    {
-      title: 'A LOOP INSIDE A LOOP',
-      diagram: 'grid',
-      lines: ['SUM GRID adds 4 rows of 3 numbers. The inner loop', '(col) adds one row; x2 is the end of that row. The outer', 'loop (row) moves to the next row; x6 is the end of the grid.'],
-      analogy: 'Like reading a page: across each line, then down to the next.',
-    },
-    {
-      title: 'WHERE IT MISSES',
-      diagram: 'misses1',
-      lines: ['The col branch goes TAKEN, TAKEN, NOT TAKEN on every row.', 'A 1-bit predictor misses twice per row: at the end,', 'and again on the next row, because it remembers NOT.'],
-      analogy: 'It only knows the last answer, not the pattern.',
-    },
-    {
-      title: 'FOLLOW OR OVERRIDE',
-      diagram: 'override',
-      lines: ["The predictor's guess glows bright: press it to follow.", 'The dim key overrides it. A right override saves', 'a cycle; a wrong one flushes, like any wrong guess.'],
-      analogy: 'Override only when you can see something it can\'t.',
-    },
-    {
-      title: 'WHEN TO OVERRIDE',
-      diagram: 'when1',
-      lines: ['Work out the answer from the registers, as above.', 'If the glow disagrees, press the dim key to override.', 'x1 is where you are; x2 is the end of this row.'],
-      analogy: 'The predictor only knows the past; you can read the registers.',
-    },
-  ],
-};
-
-export const TIER6_LESSON: Lesson = {
-  id: 'tier6',
-  title: 'LESSON 6: A 2-BIT PREDICTOR',
-  scene: 'pipeline',
-  options: { forwarding: true, guessing: true, predictor: '2-bit', program: 'SUM GRID' },
-  pages: [
-    {
-      title: 'IT TAKES TWO MISSES',
-      diagram: 'counter2',
-      lines: ['A 2-bit predictor keeps a counter from 0 to 3.', 'Taken: count up. Not taken: count down.', 'At 2 or 3 it guesses TAKEN; at 0 or 1, NOT TAKEN.'],
-      analogy: 'One surprise only makes it unsure; two in a row change its mind.',
-    },
-    {
-      title: 'WHY THAT HELPS LOOPS',
-      diagram: 'misses2',
-      lines: ['At the end of a row it misses, but that only drops it', 'from 3 to 2: still TAKEN. So the next row starts', 'with the right guess: one miss per row, not two.'],
-      analogy: 'Same grid: 7 misses instead of 10.',
-    },
-    {
-      title: 'SURE OR UNSURE',
-      diagram: 'weak2',
-      lines: ['A bright glow: the predictor is sure (0 or 3).', 'A dim glow: it is unsure (1 or 2).', 'In the listing, N n t T shows the counter: capitals are sure.'],
-      analogy: 'Unsure or not, it is still only guessing from the past.',
-    },
-    {
-      title: 'WHEN TO OVERRIDE',
-      diagram: 'when2',
-      lines: ['It still misses the end of every row: when x1 is one', 'below x2 (its +1 still on the way), override with J.', 'Same rules as before; it just needs fewer overrides.'],
-      analogy: 'Beat it every row and you miss nothing.',
-    },
-    {
-      title: 'YOUR SCORE',
-      diagram: 'score2',
-      lines: ['Results compare you with the predictor on its own.', 'Every right override is a cycle it would have lost.'],
-      analogy: 'Real CPUs use bigger predictors, but they start here.',
-    },
-  ],
-};
-
-/** Shown before the first real song on a pipelined tier (where G / H overclock); then that tier starts. */
-export const OVERCLOCK_LESSON: Lesson = {
-  id: 'overclock',
-  title: 'OVERCLOCKING',
-  scene: 'pipeline',
-  pages: [
-    {
-      title: 'FASTER CLOCK, FASTER BEAT',
-      diagram: 'overclock',
-      lines: ['In a song, H overclocks the chip (+10%) and G slows it.', 'One beat is one clock cycle, so the song speeds up', 'and the program finishes sooner.'],
-      analogy: 'Too fast to think? G underclocks (down to 50%): slower, but more CPU time.',
-    },
-    {
-      title: 'THE POWER WALL',
-      diagram: 'power',
-      lines: ['A faster clock needs a higher voltage, and power', 'grows with voltage squared: +50% clock costs over', '2x the power. All that power turns into heat.'],
-      analogy: 'This wall is why desktop clocks stopped climbing in the mid-2000s.',
-    },
-    {
-      title: 'THERMAL THROTTLING',
-      diagram: 'throttle',
-      lines: ['At 95°C the chip overheats and stops its clock: the notes', 'freeze and nothing runs until it cools to 80°C.', 'Stalls and bubbles use less power, so they run cooler.'],
-      analogy: 'Smoke and flames warn you first: press G before it gets there.',
-    },
-    {
-      title: 'HEAT WEARS THE CHIP',
-      diagram: 'damage',
-      lines: ['Every overheat damages the chip: its top clock drops 10%', '(150% -> 140%) and it overheats sooner. Worn out, even 100%', 'overheats: underclock (G) or repair it in the shop.'],
-      analogy: 'Exaggerated: real chips wear slowly and throttle long before they burn.',
-    },
-  ],
-};
-
-/** Shown when the clock first outruns RAM (a trip takes more than one cycle). */
-export const MEMWALL_LESSON: Lesson = {
-  id: 'memwall',
-  title: 'THE MEMORY WALL',
-  scene: 'pipeline',
-  options: { forwarding: true },
-  pages: [
-    {
-      title: 'RAM TAKES ITS TIME',
-      diagram: 'ramtrip',
-      lines: ['A trip to RAM takes about 60 ns (the textbook gives', '50-70 ns for DRAM). Clocks went from 1 MHz to 4 GHz', 'in 40 years; RAM only got a few times quicker.'],
-      analogy: 'Working faster doesn\'t make the delivery truck arrive sooner.',
-    },
-    {
-      title: 'MORE CYCLES, SAME WAIT',
-      diagram: 'wallchart',
-      lines: ['60 ns is 1 cycle at 16 MHz, but 240 at 4 GHz.', 'Every load and store waits that long, and the', 'whole pipeline freezes while it does.'],
-      analogy: 'Each faster clock means more cycles spent doing nothing.',
-    },
-    {
-      title: 'THE WALL',
-      diagram: 'floor',
-      lines: ['CPU TIME = INSTRUCTIONS x CPI x CLOCK PERIOD.', 'A faster clock shrinks the period, but the waits', 'grow just as fast: past a point, upgrades buy nothing.'],
-      analogy: 'That floor is the memory wall. Caches are how real CPUs climb it.',
-    },
-    {
-      title: 'HOW IT PLAYS',
-      diagram: 'freezeplay',
-      lines: ['When a load or store reaches MEMORY, the notes freeze', 'and a counter rolls up the cycles. Keys do nothing.', 'A bright click: the data arrived. Press the next note.'],
-      analogy: 'Up to 5 beats stand for hundreds of cycles; every one counts.',
-    },
-  ],
-};
-
-/** Shown right after buying the L1 cache. */
-export const CACHE_LESSON: Lesson = {
-  id: 'cache',
-  title: 'THE L1 CACHE',
-  scene: 'pipeline',
-  options: { forwarding: true },
-  pages: [
-    {
-      title: 'A DESK BESIDE THE CPU',
-      diagram: 'desk',
-      lines: ['A cache is a small, fast memory right beside the CPU.', 'It keeps copies of bytes used recently. A load', 'it already holds is a HIT: no trip to RAM.'],
-      analogy: 'Keep the books you are using on your desk, not across town.',
-    },
-    {
-      title: 'LINES AND BLOCKS',
-      diagram: 'lines',
-      lines: ['Memory moves in BLOCKS of 4 bytes. This cache has', '4 LINES of one block each (16 bytes). Every block has', 'exactly one line it can go in: DIRECT-MAPPED.'],
-      analogy: 'Blocks 0, 4, 8... all share line 0, so they push each other out.',
-    },
-    {
-      title: 'THE ADDRESS SAYS WHERE',
-      diagram: 'address',
-      lines: ['An address splits into TAG, LINE and BYTE: tttt ii oo.', 'The LINE bits pick the line. Its TAG says which', 'block is in it now. Same tag (and valid): a HIT.'],
-      analogy: 'The line is the shelf; the tag is the name on the book.',
-    },
-    {
-      title: 'A MISS BRINGS A WHOLE BLOCK',
-      diagram: 'locality',
-      lines: ['A MISS fetches the whole block from RAM, so the next', 'bytes are already there: reading in order costs one', 'miss per 4 bytes. Reading a byte again hits too.'],
-      analogy: 'Programs use nearby and recent data. That is why small caches work.',
-    },
-    {
-      title: 'THREE KINDS OF MISS',
-      diagram: 'misskinds',
-      lines: ['FIRST USE: the block was never loaded before.', 'CONFLICT: two blocks keep pushing each other out of a line.', 'TOO SMALL: more blocks in use than the cache holds.'],
-      analogy: 'Replays label every miss: click a load to see which kind.',
-    },
-    {
-      title: 'HOW IT PLAYS',
-      diagram: 'cacheplay',
-      lines: ['The L1 box shows each line: its tag and its 4 bytes.', 'A hit doesn\'t freeze; a miss freezes as before.', 'Stores go out through a WRITE BUFFER: no waiting.'],
-      analogy: 'Watch the lookup line under the memory to see every hit and miss.',
-    },
-    {
-      title: 'YOUR SCORE',
-      diagram: 'cachescore',
-      lines: ['Fewer trips to RAM means a lower CPI,', 'and clock upgrades start paying off again.'],
-      analogy: 'Results show your hit rate and your time next to NO CACHE.',
-    },
-  ],
-};
-
-export const LESSONS: Readonly<Record<string, Lesson>> = {
-  [TIER1_LESSON.id]: TIER1_LESSON,
-  [TIER2_LESSON.id]: TIER2_LESSON,
-  [TIER3_LESSON.id]: TIER3_LESSON,
-  [TIER4_LESSON.id]: TIER4_LESSON,
-  [TIER5_LESSON.id]: TIER5_LESSON,
-  [TIER6_LESSON.id]: TIER6_LESSON,
-  [OVERCLOCK_LESSON.id]: OVERCLOCK_LESSON,
-  [MEMWALL_LESSON.id]: MEMWALL_LESSON,
-  [CACHE_LESSON.id]: CACHE_LESSON,
-};
+/** A lesson about a part still being reworked (WIP_PARTS in data/economy.ts), marked WIP where it's listed. */
+export function isWip(lessonId: string): boolean {
+  return WIP_PARTS.some((part) => part.lessonId === lessonId);
+}

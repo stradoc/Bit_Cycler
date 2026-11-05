@@ -2,7 +2,11 @@
 
 A tycoon + rhythm game where every beat is one CPU clock cycle. CSC 3501 (Computer Organization), Fall 2026.
 
-This README is for the team. The player-facing README is `game/README.md`. Project rules are in `RULES.md`, the plan in `ROADMAP.md`, and history in `CHANGELOG.md`.
+This README is for the team: setup, commands and testing tools. How to play is in `game/README.md` (it ships with the game), how the code is organized and how to add features in `CLAUDE.md`, the rules in `RULES.md`, the plan in `ROADMAP.md`, and history and decisions in `CHANGELOG.md`.
+
+## Just playing (Windows or Mac)
+
+Download the repo (**Code > Download ZIP** on GitHub, then unzip it) and double-click **`Play Bit Cycler.bat`**. It serves the game with Windows' own PowerShell (nothing to install) and opens it in your browser; close the window that opens to stop. Windows may warn that the file came from the internet the first time: choose **More info > Run anyway**. On a Mac, double-click **`Play Bit Cycler.command`** instead: it serves the game with Python's own web server and opens it the same way (if the Mac has no Python yet, it offers to install Apple's Command Line Tools: accept, then double-click again). macOS blocks it the first time because it came from the internet: go to **System Settings > Privacy & Security** and choose **Open Anyway** (on older macOS, right-click the file and choose **Open**). On another computer, follow Setup below and `npm run serve`. (The game can't be played by opening `game/index.html` directly: browsers only run its modules from a web address.)
 
 ## Setup
 
@@ -28,70 +32,50 @@ Before committing:
 ```sh
 npm run build      # compile once; game/js/ must be committed and up to date
 npm run check      # type-check the tests too
-npm test           # run the simulation tests
+npm test           # run the tests
 ```
+
+To get every sound as a WAV file (to listen to or open in an audio editor): `npm run build`, then `npm run export-sounds`. It writes them to `sound-export/` using the game's own sound code in headless Chrome (set `CHROME=/path/to/chrome` if it isn't found). Editing the files doesn't change the game; the sounds are made in `game/src/audio/cues.ts`.
 
 ## Dev shortcuts
 
-Add these to the URL, e.g. `http://localhost:8000/?scene=play&autoplay`:
+Add these to the URL, e.g. `http://localhost:8000/?scene=play&autoplay`. Any `?scene=` skips the intro.
 
 | Parameter | Effect |
 | --- | --- |
-| `?scene=play` (or `?scene=pipeline&single`) / `?scene=pipeline` | Skip the title and start tier 1 (single-cycle) / tier 2 |
-| `?practice` | Start that scene in practice mode |
-| `?scene=pipeline&forwarding` | Tier 3 (pipeline with forwarding) |
+| `?scene=title` | The main menu |
+| `?scene=play` (or `?scene=pipeline&single`) / `?scene=pipeline` | Tier 1 (single-cycle) / tier 2 |
+| `?scene=pipeline&forwarding` | Tier 3 (forwarding) |
 | `?scene=pipeline&forwarding&guessing` | Tier 4 (branch prediction) |
 | `?scene=pipeline&forwarding&guessing&predictor=1-bit` (or `2-bit`) | Tiers 5–6 (hardware predictor, SUM GRID) |
-| `&clock=150` | Start a pipelined song with the clock dial at 50–150% of the rated clock |
-| `&contract=standard` | Play the board's first contract in that section (`starter` / `standard` / `advanced`), with pay and results |
-| `?money=5000` | Set the money (try the shop) |
-| `?scene=briefing&lesson=tier2` | Open a lesson directly |
-| `?autoplay` | The game plays every note perfectly (demos, checking the results screen) |
-| `?era=1` … `?era=4` | Start in a given terminal era (8/16/32/64-bit look) |
+| `&practice` | Practice mode |
+| `&difficulty=hard` | Play at that difficulty (`relaxed` / `easy` / `medium` / `hard`) instead of the settings' |
+| `&cache` / `&cache=lines,ways,blocks` / `&cache=l2` | The L1 cache / with those upgrades (8 lines, 2-way sets, 8-byte blocks; any of them) / with the L2 behind it (`l3`: the L2 and L3; mixes with the upgrades: `&cache=ways,l3`) |
+| `&program=SUM WORDS` | Play a program by name (`data/programs.ts`, or a contract's, like `32-BIT SUM #4821`) |
+| `&clock=150` | Start with the clock dial at 50–150% |
+| `&deep` | The deep pipeline (on a pipelined tier): a 1.5x clock, 4 cycles per wrong guess |
+| `&superscalar` | Superscalar (on a pipelined tier): chords start two instructions at once |
+| `&contract=fair` | Play the board's first contract of that grade (`easy` / `fair` / `stretch`), with pay, results and the workday's clock |
+| `&autoplay` | Every note played perfectly (demos, checking results) |
+| `?scene=pipeline&single&practice&tour=tier1` | Play a lesson's tour of the song screen, then its practice (any lesson id in `data/lessons.ts`; `tour=memwall,cache` plays two in a row). The developer screen's OPEN LESSON and the main menu's BRIEFS do the same with the right hardware |
+| `?money=5000` | Set the money |
+| `?scene=motions` | The motion lab: every animation on a sample (`&motion=note-flush&at=300` freezes one 300 ms in, for screenshots) |
+| `?era=1` … `?era=4` | Show an era (8/16/32/64-bit look) until the page reloads; otherwise the save's CPU chip decides |
+| `?fps` | Frames per second and the canvas size in the corner |
 
 ## Testing cheats
 
-Open the browser's developer console (F12, then Console) while the game is running and type `cheat.help()`. Each cheat changes the save and redraws the title, board or shop:
+The **developer screen** (backquote, `` ` ``, on the main menu) has them all, and changes the save you're playing (the active slot), To test without touching a campaign, export it first (SAVES) or play another slot.
 
-| Cheat | Effect |
-| --- | --- |
-| `cheat.status()` | What you have now |
-| `cheat.money(5000)` | Set your money |
-| `cheat.tier(4)` | Set your CPU tier (1–6) |
-| `cheat.clock(5)` | Clock upgrade level (0–10; 10 = 4 GHz pipelined) |
-| `cheat.cooling(2)` | Cooler: 0 stock, 1 heatsink, 2 fan |
-| `cheat.overclock()` / `cheat.overclock(false)` | Own / remove the overclocking upgrade |
-| `cheat.wear(1.2)` | The chip's max clock after overheating (1.0–1.5) |
-| `cheat.unlockAll()` | Every part, max clock, fan, overclocking, $100,000 |
-| `cheat.board()` | New random contracts |
-| `cheat.lessons()` / `cheat.lessons(false)` | Mark every briefing read / unread |
-| `cheat.autoplay()` / `cheat.autoplay(false)` | Songs play themselves |
-| `cheat.temp(94)` | Set the chip's temperature mid-song |
-| `cheat.reset()` | New game (wipes the save) |
-
-## Controls
-
-Title: `Enter` contract board · `B` briefing / `P` practice for your CPU · `N` twice: new game · `M` computer hum on/off · `C` calibrate (then `←/→` to line the light up with the click) · `R` relaxed mode · `1–4` era.
-Contract board (each job is for a made-up client, with its own randomly generated program, a deadline and your CPU's time; late = half pay): arrows choose · `Enter` take a contract (a new part gets its briefing → practice first) · `S` shop · `M` hum · `Q` title. Shop: `↑/↓` choose · `Enter` buy (new parts and overclocking play their briefing straight away) · `B` board · `M` hum.
-Briefing: `Enter`/`→` next · `←` back · `Q` or `Esc` title.
-Play: each song opens with a count-in naming the loop's key registers (`NEXT` address, `END`; `GRID` in grid jobs), which stay tagged and bright in the REGISTERS box. `D` ALU · `F` MEM · `J` BRANCH (tier 4: guess not taken) · `K` BRANCH, guess taken (tier 4; a branch note glows in the color of the key matching what it did last time; tiers 5–6: the glow is the predictor's guess, and pressing the other key overrides it) · `Space` stall (tiers 2–6) · `G` / `H` clock down / up 10% (G down to 50% always; H past 100% needs the overclocking upgrade) · `Q` or `Esc` quit (Vimium swallows `Esc`, so the game also accepts `Q`) · `Enter` after the results: back to the board (contracts) or play again.
-Replay (every tier, after every run): `←`/`→` speed (0.5×–4×) · `Space` pause / resume · click anything to learn what it is · `W` watch again from the results.
-
+Or type them in the browser's console (F12, then Console) while the game runs; `cheat.help()` lists them. Each changes the active save and redraws the screen:
 ## Layout
 
 | Path | What it is |
 | --- | --- |
 | `game/` | Everything that ships. Copied to `games/bit-cycler/` in the course repo at submission |
-| `game/src/` | TypeScript source, the files we edit |
+| `game/src/` | TypeScript source, the files we edit (a map of it is in `CLAUDE.md`) |
 | `game/js/` | Compiled JavaScript. Generated by `tsc`, but committed because GitHub Pages serves it as-is |
 | `game/lib/` | Phaser 3.90, copied in by `npm install` |
+| `game/assets/` | Fonts and the recorded keys, each folder with a `CREDITS.txt` |
 | `tests/` | `node:test` tests, run directly on the TypeScript source |
-
-## TypeScript rules
-
-Tests run on `.ts` files directly through Node's type stripping, so only type annotations that can be erased are allowed. The compiler enforces this (`erasableSyntaxOnly`):
-
-- No `enum`. Use an `as const` object instead.
-- No `namespace`.
-- No constructor parameter properties (`constructor(private x: number)`). Declare the field and assign it in the constructor.
-- Import local files with the `.ts` extension (`import { x } from './timing.ts'`). The compiler rewrites it to `.js`.
+| `tools/` | Team tools that don't ship (`export-sounds.mjs`) |

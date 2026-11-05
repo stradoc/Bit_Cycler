@@ -1,4 +1,4 @@
-import { cssColor } from './terminal.js';
+import { cssColor } from '../ui/eras.js';
 import { textBase } from './display.js';
 /**
  * Draws syntax-highlighted code: one Text per token (Phaser text has a single

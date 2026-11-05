@@ -69,9 +69,15 @@ function parseInstruction(text, line, labels, registerCount) {
             expectArgs(3);
             return { op, rd: reg(args[0]), rs1: reg(args[1]), imm: imm(args[2]) };
         case 'lb':
+        case 'lh':
+        case 'lw':
+        case 'ld':
             expectArgs(2);
             return { op, rd: reg(args[0]), ...memOperand(args[1]) };
         case 'sb':
+        case 'sh':
+        case 'sw':
+        case 'sd':
             expectArgs(2);
             return { op, rs2: reg(args[0]), ...memOperand(args[1]) };
         case 'beq':

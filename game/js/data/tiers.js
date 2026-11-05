@@ -11,6 +11,10 @@ export const TIERS = [
         number: 6, name: '2-BIT PREDICTOR', lessonId: 'tier6', scene: 'pipeline',
         options: { forwarding: true, guessing: true, predictor: '2-bit', program: 'SUM GRID' },
     },
+    {
+        number: 7, name: 'SUPERSCALAR', lessonId: 'tier7', scene: 'pipeline',
+        options: { forwarding: true, guessing: true, predictor: '2-bit', superscalar: true, program: 'SUM PAIRS' },
+    },
 ];
 export function tierByNumber(number) {
     return TIERS.find((tier) => tier.number === number) ?? TIERS[0];
