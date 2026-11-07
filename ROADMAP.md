@@ -15,7 +15,7 @@ From the rubric check (2026-10-29). Everything else the spec requires is met: br
 - [ ] **Every teammate commits their own work**: only students who actively contribute get credit, and all commits so far come from one account
 - [ ] **Outside playtest**: someone new plays from the title through tier 3; fix what they trip on; tune the timing windows (see "Needs a real browser")
 - [ ] **Textbook check**: stall counts, forwarding, branch penalty, CPU time, the power wall and every latency figure against Patterson & Hennessy; label what's stylized (the tempo curve, wear, overheat limits)
-- [ ] **Submission**: a `games.yml` entry (title, authors, topic, description, learning_objective, game_url, thumbnail), copy `game/` to `games/bit-cycler/`, test on GitHub Pages, pull request by Nov 30
+- [ ] **Submission**: a `games.yml` entry (title, authors, topic, description, learning_objective, game_url, thumbnail), copy `game/` to `games/bit-cycler/`, test on the course repo's GitHub Pages (the team repo's own copy is live at https://stradoc.github.io/Bit_Cycler/game/), pull request by Nov 30
 
 ## Next up
 

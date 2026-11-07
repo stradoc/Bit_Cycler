@@ -25,6 +25,7 @@ Technology and design decisions, with the reason for each (`RULES.md` rule 3). A
 | 2026-10-30 | **One place for each thing that changes across screens**: eras in `ui/eras.ts`, one screen base and kit in `ui/`, every sound a named cue (`audio/cues.ts`) through buses with one table of levels (`audio/mix.ts`); the song screen in parts (`song/`) | Team: screens, rendering and audio standardized and modular, so a change is made once for every screen. Our own code structure, no new technology |
 | 2026-10-30 | **Sounds exported as WAV files by a team tool** (`npm run export-sounds`): the game's own sound code renders offline in headless Chrome; nothing new ships | Team asked for the sounds as files to listen to and edit; uses code we already have, no npm package. Playing edited files in the game is a later decision |
 | 2026-11-01 | **One way to do each thing**: reuse the existing piece, extend it with an option instead of copying it, one home per concept, variants as table entries, rules apart from drawing, delete what's replaced, merge logic before it appears a third time (`CLAUDE.md`, "One way to do each thing") | Team: "keep things modular, don't come up with 10 different implementations for one feature, keep things reusable, standardized, and modular" |
+| 2026-11-06 | **The team repo is on GitHub Pages**, served from `main`'s root, so the game is at https://stradoc.github.io/Bit_Cycler/game/ and every push to `main` goes live. Rejected: a GitHub Actions workflow publishing only `game/` (a shorter URL, but CI and a file to maintain); a hand-pushed `gh-pages` branch (only `game/`, but it can fall behind and is a second branch to explain) | User: "Can you put this game on github pages"; chose it from the three: no commit and no new tools. The course repo's copy at submission stays separate |
 
 ### Game design
 
@@ -129,6 +130,15 @@ Technology and design decisions, with the reason for each (`RULES.md` rule 3). A
 | 2026-10-29 | The retro eras draw a 960×540 canvas stretched with chunky pixels; the 32- and 64-bit eras draw at the screen's resolution, the 64-bit one with smooth motion; **the CRT's scanlines and vignette are an overlay at the screen's own resolution** | Each era should feel like its time; the overlay stays fine over chunky pixels |
 | 2026-10-30 | **The glow adds to the picture** (Phaser's bloom runs at half strength, the result doubled) and **the CRT overlay blends as soft light** | Phaser's bloom averages the picture with its blur, which halved the letters' brightness; this keeps the halo and makes the letters bright |
 | 2026-11-03 | **Mac players start the game by double-clicking `Play Bit Cycler.command`**, which runs `tools/serve-mac.py` (Python's own web server, the twin of `serve-windows.ps1`: localhost only, ports 8000-8020, no caching) and opens the browser | User: "can you add an executable for mac? similar to the .bat already present". Python is already the project's `npm run serve` tool; macOS asks to install Apple's Command Line Tools the first time if it has no Python yet |
+
+## 2026-11-06
+
+### The game on GitHub Pages
+- **Why** (user: "Can you put this game on github pages"): a link anyone can play with nothing to download. The way it's served is in the Decisions table.
+- The user turned Pages on in the repo's settings (`main`, root). No game code changed; `README.md` gives the link. Pushing to `main` now publishes it, WIP parts included.
+- Checked on the live site in headless Chrome: every file and font loads with no console errors (the only 404 is `/favicon.ico`, which the browser asks for by itself), a key press powers on and starts the boot, and a song plays through to its results card. Build, both type checks and all 246 tests pass, and the build matches what's committed.
+- A song opened straight from a URL (`?scene=play`) waits at GET READY until a key is pressed: browsers hold audio until then, and songs run on the audio clock. Players always press keys on the way to a song, so this only meets someone using the dev URLs.
+- **Not yet checked:** sound and feel in a real browser. A custom domain was discussed, not set up.
 
 ## 2026-11-03
 
