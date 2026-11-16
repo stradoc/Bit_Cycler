@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { bootScript, programListing, type BootStep } from '../game/src/data/boot.ts';
+import { SMALLWARE } from '../game/src/data/companies.ts';
 import { programByName } from '../game/src/data/programs.ts';
 import { fillBoard, NEW_GAME, withEverything, withTier, type Progress } from '../game/src/sim/progress.ts';
 import { ERAS } from '../game/src/ui/eras.ts';
@@ -83,4 +84,17 @@ test('the boot loads every contract\'s program, without comments, in every era',
   // No save: the first lesson's program.
   assert.equal(programListing(null)[0], 'LOADING SUM ARRAY');
   for (const era of ERAS) assert.ok(bootScript(fresh, SLOT, era).some((step) => step.kind === 'scroll'), `era ${era.name}`);
+});
+
+test("every era's boot shows Smallware's door, and the computer is one of Smallware's", () => {
+  for (const era of ERAS) {
+    const lines = screen(bootScript(null, SLOT, era));
+    const at = lines.indexOf(SMALLWARE.logo[0]);
+    assert.ok(at >= 0, `era ${era.name}: no door`);
+    assert.deepEqual(lines.slice(at, at + SMALLWARE.logo.length), [...SMALLWARE.logo], `era ${era.name}`);
+    const text = lines.join('\n');
+    assert.doesNotMatch(text, /player@bit-cycler/, `era ${era.name}`);
+    if (era.computer.shell) assert.match(text, /player@smallware:~\$/);
+    else assert.match(text, /SMALLWARE BIOS/);
+  }
 });

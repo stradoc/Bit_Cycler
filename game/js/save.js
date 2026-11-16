@@ -1,4 +1,5 @@
 import { parseSave, saveText } from './saveFile.js';
+import { deliverMail } from './sim/mail.js';
 import { fillBoard, NEW_GAME, newCampaign } from './sim/progress.js';
 export const CAMPAIGN_SLOTS = ['1', '2', '3'];
 const slotKey = (slot) => `bit-cycler-save-${slot}`;
@@ -87,7 +88,8 @@ export function getProgress() {
         const loaded = loadSlot(activeSlot())?.progress ?? NEW_GAME;
         // ?money=5000 in the URL sets the money (dev shortcut, for trying the shop).
         const money = Number(new URLSearchParams(location.search).get('money'));
-        current = fillBoard({ ...loaded, ...(money ? { money } : {}) }, Math.random);
+        // A save from before the inbox gets its welcome now (sim/mail.ts delivers only what it hasn't had).
+        current = deliverMail(fillBoard({ ...loaded, ...(money ? { money } : {}) }, Math.random));
     }
     return current;
 }

@@ -330,8 +330,8 @@ test("a job's pay: its own at a new game's reputation, half if late, and more as
   const contract = fillBoard(NEW_GAME, seeded(3)).board[0];
   assert.equal(payFor(NEW_GAME, contract), contract.pay);
   assert.equal(payFor(NEW_GAME, contract, true), Math.round(contract.pay / 2));
-  assert.equal(payFor({ ...NEW_GAME, day: 8, reputation: { good: 15, bad: 0 } }, contract), Math.round(contract.pay * 1.5));
-  assert.equal(payFor({ ...NEW_GAME, day: 8, reputation: { good: 15, bad: 2 } }, contract), Math.round(contract.pay * 1.35));
+  assert.equal(payFor({ ...NEW_GAME, day: 8, reputation: { good: 15, bad: 0 } }, contract), Math.round(contract.pay * 2));
+  assert.equal(payFor({ ...NEW_GAME, day: 8, reputation: { good: 15, bad: 2 } }, contract), Math.round(contract.pay * 1.8));
 });
 
 test('no company has more than two jobs on the board', () => {

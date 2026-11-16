@@ -122,13 +122,12 @@ test("the card's pay comes from the recording, not the save or the contract", ()
   assert.ok(first.kind === 'line' && first.right === 'PAID $123');
 });
 
-test('the card says what the job did to reputation, in a line that fits', () => {
+test('the card says the new status when it goes up, and nothing else about reputation', () => {
   const contract = fillBoard(NEW_GAME, () => 0.5).board[0];
-  const cases: [Parameters<typeof settleJob>[0], boolean, string][] = [
-    [NEW_GAME, false, 'REPUTATION +1'],
-    [{ ...NEW_GAME, day: 3 }, true, 'BAD MARK +1 (GRACE WEEK)'],
-    [{ ...NEW_GAME, day: 9 }, true, 'BAD MARK +1'],
-    [{ ...NEW_GAME, reputation: { good: 4, bad: 0 } }, false, 'LEVEL UP: LOCAL'],
+  const cases: [Parameters<typeof settleJob>[0], boolean, string | undefined][] = [
+    [NEW_GAME, false, undefined],
+    [{ ...NEW_GAME, day: 9 }, true, undefined],
+    [{ ...NEW_GAME, reputation: { good: 4, bad: 0 } }, false, 'NEW STATUS: LOCAL'],
   ];
   for (const [progress, late, said] of cases) {
     const replay = { cycles: [], dials: [], maxDial: 1.5, canOverclock: false, job: settleJob(progress, contract, late) };
@@ -136,9 +135,9 @@ test('the card says what the job did to reputation, in a line that fits', () => 
     playPerfectly(run);
     const card = resultCard(runReport({ run, setup, freshCpu: fresh, dials: [], calls: NO_CALLS }));
     const row = card.rows.find((each) => each.kind === 'line' && each.part === 'reputation');
-    assert.ok(row?.kind === 'line', said);
-    assert.equal(row.left, said);
+    assert.equal(row?.kind === 'line' ? row.left : undefined, said);
     for (const glyphs of [ASCII, CP437]) assert.ok(cardLines(card, glyphs).lines.every((line) => line.text.length <= CARD_WIDTH + 1), 'a line runs off the card');
+    assert.ok(!cardLines(card).lines.some((line) => /PAY x|BAD MARK|REPUTATION \+/.test(line.text)), 'no rates or marks on the card');
     assert.deepEqual(cardLines(card).parts.verdict, { first: 0, last: 2 });
   }
 });

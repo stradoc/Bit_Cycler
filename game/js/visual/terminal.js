@@ -1,6 +1,7 @@
 // How a screen is drawn in its era (ui/eras.ts): the canvas and camera
 // (visual/display.ts), the window or DOS bars around the layout, an LCD's
 // subpixel grid, and the CRT's glow, curve and flicker.
+import { SMALLWARE } from '../data/companies.js';
 import { getSettings } from '../settings.js';
 import { cssColor, palette } from '../ui/eras.js';
 import { bevel } from '../ui/widgets.js';
@@ -20,15 +21,15 @@ const LCD_TEXTURE = 'lcd';
 /** The DOS menu bar's items, and which one each screen is. */
 const DOS_MENU = ['FILE', 'CONTRACTS', 'SHOP', 'RUN', 'HELP'];
 const DOS_ITEM = {
-    title: 'FILE', settings: 'FILE', saves: 'FILE', dev: 'FILE', motions: 'FILE', board: 'CONTRACTS', calendar: 'CONTRACTS', shop: 'SHOP', pipeline: 'RUN',
+    title: 'FILE', settings: 'FILE', saves: 'FILE', dev: 'FILE', motions: 'FILE', board: 'CONTRACTS', calendar: 'CONTRACTS', inbox: 'CONTRACTS', shop: 'SHOP', pipeline: 'RUN',
 };
 /** Where each scene is: a terminal prompt in the modern window's title bar, an app's document name in the classic one. */
 const PATHS = {
-    boot: '~', title: '~', settings: '~/settings', saves: '~/saves', dev: '~/dev', motions: '~/dev/motions', board: '~/contracts', calendar: '~/calendar', shop: '~/shop', pipeline: '~/run',
+    boot: '~', title: '~', settings: '~/settings', saves: '~/saves', dev: '~/dev', motions: '~/dev/motions', board: '~/contracts', calendar: '~/calendar', inbox: '~/mail', shop: '~/shop', pipeline: '~/run',
 };
 const TITLES = {
     title: 'BIT CYCLER', settings: 'BIT CYCLER - SETTINGS', saves: 'BIT CYCLER - SAVES', dev: 'BIT CYCLER - DEVELOPER', motions: 'BIT CYCLER - MOTION LAB', board: 'BIT CYCLER - CONTRACTS',
-    calendar: 'BIT CYCLER - CALENDAR', shop: 'BIT CYCLER - SHOP', pipeline: 'BIT CYCLER - RUN',
+    calendar: 'BIT CYCLER - CALENDAR', inbox: 'SMALLWARE MAIL', shop: 'BIT CYCLER - SHOP', pipeline: 'BIT CYCLER - RUN',
 };
 /**
  * Applies an era to a scene: the canvas size and the camera's zoom
@@ -107,7 +108,7 @@ export class TerminalLook {
             this.chrome.push(this.deskAbove(frame.desk, top));
             const path = PATHS[scene.scene.key] ?? '~';
             const title = scene.add
-                .text(WIDTH / 2, -WINDOW_BAR / 2, `player@bit-cycler: ${path}`, { ...textBase(), fontSize: '12px', color: cssColor(frame.title) })
+                .text(WIDTH / 2, -WINDOW_BAR / 2, `player@${SMALLWARE.host}: ${path}`, { ...textBase(), fontSize: '12px', color: cssColor(frame.title) })
                 .setOrigin(0.5)
                 .setDepth(991);
             this.chrome.push(body, bar, title);

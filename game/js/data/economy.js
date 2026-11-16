@@ -236,9 +236,10 @@ export const JOBS_PER_COMPANY = 2;
  * Pay per hour of job time grows with how fast your CPU is (its typical
  * instructions per second), more slowly than the speed itself: a CPU 1000x
  * faster earns about 11x as much an hour, so upgrades pay off without the
- * money running away. About $15 an hour at a million instructions a second.
+ * money running away. About $30 an hour at a million instructions a second
+ * (doubled 2026-11-16: money came too slowly).
  */
-export const PAY = { perHourAtOneMips: 15, exponent: 0.35 };
+export const PAY = { perHourAtOneMips: 30, exponent: 0.35 };
 /**
  * How wide a contract's data is (word size, as the width of the job's
  * numbers: sim/generator.ts): offered once your chip is that wide, `weight`
@@ -262,7 +263,7 @@ export const DATA_WIDTHS = [
  */
 export const SHOWCASE = { share: 0.75, newest: [0.5, 0.25], candidates: 4, minGain: 1.05 };
 /** A new game's first job, the only one on the board until it's done (data/programs.ts TUTORIAL_PROGRAM): what it pays, and how soon it's needed. */
-export const TUTORIAL_JOB = { pay: 50, deadline: 2 * HOUR };
+export const TUTORIAL_JOB = { pay: 100, deadline: 2 * HOUR };
 /** Finishing after the deadline pays this much of the pay. */
 export const LATE_PAY_FACTOR = 0.5;
 /**
@@ -271,23 +272,24 @@ export const LATE_PAY_FACTOR = 0.5;
  * it sets your level, and each level pays more. BAD counts late jobs, each
  * mark cutting pay by `cutPerMark`; marks fade (one per job on time, one per
  * day ended). Pay never drops below the floor: x1.0 for the first
- * `graceDays` (companies forgive a new player), x0.75 after. A later reward
+ * `graceDays` (companies forgive a new player), x0.5 after. The player sees
+ * only the level's name (STATUS); the rates and marks stay hidden. A later reward
  * (special jobs, cosmetics, sketchier clients) is a new field on a level.
  * Numbers to tune by playing.
  */
 export const REPUTATION = {
     levels: [
         { name: 'UNKNOWN', good: 0, pay: 1 },
-        { name: 'LOCAL', good: 5, pay: 1.25 },
-        { name: 'TRUSTED', good: 15, pay: 1.5 },
-        { name: 'RESPECTED', good: 30, pay: 1.75 },
-        { name: 'FAMOUS', good: 50, pay: 2 },
+        { name: 'LOCAL', good: 5, pay: 1.5 },
+        { name: 'TRUSTED', good: 15, pay: 2 },
+        { name: 'RESPECTED', good: 30, pay: 3 },
+        { name: 'FAMOUS', good: 50, pay: 4 },
     ],
     goodPerJob: { easy: 1, fair: 1, stretch: 1 },
     badPerLate: 1,
     fades: { onTime: 1, dayEnd: 1 },
     cutPerMark: 0.05,
-    floor: { grace: 1, after: 0.75 },
+    floor: { grace: 1, after: 0.5 },
     graceDays: 7,
 };
 /** A job your CPU would finish within this share of its deadline (playing perfectly) is tight: a sloppy run could be late. */

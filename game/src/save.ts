@@ -1,4 +1,5 @@
 import { parseSave, saveText, type Saved } from './saveFile.ts';
+import { deliverMail } from './sim/mail.ts';
 import { fillBoard, NEW_GAME, newCampaign, type Progress } from './sim/progress.ts';
 
 // Saves the player's progress in the browser, like settings.ts does for
@@ -98,7 +99,8 @@ export function getProgress(): Progress {
     const loaded = loadSlot(activeSlot())?.progress ?? NEW_GAME;
     // ?money=5000 in the URL sets the money (dev shortcut, for trying the shop).
     const money = Number(new URLSearchParams(location.search).get('money'));
-    current = fillBoard({ ...loaded, ...(money ? { money } : {}) }, Math.random);
+    // A save from before the inbox gets its welcome now (sim/mail.ts delivers only what it hasn't had).
+    current = deliverMail(fillBoard({ ...loaded, ...(money ? { money } : {}) }, Math.random));
   }
   return current;
 }

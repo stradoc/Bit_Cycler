@@ -8,7 +8,7 @@ import { THERMAL } from '../game/src/sim/thermal.ts';
 const SAVED_AT = Date.UTC(2026, 9, 30, 14, 2);
 
 test('a save reads back exactly as it was written, with when it was saved', () => {
-  const progress: Progress = { ...fillBoard(withEverything(NEW_GAME), () => 0.5), seenLessons: ['tier1', 'tier2'], reputation: { good: 24, bad: 2 } };
+  const progress: Progress = { ...fillBoard(withEverything(NEW_GAME), () => 0.5), seenLessons: ['tier1', 'tier2'], reputation: { good: 24, bad: 2 }, mail: [{ id: 'welcome', day: 1, read: true }, { id: 'cobalt-1', day: 3, read: false }], companyJobs: { cobalt: 2, wingtip: 1 } };
   const saved = parseSave(saveText(progress, SAVED_AT));
   assert.deepEqual(saved, { progress, savedAt: SAVED_AT });
 });
@@ -25,6 +25,7 @@ test('a save from before slots (the progress alone) loads, missing fields taking
   assert.deepEqual(saved.progress.seenLessons, []); // the settings kept these then
   assert.deepEqual(saved.progress.seenTips, []); // saved before tips were remembered
   assert.deepEqual(saved.progress.reputation, { good: 0, bad: 0 }); // and before reputation
+  assert.deepEqual([saved.progress.mail, saved.progress.companyJobs], [[], {}]); // and before the inbox
   assert.equal(saved.progress.wordBits, 16); // saved before the chips: the pipeline needs the 16-bit one
 });
 
@@ -58,6 +59,8 @@ test('an edited save is pulled back into range', () => {
     seenTips: ['hazard', null],
     wordBits: 12,
     reputation: { good: -3, bad: 'x' },
+    mail: [{ id: 'welcome', day: 1, read: true }, { id: 'welcome', day: 2, read: false }, { id: 'nonsense', day: 1, read: false }, { id: 'orientation', day: 'x' }, 7],
+    companyJobs: { cobalt: 3, acme: 9, wingtip: -2, innercore: 1.5 },
   };
   const saved = parseSave(saveText(edited as unknown as Progress, SAVED_AT));
   assert.ok(saved);
@@ -77,6 +80,8 @@ test('an edited save is pulled back into range', () => {
   assert.ok(p.cooling < COOLING.length);
   assert.equal(p.wordBits, 64); // no 12-bit chip: the narrowest that runs the top clock
   assert.deepEqual(p.reputation, { good: 0, bad: 0 });
+  assert.deepEqual(p.mail, [{ id: 'welcome', day: 1, read: true }]);
+  assert.deepEqual(p.companyJobs, { cobalt: 3 });
 });
 
 test("an old save's L1 upgrades become size steps, so nothing it paid for is lost", () => {

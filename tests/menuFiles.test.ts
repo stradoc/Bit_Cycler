@@ -13,7 +13,7 @@ test('files and folders are named the way each era listed them', () => {
   assert.equal(folderPath(ERAS[3], ['BRIEFS']), '~/bit-cycler/briefs');
   assert.equal(filePath(ERAS[2], [], 'SETTINGS', 'CFG'), 'C:\\BITCYCLR\\SETTINGS.CFG');
   assert.equal(commandLine(ERAS[1], [], listCommand(ERAS[1])), 'C:\\BITCYCLR>DIR');
-  assert.equal(commandLine(ERAS[3], [], listCommand(ERAS[3])), 'player@bit-cycler:~/bit-cycler$ ls');
+  assert.equal(commandLine(ERAS[3], [], listCommand(ERAS[3])), 'player@smallware:~/bit-cycler$ ls');
   assert.equal(readCommand(ERAS[0], 'README', 'TXT'), 'TYPE README.TXT');
   assert.equal(readCommand(ERAS[3], 'README', 'TXT'), 'cat readme.txt');
 });
@@ -46,4 +46,10 @@ test('README and CREDITS fit the viewer, a page at a time, under a title in bloc
 test('block letters: two pixel rows to a line, with half blocks', () => {
   // T is a full top row, then its stem: top half lit across, then full blocks down the middle.
   assert.deepEqual(banner('T'), ['▀▀█▀▀', '  █  ', '  ▀  ']);
+});
+
+test('README.TXT calls it status, as the game does', () => {
+  const text = README.pages.flat().join(' ');
+  assert.doesNotMatch(text, /REPUTATION/);
+  assert.match(text, /STATUS/);
 });

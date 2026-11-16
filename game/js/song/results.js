@@ -118,7 +118,12 @@ export function resultCard(report) {
     const rows = [];
     const { job } = report;
     if (job) {
-        rows.push({ kind: 'line', left: report.client, right: report.verdict === 'late' ? `HALF PAY: ${formatMoney(job.pay)}` : `PAID ${formatMoney(job.pay)}`, part: 'verdict' }, { kind: 'line', left: `THE JOB TOOK ${formatHours(job.seconds)}`, right: `DUE IN ${formatHours(job.deadline)}`, part: 'verdict' }, { kind: 'deadline', seconds: job.seconds, deadline: job.deadline, part: 'verdict' }, { kind: 'line', ...changeLine(job.reputation), part: 'reputation' }, { kind: 'gap' });
+        rows.push({ kind: 'line', left: report.client, right: report.verdict === 'late' ? `HALF PAY: ${formatMoney(job.pay)}` : `PAID ${formatMoney(job.pay)}`, part: 'verdict' }, { kind: 'line', left: `THE JOB TOOK ${formatHours(job.seconds)}`, right: `DUE IN ${formatHours(job.deadline)}`, part: 'verdict' }, { kind: 'deadline', seconds: job.seconds, deadline: job.deadline, part: 'verdict' });
+        // A new status is the only thing the card says about reputation.
+        const status = changeLine(job.reputation);
+        if (status)
+            rows.push({ kind: 'line', left: status, part: 'reputation' });
+        rows.push({ kind: 'gap' });
     }
     else {
         rows.push({ kind: 'line', left: report.client, part: 'verdict' }, { kind: 'gap' });

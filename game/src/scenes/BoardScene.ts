@@ -11,7 +11,8 @@ import { UNITS } from '../sim/isa.ts';
 import { jobSheet } from '../sim/jobSheet.ts';
 import { showcaseLine } from '../sim/showcase.ts';
 import { contractSeconds, cpiFor, cpuLine, hasSeen, isLocked, isTight, isTutorial, jobItems, payFor, ratedMhz, withSeen, type Contract } from '../sim/progress.ts';
-import { reputationLine } from '../sim/reputation.ts';
+import { unreadCount } from '../sim/mail.ts';
+import { statusLine } from '../sim/reputation.ts';
 import { THERMAL } from '../sim/thermal.ts';
 import { clockSeconds, DAY_END, DAY_SECONDS, DAY_START, dayOver, endDay, fitsToday, gradeName, shortDate, timeLeft, weekday } from '../sim/workday.ts';
 import { cssColor } from '../ui/eras.ts';
@@ -110,7 +111,7 @@ export class BoardScene extends Screen {
   private guide!: Guide;
   /** The workday bar along the bottom (showDay). */
   private dayBar!: Phaser.GameObjects.Text;
-  /** Your reputation, under the money (sim/reputation.ts). */
+  /** Your status, under the money (sim/reputation.ts): only its name, the rates hidden. */
   private reputation!: Phaser.GameObjects.Text;
   /** Where the calendar starts, under the list (for TICK to point at). */
   private calendarTop = 0;
@@ -137,7 +138,7 @@ export class BoardScene extends Screen {
     // The CPU's line starts at the left, so your reputation fits under the money on the right.
     this.header('CONTRACT BOARD', `YOUR CPU: ${cpuLine(progress)}${worn}`).subtitle?.setOrigin(0, 0.5).setX(LAYOUT.left);
     this.corner(formatMoney(progress.money));
-    this.reputation = this.text(LAYOUT.right, LAYOUT.subtitle, reputationLine(progress.reputation, progress.day), TEXT.subtitle).setOrigin(1, 0.5);
+    this.reputation = this.text(LAYOUT.right, LAYOUT.subtitle, statusLine(progress.reputation), TEXT.subtitle).setOrigin(1, 0.5);
 
     // Grade by grade, easy first.
     this.contracts = GRADES.flatMap((grade) => progress.board.filter((c) => c.grade === grade.id));
@@ -171,7 +172,9 @@ export class BoardScene extends Screen {
     this.textAt(LIST_X, this.menu.rowY(rows.length - 1) + ROW_H + 8, 'FINISH LATE (A SLOPPY RUN): HALF PAY', TEXT.small - 1).setAlpha(ALPHA.subtitle);
     this.drawCalendar();
     this.message = this.messageLine();
-    this.hints('[UP/DOWN] CHOOSE', '[ENTER] TAKE CONTRACT', '[L] LOG OFF', '[C] CALENDAR', '[S] SHOP', '[Q] MENU');
+    // Mail waiting shows on its key: [E] INBOX (2).
+    const unread = unreadCount(progress);
+    this.hints('[UP/DOWN] CHOOSE', '[ENTER] TAKE CONTRACT', '[L] LOG OFF', '[C] CALENDAR', unread > 0 ? `[E] INBOX (${unread})` : '[E] INBOX', '[S] SHOP', '[Q] MENU');
     this.drawSheet();
     this.showDay(this.contracts[this.menu.selected]);
     // The mouse leaving the game: back to the chosen job's estimate.
@@ -460,6 +463,9 @@ export class BoardScene extends Screen {
     else if (key === 'C') {
       this.cue('confirm');
       this.scene.start('calendar');
+    } else if (key === 'E') {
+      this.cue('confirm');
+      this.scene.start('inbox');
     }
     else if (key === 'ArrowUp') this.choose(-1);
     else if (key === 'ArrowDown') this.choose(1);

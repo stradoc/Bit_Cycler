@@ -35,6 +35,7 @@ import { tierByNumber, type Tier } from '../data/tiers.ts';
 import { cpuFor, trace } from './cpu.ts';
 import { cacheBytes, cachesBelow, cacheShape, cacheWords, missNs, MEMORY_TIMING, ramCycles, type CacheShape, type LowerCache } from './memory.ts';
 import { perfectRun, type PipelineOptions } from './pipeline.ts';
+import { deliverMail, type Received } from './mail.ts';
 import { afterJob, NO_REPUTATION, payMultiplier, type Reputation, type ReputationChange } from './reputation.ts';
 import { THERMAL, type ThermalConfig } from './thermal.ts';
 import { tempoForClock } from '../rhythm/tempo.ts';
@@ -100,6 +101,10 @@ export type Progress = {
   readonly skills: readonly SkillJob[];
   /** How the companies see you (sim/reputation.ts): jobs done well, and bad marks still standing. */
   readonly reputation: Reputation;
+  /** The inbox (sim/mail.ts): the emails that have arrived, oldest first. */
+  readonly mail: readonly Received[];
+  /** Jobs finished for each company (data/companies.ts), by its id: its emails come at 1, 5 and 15. */
+  readonly companyJobs: Readonly<Record<string, number>>;
 };
 
 export const NEW_GAME: Progress = {
@@ -124,6 +129,8 @@ export const NEW_GAME: Progress = {
   history: [],
   skills: [],
   reputation: NO_REPUTATION,
+  mail: [],
+  companyJobs: {},
 };
 
 /** The player has seen a lesson or tour (data/tours.ts TAUGHT_IDS). */
@@ -344,7 +351,7 @@ export type JobResult = { readonly late: boolean; readonly pay: number; readonly
 
 /** Settles a finished job: paid at the reputation it was played on, then the job's change to reputation. */
 export function settleJob(progress: Progress, contract: Contract, late: boolean): JobResult {
-  return { late, pay: payFor(progress, contract, late), reputation: afterJob(progress.reputation, contract.grade, late, progress.day) };
+  return { late, pay: payFor(progress, contract, late), reputation: afterJob(progress.reputation, contract.grade, late) };
 }
 
 /** How many items (e.g. bytes) the job works through, from its program's instructions per item. */
@@ -465,7 +472,7 @@ export function isTutorial(contract: Contract): boolean {
 
 /** A new game: its board holds only the tutorial job, for TICK's first lesson; the usual jobs come once it's done. */
 export function newCampaign(): Progress {
-  return { ...NEW_GAME, board: [tutorialContract(1)], nextId: 2 };
+  return deliverMail({ ...NEW_GAME, board: [tutorialContract(1)], nextId: 2 });
 }
 
 

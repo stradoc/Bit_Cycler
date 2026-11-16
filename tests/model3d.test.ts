@@ -4,6 +4,8 @@ import { buildChip } from '../game/src/visual/chip3d.ts';
 import { behind, drawOrder, overlaps, screenOutline, type Part, type Shape } from '../game/src/visual/model3d.ts';
 import { blockPixels } from '../game/src/data/menuFiles.ts';
 import { buildTitle, pixelBlocks } from '../game/src/visual/title3d.ts';
+import { BADGE_CAMERA, buildBadge } from '../game/src/visual/badge3d.ts';
+import { REPUTATION } from '../game/src/data/economy.ts';
 import { NEW_GAME, withEverything } from '../game/src/sim/progress.ts';
 
 /** The shop's camera, seen from the model, as the chip turns to `spin` (420 units away, tilted down 0.62 rad). */
@@ -131,6 +133,29 @@ test('as the title turns toward the pointer, every block is drawn after every bl
           const iFirst = behind(shapes[i], shapes[j], camera);
           assert.notEqual(iFirst, undefined, `blocks ${i} and ${j} overlap`);
           if (iFirst !== null) assert.equal((position.get(i) ?? 0) < (position.get(j) ?? 0), iFirst, `yaw ${yaw} tilt ${tilt}: blocks ${i} and ${j} out of order`);
+        }
+      }
+    }
+  }
+});
+
+test('the status badge grows more intricate at each rank, and turns with every part drawn after every part it can hide', () => {
+  const counts = REPUTATION.levels.map((_, rank) => buildBadge(rank).length);
+  for (let rank = 1; rank < counts.length; rank++) assert.ok(counts[rank] > counts[rank - 1], `rank ${rank}: ${counts}`);
+  for (let rank = 0; rank < REPUTATION.levels.length; rank++) {
+    const shapes = buildBadge(rank);
+    for (let step = 0; step < 36; step++) {
+      const yaw = (step / 36) * 2 * Math.PI;
+      const { distance, tilt } = BADGE_CAMERA;
+      const camera: [number, number, number] = [distance * Math.cos(tilt) * Math.sin(yaw), -distance * Math.sin(tilt), -distance * Math.cos(tilt) * Math.cos(yaw)];
+      const position = new Map(drawOrder(shapes, camera).map((part, place) => [part, place]));
+      const outlines = shapes.map((shape) => screenOutline(shape, camera));
+      for (let i = 0; i < shapes.length; i++) {
+        for (let j = i + 1; j < shapes.length; j++) {
+          if (!overlaps(outlines[i], outlines[j])) continue;
+          const iFirst = behind(shapes[i], shapes[j], camera);
+          assert.notEqual(iFirst, undefined, `rank ${rank}: parts ${i} and ${j} overlap`);
+          if (iFirst !== null) assert.equal((position.get(i) ?? 0) < (position.get(j) ?? 0), iFirst, `rank ${rank} yaw ${yaw}: parts ${i} and ${j} out of order`);
         }
       }
     }

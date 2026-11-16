@@ -3,6 +3,7 @@
 // into browser storage and into exported files, so an exported save can be
 // imported on another computer.
 import { cleanSkillLog } from './rhythm/skills.js';
+import { cleanCompanyJobs, cleanMail } from './sim/mail.js';
 import { cleanReputation } from './sim/reputation.js';
 import { CLOCK, COOLING, CPU_PARTS, GRADES, MEMORY_PARTS, WORKDAY } from './data/economy.js';
 import { chipByBits, fitChip, NEW_GAME } from './sim/progress.js';
@@ -105,6 +106,9 @@ function cleanProgress(raw) {
         // Saves from before the calls were counted start with none.
         skills: cleanSkillLog(progress.skills),
         reputation: cleanReputation(progress.reputation),
+        // Saves from before the inbox have no mail yet (loading delivers the welcome: save.ts) and no jobs counted per company.
+        mail: cleanMail(progress.mail),
+        companyJobs: cleanCompanyJobs(progress.companyJobs),
     });
 }
 function isDayRecord(value) {

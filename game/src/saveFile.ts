@@ -3,6 +3,7 @@
 // into browser storage and into exported files, so an exported save can be
 // imported on another computer.
 import { cleanSkillLog } from './rhythm/skills.ts';
+import { cleanCompanyJobs, cleanMail } from './sim/mail.ts';
 import { cleanReputation } from './sim/reputation.ts';
 
 import { CLOCK, COOLING, CPU_PARTS, GRADES, MEMORY_PARTS, WORKDAY } from './data/economy.ts';
@@ -113,6 +114,9 @@ function cleanProgress(raw: Record<string, unknown>): Progress {
     // Saves from before the calls were counted start with none.
     skills: cleanSkillLog(progress.skills),
     reputation: cleanReputation(progress.reputation),
+    // Saves from before the inbox have no mail yet (loading delivers the welcome: save.ts) and no jobs counted per company.
+    mail: cleanMail(progress.mail),
+    companyJobs: cleanCompanyJobs(progress.companyJobs),
   });
 }
 

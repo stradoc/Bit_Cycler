@@ -1,5 +1,6 @@
 import { GRADES, WORKDAY } from '../data/economy.js';
-import { shortClient } from '../data/companies.js';
+import { companyOf, shortClient } from '../data/companies.js';
+import { deliverMail } from './mail.js';
 import { formatClock, formatMoney } from '../format.js';
 import { programByName } from '../data/programs.js';
 import { contractSeconds, fillBoard, isTutorial, payFor, settleJob } from './progress.js';
@@ -83,15 +84,18 @@ export function finishJob(progress, contract, seconds, late, random) {
         late: progress.today.late + (late ? 1 : 0),
         earned: progress.today.earned + job.pay,
     };
+    // The job counts for its company (the tutorial's bakery is none), whose thanks may now be due.
+    const company = companyOf(programByName(contract.program).client)?.id;
     const paid = {
         ...progress,
         money: progress.money + job.pay,
         reputation: job.reputation.after,
+        companyJobs: company ? { ...progress.companyJobs, [company]: (progress.companyJobs[company] ?? 0) + 1 } : progress.companyJobs,
         board: progress.board.filter((c) => c.id !== contract.id),
         worked: progress.worked + seconds,
         today,
     };
-    return { progress: fillBoard(paid, random), job };
+    return { progress: deliverMail(fillBoard(paid, random)), job };
 }
 /**
  * Ends the day (logging off, or its hours used up): its timecard, then the
@@ -104,7 +108,7 @@ export function endDay(progress, random) {
     const board = progress.board.filter((contract) => contract.expires >= day);
     const history = [...progress.history, timecard].slice(-WORKDAY.historyDays);
     const morning = fillBoard({ ...progress, day, worked: 0, today: { jobs: 0, late: 0, earned: 0 }, board, history, reputation: afterDay(progress.reputation) }, random);
-    return { progress: morning, timecard };
+    return { progress: deliverMail(morning), timecard };
 }
 /** "MONDAY NOV 1, 1:40 PM": the date and time, for the boot report and the save slots. */
 export function dateLine(progress) {

@@ -55,7 +55,7 @@ test('a job is paid at the reputation it was taken on; the next one at the new l
   const done = finishJob(board, first, 3600, false, seeded(6));
   assert.equal(done.job?.pay, first.pay, 'reaching LOCAL pays the job at x1.0');
   assert.equal(done.job?.reputation.levelUp, 'LOCAL');
-  assert.equal(finishJob(done.progress, second, 3600, false, seeded(7)).job?.pay, Math.round(second.pay * 1.25));
+  assert.equal(finishJob(done.progress, second, 3600, false, seeded(7)).job?.pay, Math.round(second.pay * 1.5));
 });
 
 test("a job that's no longer on the board isn't counted twice", () => {
@@ -166,4 +166,18 @@ test('the month grid has a box per day under the weekdays, and the workday bar c
   assert.ok(lines[3].includes('|TODAY   |'), 'day 3 shows its words in its box');
   assert.equal(stackedBar([{ value: 2, tone: 'good' }, { value: 3, tone: 'warn' }], 8, 8).text, '##===...');
   assert.equal(stackedBar([{ value: 6, tone: 'good' }, { value: 4, tone: 'warn' }], 8, 8).text, '######==>', 'past the end of the day');
+});
+
+test('finishing a job counts it for its company, late or not, and brings any mail it has earned', () => {
+  const board = fillBoard(NEW_GAME, seeded(5));
+  const cobalt = { ...board.board[0], program: 'SUM #11' };
+  const start = { ...board, board: [cobalt, ...board.board.slice(1)] };
+  const done = finishJob(start, cobalt, 3600, true, seeded(6)).progress;
+  assert.deepEqual(done.companyJobs, { cobalt: 1 });
+  assert.ok(done.mail.some((each) => each.id === 'cobalt-1' && !each.read));
+  // The tutorial's bakery is no company's.
+  const tutorial = newCampaign();
+  assert.deepEqual(finishJob(tutorial, tutorial.board[0], 60, false, seeded(7)).progress.companyJobs, {});
+  // A new day delivers what's due too.
+  assert.ok(endDay({ ...NEW_GAME, mail: [], companyJobs: { wingtip: 5 } }, seeded(8)).progress.mail.some((each) => each.id === 'wingtip-5'));
 });

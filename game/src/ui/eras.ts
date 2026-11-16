@@ -185,7 +185,7 @@ const DESKTOP: Era = {
     hires: true, smooth: false, ...NO_GLOW, ...NO_CRT,
     frame: { style: 'classic', desk: 0x008080, bar: 0x000080, bar2: 0x1084d0, title: 0xffffff, border: CLASSIC.dark, palette: CLASSIC },
   },
-  computer: { display: 'crt', drive: 'disk', bios: 'BIT CYCLER BIOS 4.0', bootText: 0xaaaaaa, root: 'C:\\BITCYCLR', shell: false, splash: 0xffffff, beam: 0xffffff },
+  computer: { display: 'crt', drive: 'disk', bios: 'SMALLWARE BIOS 4.0', bootText: 0xaaaaaa, root: 'C:\\BITCYCLR', shell: false, splash: 0xffffff, beam: 0xffffff },
   sound: { whine: true, beep: true },
   motion: { style: 'tween' },
   models: 'lowpoly',
@@ -203,7 +203,7 @@ export const ERAS: readonly Era[] = [
     // The original IBM PC's ROM font, drawn tall as CGA text looked on screen.
     font: "'IBM BIOS', monospace",
     screen: { hires: false, smooth: false, glow: 1.8, bootGlow: 1.2, menuGlow: 0.5, scanlines: 0.4, curve: 0.02, vignette: 0.4, flicker: 0.02, lcd: 0 },
-    computer: { display: 'crt', drive: 'floppy', bios: 'BIT CYCLER BIOS 1.0', bootText: 0x39ff14, root: 'A:', shell: false, splash: 0x39ff14, beam: 0xd8ffc8 },
+    computer: { display: 'crt', drive: 'floppy', bios: 'SMALLWARE BIOS 1.0', bootText: 0x39ff14, root: 'A:', shell: false, splash: 0x39ff14, beam: 0xd8ffc8 },
     sound: { whine: true, beep: true },
     // A phosphor screen: nothing slides, but what goes dark fades over a quarter second.
     motion: { style: 'cut', afterglow: 250 },
@@ -228,7 +228,7 @@ export const ERAS: readonly Era[] = [
         palette: { light: 0xffffff, soft: 0xaaaaaa, face: 0xaaaaaa, shadow: 0x000000, dark: 0x000000, field: 0x0000aa, select: 0x00aaaa, selectText: 0x000000 },
       },
     },
-    computer: { display: 'crt', drive: 'disk', bios: 'BIT CYCLER BIOS 2.0', bootText: 0xaaaaaa, root: 'C:\\BITCYCLR', shell: false, splash: 0x55ffff, beam: 0xffffff },
+    computer: { display: 'crt', drive: 'disk', bios: 'SMALLWARE BIOS 2.0', bootText: 0xaaaaaa, root: 'C:\\BITCYCLR', shell: false, splash: 0x55ffff, beam: 0xffffff },
     sound: { whine: true, beep: true },
     // Text mode: redrawn about ten times a second, in whole character cells.
     motion: { style: 'step', fps: 10, cell: { x: 8, y: 16 } },

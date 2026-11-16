@@ -79,4 +79,17 @@ export function companyOf(client) {
 export function shortClient(client) {
     return companyOf(client)?.short ?? client;
 }
+/**
+ * SMALLWARE: the player's employer, a small start-up running jobs for the
+ * five companies, as early Microsoft did for the hardware makers. Made up;
+ * its logo is a door (a window becomes a door), with no text. The player's
+ * computer is one of its terminals, so `host` names it (the window bar, the
+ * boot's and the main menu's prompts). `signature` signs its founder's emails.
+ */
+export const SMALLWARE = {
+    name: 'SMALLWARE',
+    host: 'smallware',
+    signature: '- Jo Kessler, founder',
+    logo: ['.--------.', '| .----. |', '| |    | |', "| '----' |", '| .----.o|', '| |    | |', "| '----' |", "'--------'"],
+};
 //# sourceMappingURL=companies.js.map

@@ -10,6 +10,7 @@ import { programByName } from './programs.js';
 import { formatDuration, formatMhz, formatMoney } from '../format.js';
 import { cacheWords, MEMORY_TIMING, missNs, ramCycles, SHOWN_BYTES } from '../sim/memory.js';
 import { cacheOf, cpuName, lowerCachesOf, ratedMhz } from '../sim/progress.js';
+import { SMALLWARE } from './companies.js';
 import { THERMAL } from '../sim/thermal.js';
 import { dateLine } from '../sim/workday.js';
 /**
@@ -26,6 +27,8 @@ export function bootScript(progress, slot, era) {
     // The programs come off a floppy or a hard drive; an SSD is silent.
     const drive = computer.drive === 'ssd' ? undefined : computer.drive;
     const loading = { kind: 'scroll', lines: programListing(progress), sound: drive };
+    // The computer is one of Smallware's: its door comes up first, a line at a time.
+    const door = [...SMALLWARE.logo.map((line) => print(line, 40)), print('')];
     if (computer.shell) {
         // A modern boot log in a terminal window, then a shell.
         const ok = (text) => ({ kind: 'print', text, tag: 'OK', pause: 90 });
@@ -41,10 +44,11 @@ export function bootScript(progress, slot, era) {
             ]
             : [ok('Detected CPU: not configured')];
         return [
+            ...door,
             ...lines,
             ok('Reached target: contracts'),
             print(''),
-            { kind: 'type', prompt: 'player@bit-cycler:~$ ', text: `./bit-cycler --slot ${slot.id}` },
+            { kind: 'type', prompt: `player@${SMALLWARE.host}:~$ `, text: `./bit-cycler --slot ${slot.id}` },
             print(job, 200),
             loading,
             print('Starting Bit Cycler...', 300),
@@ -62,7 +66,7 @@ export function bootScript(progress, slot, era) {
             ...(facts.wear ? [print(`WARNING: CHIP WORN, ${facts.wear}`, 300)] : []),
         ]
         : [memory, print('CPU:    NOT CONFIGURED')];
-    const head = [print(computer.bios, 200), print(''), ...report, print('')];
+    const head = [...door, print(computer.bios, 200), print(''), ...report, print('')];
     if (computer.drive === 'floppy') {
         // An early micro booting from a floppy: a one-letter drive prompt.
         return [

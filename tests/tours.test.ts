@@ -126,7 +126,7 @@ test('no lesson and no cache entry in the glossary talks about mapping', () => {
 });
 
 test('your first day shows you your reputation', () => {
-  assert.ok(FIRST_DAY_TOUR.some((step) => step.point === 'reputation' && /REPUTATION/.test(step.say)));
+  assert.ok(FIRST_DAY_TOUR.some((step) => step.point === 'reputation' && /STATUS/.test(step.say)));
 });
 
 test('the cache lesson says the game simplifies where a block can go', () => {
@@ -150,4 +150,9 @@ test("the size lesson is true whichever level's step was bought", () => {
   // It plays the first time any cache's size step is bought: it never says the player's L1 is the one that grew.
   for (const step of SONG_TOURS.size) assert.doesNotMatch(step.say, /your L1 (now|has)/i, step.say);
   assert.match(SONG_TOURS.size[0].say, /any cache|a cache/i);
+});
+
+test('TICK never gives away pay rates or how bad marks work; he talks about status', () => {
+  for (const step of [...FIRST_DAY_TOUR, ...BOARD_TOUR]) assert.doesNotMatch(step.say, /BAD MARKS?|cuts? (your )?pay|PAY x|REPUTATION/i, step.say);
+  assert.ok(FIRST_DAY_TOUR.some((step) => step.point === 'reputation' && /STATUS/.test(step.say)));
 });

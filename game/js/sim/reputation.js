@@ -3,7 +3,8 @@
 // BAD counts late jobs: each mark cuts pay a little, and marks fade (a job on
 // time takes one off, and so does ending a day), so a rough patch costs for a
 // while but never undoes what you built. In the first week pay never drops
-// below normal. The numbers are REPUTATION (data/economy.ts); this module is
+// below normal. The player sees only the level's name, as a STATUS (and the
+// inbox's badge); the rates and the marks stay hidden. The numbers are REPUTATION (data/economy.ts); this module is
 // the only place that works out a level, a multiplier or reputation's words.
 // Later rewards (special jobs, cosmetics, sketchier clients) read `good` and
 // `bad` through it, so BAD stays its own count.
@@ -34,7 +35,7 @@ export function payMultiplier(reputation, day) {
     return Math.max(floor, markedPay(reputation));
 }
 /** A job finished on `day`: on time, GOOD goes up by its grade's weight and a bad mark fades; late, a bad mark. */
-export function afterJob(reputation, grade, late, day) {
+export function afterJob(reputation, grade, late) {
     const after = late
         ? { ...reputation, bad: reputation.bad + REPUTATION.badPerLate }
         : { good: reputation.good + REPUTATION.goodPerJob[grade], bad: Math.max(0, reputation.bad - REPUTATION.fades.onTime) };
@@ -43,8 +44,6 @@ export function afterJob(reputation, grade, late, day) {
         before: reputation,
         after,
         late,
-        grace: late && inGrace(day) && markedPay(after) < REPUTATION.floor.grace,
-        nextPay: payMultiplier(after, day),
         ...(now.index > was.index ? { levelUp: now.level.name } : {}),
     };
 }
@@ -64,20 +63,19 @@ export function cleanReputation(raw) {
 export function multiplierText(multiplier) {
     return `x${multiplier.toFixed(2)}`;
 }
-/** The board's line: "TRUSTED ##.. +24 -2  PAY x1.35" (the level, how far up the levels it is, GOOD, BAD if any, the pay). */
+/** The developer screen's and the cheats' line, numbers and all: "TRUSTED ##.. +24 -2  PAY x1.80" (the level, how far up the levels it is, GOOD, BAD if any, the pay). The player sees only statusLine. */
 export function reputationLine(reputation, day, glyphs = ASCII) {
     const { index } = levelOf(reputation);
     const top = REPUTATION.levels.length - 1;
     const marks = reputation.bad > 0 ? ` -${reputation.bad}` : '';
     return `${levelOf(reputation).level.name} ${bar(index, top, top, glyphs)} +${reputation.good}${marks}  PAY ${multiplierText(payMultiplier(reputation, day))}`;
 }
-/** The results card's line for a job: what it did to reputation, and the pay from the next job if that changed. */
+/** What the player sees of reputation (the board): the level's name, nothing more. The rates and bad marks stay hidden. */
+export function statusLine(reputation) {
+    return `STATUS: ${levelOf(reputation).level.name}`;
+}
+/** The results card's line for a job: only when it raised the status. */
 export function changeLine(change) {
-    const left = change.levelUp
-        ? `LEVEL UP: ${change.levelUp}`
-        : change.late
-            ? `BAD MARK +${change.after.bad - change.before.bad}${change.grace ? ' (GRACE WEEK)' : ''}`
-            : `REPUTATION +${change.after.good - change.before.good}`;
-    return change.levelUp ? { left, right: `PAY ${multiplierText(change.nextPay)} NEXT JOB` } : { left };
+    return change.levelUp ? `NEW STATUS: ${change.levelUp}` : undefined;
 }
 //# sourceMappingURL=reputation.js.map

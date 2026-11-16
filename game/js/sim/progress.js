@@ -10,6 +10,7 @@ import { tierByNumber } from '../data/tiers.js';
 import { cpuFor, trace } from './cpu.js';
 import { cacheBytes, cachesBelow, cacheShape, cacheWords, missNs, MEMORY_TIMING, ramCycles } from './memory.js';
 import { perfectRun } from './pipeline.js';
+import { deliverMail } from './mail.js';
 import { afterJob, NO_REPUTATION, payMultiplier } from './reputation.js';
 import { THERMAL } from './thermal.js';
 import { tempoForClock } from '../rhythm/tempo.js';
@@ -35,6 +36,8 @@ export const NEW_GAME = {
     history: [],
     skills: [],
     reputation: NO_REPUTATION,
+    mail: [],
+    companyJobs: {},
 };
 /** The player has seen a lesson or tour (data/tours.ts TAUGHT_IDS). */
 export function hasSeen(progress, id) {
@@ -215,7 +218,7 @@ export function payFor(progress, contract, late = false) {
 }
 /** Settles a finished job: paid at the reputation it was played on, then the job's change to reputation. */
 export function settleJob(progress, contract, late) {
-    return { late, pay: payFor(progress, contract, late), reputation: afterJob(progress.reputation, contract.grade, late, progress.day) };
+    return { late, pay: payFor(progress, contract, late), reputation: afterJob(progress.reputation, contract.grade, late) };
 }
 /** How many items (e.g. bytes) the job works through, from its program's instructions per item. */
 export function jobItems(contract) {
@@ -326,7 +329,7 @@ export function isTutorial(contract) {
 }
 /** A new game: its board holds only the tutorial job, for TICK's first lesson; the usual jobs come once it's done. */
 export function newCampaign() {
-    return { ...NEW_GAME, board: [tutorialContract(1)], nextId: 2 };
+    return deliverMail({ ...NEW_GAME, board: [tutorialContract(1)], nextId: 2 });
 }
 function repairSteps(progress) {
     return Math.round((THERMAL.maxDial - progress.chipMaxDial) / THERMAL.damagePerOverheat);

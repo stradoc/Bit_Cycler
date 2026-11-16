@@ -4,6 +4,7 @@
 // lowercase names on the modern terminal. The idea comes from games whose
 // menus are a computer's file system; every name and line here is our own.
 // How names and paths look comes from the era's computer (ui/eras.ts).
+import { SMALLWARE } from './companies.js';
 /** A file as the era names it: "CONTINUE.EXE" / "continue.exe"; a folder (no extension) "SAVES" / "saves/". */
 export function fileName(name, ext, era) {
     if (era.computer.shell)
@@ -26,10 +27,10 @@ export function folderPath(era, folders = []) {
 export function filePath(era, folders, name, ext) {
     return `${folderPath(era, folders)}${era.computer.shell ? '/' : '\\'}${fileName(name, ext, era)}`;
 }
-/** A command typed at the folder's prompt: "C:\BITCYCLR>DIR", "player@bit-cycler:~/bit-cycler$ ls". */
+/** A command typed at the folder's prompt: "C:\BITCYCLR>DIR", "player@smallware:~/bit-cycler$ ls". */
 export function commandLine(era, folders, command) {
     const path = folderPath(era, folders);
-    return era.computer.shell ? `player@bit-cycler:${path}$ ${command}` : `${path}>${command}`;
+    return era.computer.shell ? `player@${SMALLWARE.host}:${path}$ ${command}` : `${path}>${command}`;
 }
 /** The era's command for listing a folder. */
 export function listCommand(era) {
@@ -129,7 +130,7 @@ export const README = {
             '  CPU TIME = INSTRUCTIONS x CPI x CLOCK PERIOD.',
             '  FEWER STALLS: LOWER CPI, A FASTER JOB.',
             "  BEAT THE CONTRACT'S DEADLINE FOR FULL PAY",
-            '  (LATE PAYS HALF): IT BUILDS REPUTATION, AND PAY.',
+            '  (LATE PAYS HALF): IT RAISES YOUR STATUS AND PAY.',
             '',
             'TIPS',
             '  TICK TEACHES EACH NEW CPU PART, THEN A',

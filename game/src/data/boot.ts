@@ -11,6 +11,7 @@ import { programByName } from './programs.ts';
 import { formatDuration, formatMhz, formatMoney } from '../format.ts';
 import { cacheWords, MEMORY_TIMING, missNs, ramCycles, SHOWN_BYTES } from '../sim/memory.ts';
 import { cacheOf, cpuName, lowerCachesOf, ratedMhz, type Progress } from '../sim/progress.ts';
+import { SMALLWARE } from './companies.ts';
 import { THERMAL } from '../sim/thermal.ts';
 import { dateLine } from '../sim/workday.ts';
 import type { Era } from '../ui/eras.ts';
@@ -47,6 +48,8 @@ export function bootScript(progress: Progress | null, slot: { readonly id: strin
   // The programs come off a floppy or a hard drive; an SSD is silent.
   const drive: BootSound | undefined = computer.drive === 'ssd' ? undefined : computer.drive;
   const loading: BootStep = { kind: 'scroll', lines: programListing(progress), sound: drive };
+  // The computer is one of Smallware's: its door comes up first, a line at a time.
+  const door: BootStep[] = [...SMALLWARE.logo.map((line) => print(line, 40)), print('')];
 
   if (computer.shell) {
     // A modern boot log in a terminal window, then a shell.
@@ -63,10 +66,11 @@ export function bootScript(progress: Progress | null, slot: { readonly id: strin
         ]
       : [ok('Detected CPU: not configured')];
     return [
+      ...door,
       ...lines,
       ok('Reached target: contracts'),
       print(''),
-      { kind: 'type', prompt: 'player@bit-cycler:~$ ', text: `./bit-cycler --slot ${slot.id}` },
+      { kind: 'type', prompt: `player@${SMALLWARE.host}:~$ `, text: `./bit-cycler --slot ${slot.id}` },
       print(job, 200),
       loading,
       print('Starting Bit Cycler...', 300),
@@ -85,7 +89,7 @@ export function bootScript(progress: Progress | null, slot: { readonly id: strin
         ...(facts.wear ? [print(`WARNING: CHIP WORN, ${facts.wear}`, 300)] : []),
       ]
     : [memory, print('CPU:    NOT CONFIGURED')];
-  const head = [print(computer.bios, 200), print(''), ...report, print('')];
+  const head = [...door, print(computer.bios, 200), print(''), ...report, print('')];
 
   if (computer.drive === 'floppy') {
     // An early micro booting from a floppy: a one-letter drive prompt.
