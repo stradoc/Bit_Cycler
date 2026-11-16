@@ -1,5 +1,5 @@
 import { UNITS } from '../sim/isa.js';
-import { addressSplit, setOf, SHOWN_BYTES, tagOf } from '../sim/memory.js';
+import { SHOWN_BYTES } from '../sim/memory.js';
 // Where everything on the song screen goes (layout pixels, 960 x 540), and
 // the small types and helpers its parts share. The highway IS the pipeline:
 // notes fall to the hit line (ID), and once routed they step down through the
@@ -54,13 +54,8 @@ export const noteKey = (slot) => `${slot.seq}:${slot.pc}`;
 export const laneCenter = (unit) => LANE_X0 + LANE_W * (UNITS.indexOf(unit) + 0.5);
 export const hex = (value) => value.toString(16).toUpperCase().padStart(2, '0');
 export const bin = (value, bits) => value.toString(2).padStart(bits, '0');
-/** An address as a cache splits it: tag, set (or line), offset (tttt ii oo in the first L1). */
-export function addressBits(shape, address) {
-    const bits = addressSplit(shape);
-    return `${bin(tagOf(shape, address), bits.tag)} ${bin(setOf(shape, address), bits.set)} ${bin(address % shape.blockBytes, bits.offset)}`;
-}
 /** Why a miss happened, in the words the screen uses. */
-export const MISS_WORDS = { 'first-use': 'FIRST USE', conflict: 'CONFLICT', 'too-small': 'TOO SMALL' };
+export const MISS_WORDS = { 'first-use': 'FIRST USE', 'too-small': 'TOO SMALL' };
 /** The point `fraction` (0-1) of the way along a polyline, and the path up to it. */
 export function alongPath(path, fraction) {
     const lengths = path.slice(1).map((p, i) => Math.hypot(p[0] - path[i][0], p[1] - path[i][1]));

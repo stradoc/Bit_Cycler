@@ -9,8 +9,8 @@ import { CARD_WIDTH, practiceLines, resultCard, runReport } from '../game/src/so
 import { ASCII, cardLines, CP437 } from '../game/src/visual/asciiChart.ts';
 import { NO_CALLS } from '../game/src/rhythm/skills.ts';
 import { Chip } from '../game/src/sim/thermal.ts';
-import { cacheShape, L1_BASE } from '../game/src/sim/memory.ts';
-import { fillBoard, NEW_GAME } from '../game/src/sim/progress.ts';
+import { cachesBelow, cacheShape, L1_BASE, sameShape } from '../game/src/sim/memory.ts';
+import { fillBoard, NEW_GAME, settleJob } from '../game/src/sim/progress.ts';
 import { pipelineOptions, songSetup, type SongStart } from '../game/src/song/setup.ts';
 import type { Shown } from '../game/src/song/view.ts';
 import { SongWords } from '../game/src/song/words.ts';
@@ -66,7 +66,7 @@ test('practice explains a hazard on the line before anything else, and says why 
 /** A real run of the board's first job, its replay recorded as paid (late if `late`). */
 function paidRun(late: boolean, options: SongStart = {}) {
   const contract = fillBoard(NEW_GAME, () => 0.5).board[0];
-  const replay = { cycles: [], dials: [], maxDial: 1.5, canOverclock: false, paid: true, late };
+  const replay = { cycles: [], dials: [], maxDial: 1.5, canOverclock: false, job: settleJob(NEW_GAME, contract, late) };
   return song({ practice: false, contract, replay, ...options });
 }
 
@@ -110,8 +110,41 @@ test('a paid job\'s card stamps it on time with the full pay, or late with half'
   }
 });
 
+test("the card's pay comes from the recording, not the save or the contract", () => {
+  const { run, setup, fresh } = paidRun(false);
+  const job = setup.replay?.job;
+  assert.ok(job);
+  const paid = { ...setup, replay: { ...setup.replay!, job: { ...job, pay: 123 } } };
+  playPerfectly(run);
+  const report = runReport({ run, setup: paid, freshCpu: fresh, dials: [], calls: NO_CALLS });
+  assert.notEqual(setup.contract?.pay, 123);
+  const first = resultCard(report).rows[0];
+  assert.ok(first.kind === 'line' && first.right === 'PAID $123');
+});
+
+test('the card says what the job did to reputation, in a line that fits', () => {
+  const contract = fillBoard(NEW_GAME, () => 0.5).board[0];
+  const cases: [Parameters<typeof settleJob>[0], boolean, string][] = [
+    [NEW_GAME, false, 'REPUTATION +1'],
+    [{ ...NEW_GAME, day: 3 }, true, 'BAD MARK +1 (GRACE WEEK)'],
+    [{ ...NEW_GAME, day: 9 }, true, 'BAD MARK +1'],
+    [{ ...NEW_GAME, reputation: { good: 4, bad: 0 } }, false, 'LEVEL UP: LOCAL'],
+  ];
+  for (const [progress, late, said] of cases) {
+    const replay = { cycles: [], dials: [], maxDial: 1.5, canOverclock: false, job: settleJob(progress, contract, late) };
+    const { run, setup, fresh } = song({ practice: false, contract, replay });
+    playPerfectly(run);
+    const card = resultCard(runReport({ run, setup, freshCpu: fresh, dials: [], calls: NO_CALLS }));
+    const row = card.rows.find((each) => each.kind === 'line' && each.part === 'reputation');
+    assert.ok(row?.kind === 'line', said);
+    assert.equal(row.left, said);
+    for (const glyphs of [ASCII, CP437]) assert.ok(cardLines(card, glyphs).lines.every((line) => line.text.length <= CARD_WIDTH + 1), 'a line runs off the card');
+    assert.deepEqual(cardLines(card).parts.verdict, { first: 0, last: 2 });
+  }
+});
+
 test("TICK's explanation of the results: short lines, one for each way cycles were lost, on every tier", () => {
-  for (const options of [{ singleCycle: true }, {}, { forwarding: true }, { predictor: '2-bit', l1: L1_BASE }, { forwarding: true, l1: cacheShape(['ways']) }] as SongStart[]) {
+  for (const options of [{ singleCycle: true }, {}, { forwarding: true }, { predictor: '2-bit', l1: L1_BASE }, { forwarding: true, l1: cacheShape(0, 1) }] as SongStart[]) {
     const { run, setup, fresh, words } = paidRun(false, options);
     playPerfectly(run);
     const report = runReport({ run, setup, freshCpu: fresh, dials: [], calls: NO_CALLS });
@@ -124,16 +157,16 @@ test("TICK's explanation of the results: short lines, one for each way cycles we
     assert.equal(steps.filter((step) => step.say.startsWith('A single-cycle CPU')).length, setup.singleCycle ? 0 : 1);
     // An upgraded L1 is compared with the first one; the first L1 with none.
     const first = report.compare.some((c) => c.cpu === 'first-l1');
-    assert.equal(first, Boolean(setup.l1 && setup.l1.ways > 1));
-    assert.equal(steps.some((step) => step.say.startsWith('With the first L1 (16 bytes: 4 lines of 4, direct-mapped)')), first);
+    assert.equal(first, Boolean(setup.l1 && !sameShape(setup.l1, L1_BASE)));
+    assert.equal(steps.some((step) => step.say.startsWith('With the first L1 (16 bytes: 4 lines of 4)')), first);
   }
 });
 
 test('with caches below the L1: the card says where the loads were found and their AMAT, TICK names the levels, and the run is compared without the last one', () => {
   for (const lowerCaches of [1, 2]) {
     const contract = fillBoard(NEW_GAME, () => 0.5).board[0];
-    const replay = { cycles: [], dials: [], maxDial: 1.5, canOverclock: false, paid: true, late: false };
-    const setup = songSetup({ practice: false, contract, replay, forwarding: true, l1: L1_BASE, lowerCaches, program: 'TWO PASSES' }, NEW_GAME, new URLSearchParams());
+    const replay = { cycles: [], dials: [], maxDial: 1.5, canOverclock: false, job: settleJob(NEW_GAME, contract, false) };
+    const setup = songSetup({ practice: false, contract, replay, forwarding: true, l1: L1_BASE, lowerCaches: cachesBelow(lowerCaches), program: 'TWO PASSES' }, NEW_GAME, new URLSearchParams());
     const cpu = cpuFor(setup.spec);
     const fresh = cpu.clone();
     // At 4 GHz, so the misses wait.
@@ -141,24 +174,80 @@ test('with caches below the L1: the card says where the loads were found and the
     const words = new SongWords(run, setup, { regs: [...run.pipeline.regs], memory: cpu.memory.slice(), lines: [] });
     playPerfectly(run);
     const report = runReport({ run, setup, freshCpu: fresh, dials: [], calls: NO_CALLS });
-    // TWO PASSES: 2 L1 hits, and the L2's two 16-byte blocks answer 8 misses. The first block of each comes from
-    // RAM; with the L3, its 64-byte block holds both, so the second is found there.
+    // TWO PASSES: the L1 misses every load (24 bytes read twice, 16 held), and the L2's two 16-byte blocks answer 10
+    // of them. The first block of each comes from RAM; with the L3, its 64-byte block holds both, so the second is found there.
     const below = lowerCaches > 1 ? [{ level: 'L3', loads: 1 }, { level: 'RAM', loads: 1 }] : [{ level: 'RAM', loads: 2 }];
-    assert.deepEqual(report.cache?.found, [{ level: 'L1', loads: 2 }, { level: 'L2', loads: 8 }, ...below]);
+    assert.deepEqual(report.cache?.found, [{ level: 'L1', loads: 0 }, { level: 'L2', loads: 10 }, ...below]);
     const card = resultCard(report);
     const loads = card.rows.find((row) => row.kind === 'line' && row.left.startsWith('LOADS:'));
     assert.ok(loads?.kind === 'line', 'no loads row');
-    assert.match(loads.left, lowerCaches > 1 ? /^LOADS: L1 2, L2 8, L3 1, RAM 1$/ : /^LOADS: L1 2, L2 8, RAM 2$/);
+    assert.match(loads.left, lowerCaches > 1 ? /^LOADS: L1 0, L2 10, L3 1, RAM 1$/ : /^LOADS: L1 0, L2 10, RAM 2$/);
     assert.match(loads.right ?? '', /^AMAT \d+(\.\d)? ns$/);
     for (const glyphs of [ASCII, CP437]) assert.ok(cardLines(card, glyphs).lines.every((line) => line.text.length <= CARD_WIDTH + 1), 'a line runs off the card');
     const legend = card.rows.find((row) => row.kind === 'legend');
     assert.ok(legend?.kind === 'legend' && legend.entries.some((entry) => entry.text.endsWith('WAITING ON MEMORY')));
     const steps = words.resultsTour(report);
     for (const step of steps) assert.ok(step.say.length <= 150, `too long: ${step.say}`);
-    assert.ok(steps.some((step) => (lowerCaches > 1 ? /cycles waited on memory: 8 from the L2, 1 from the L3, 1 from RAM\./ : /cycles waited on memory: 8 from the L2, 2 from RAM\./).test(step.say)));
+    assert.ok(steps.some((step) => (lowerCaches > 1 ? /cycles waited on memory: 10 from the L2, 1 from the L3, 1 from RAM\./ : /cycles waited on memory: 10 from the L2, 2 from RAM\./).test(step.say)));
     assert.ok(steps.some((step) => step.say.startsWith('On average a load took') && step.say.includes('AMAT')));
+    // The L1 found none of them: TICK says so plainly, not "0 of 12 (0%)".
+    assert.ok(steps.some((step) => step.say === "The L1 cache had none of the 12 loads: this job's data didn't fit, so every load missed."));
+    assert.ok(!steps.some((step) => /had 0 of/.test(step.say)));
     const without = lowerCaches === 1 ? 'no-l2' : 'no-l3';
     assert.ok(report.compare.some((c) => c.cpu === without), without);
     assert.ok(steps.some((step) => step.say.startsWith(lowerCaches === 1 ? 'With the L1 alone' : 'Without the L3')));
   }
+});
+
+test("the cache's words never mention mapping, and fit their places", () => {
+  const MAPPING = /\bCONFLICT\b|\bTAGS?\b|\bSETS?\b|DIRECT-MAPPED|\d-WAY|tttt/i;
+  const slot = { instr: { op: 'lw' } } as never;
+  for (const [l1, lowerCaches] of [[L1_BASE, []], [cacheShape(0, 2), []], [L1_BASE, cachesBelow(2)]] as const) {
+    const { words, shown } = (() => {
+      const made = song({ forwarding: true, l1, lowerCaches });
+      const lines = Array.from({ length: l1.lines }, (_, i) => ({ valid: i < 3, block: i * 5 }));
+      const shown: Shown = { regs: [], memory: new Uint8Array(256).fill(7), lines };
+      return { words: new SongWords(made.run, made.setup, shown), shown };
+    })();
+    const accesses = [
+      { kind: 'load', address: 20, size: 4, level: 'L1', cycles: 1, ns: 1, hit: true, used: [1] },
+      { kind: 'load', address: 40, size: 4, level: lowerCaches.length ? 'L2' : 'RAM', cycles: 244, ns: 61, hit: false, missKind: 'first-use', fills: [{ block: 10, line: 3 }] },
+      { kind: 'load', address: 0, size: 4, level: 'RAM', cycles: 244, ns: 61, hit: false, missKind: 'too-small', evicted: 5, fills: [{ block: 0, line: 0 }] },
+      { kind: 'store', address: 8, size: 4, level: 'BUFFER', cycles: 1, ns: 1, hit: false, used: [] },
+    ] as const;
+    const said: string[] = [words.cacheTitle(), words.cache().body, words.lookupInfo().body, words.lookupStart()];
+    for (let line = 0; line < shown.lines.length; line++) {
+      said.push(words.cacheLine(line).title, words.cacheLine(line).body);
+      const row = words.cacheRow(line);
+      assert.ok(row.length <= 18, `cache row too long: "${row}"`);
+      said.push(row);
+    }
+    for (const access of accesses) {
+      const lookup = words.lookup(slot, access);
+      assert.ok(lookup.length <= 50, `lookup too long: "${lookup}"`);
+      said.push(lookup, ...words.access(access).map((tip) => `${tip.id} ${tip.message}`));
+    }
+    for (const text of said) assert.doesNotMatch(text, MAPPING, text);
+  }
+});
+
+test("when the L1 found none of the loads, TICK names the real reason: first use, or data that didn't fit", () => {
+  const said = (program: string) => {
+    const contract = fillBoard(NEW_GAME, () => 0.5).board[0];
+    const replay = { cycles: [], dials: [], maxDial: 1.5, canOverclock: false, job: settleJob(NEW_GAME, contract, false) };
+    const setup = songSetup({ practice: false, contract, replay, forwarding: true, l1: L1_BASE, program }, NEW_GAME, new URLSearchParams());
+    const cpu = cpuFor(setup.spec);
+    const fresh = cpu.clone();
+    const run = new PipelineRun(cpu, pipelineOptions(setup, 4000), 3, 0.6, NORMAL_WINDOWS, new Chip(4000));
+    const words = new SongWords(run, setup, { regs: [...run.pipeline.regs], memory: cpu.memory.slice(), lines: [] });
+    playPerfectly(run);
+    const report = runReport({ run, setup, freshCpu: fresh, dials: [], calls: NO_CALLS });
+    assert.equal(report.cache?.hits, 0, program);
+    return words.resultsTour(report).map((step) => step.say).find((say) => say.startsWith('The L1 cache had none')) ?? '';
+  };
+  // SUM WORDS reads six 32-bit numbers once: each needs a 4-byte block of its own, never loaded before. They'd fit.
+  assert.match(said('SUM WORDS'), /FIRST USE/);
+  assert.doesNotMatch(said('SUM WORDS'), /didn't fit/);
+  // TWO PASSES reads 24 bytes twice: more than the 16 the L1 holds, so the second pass finds them pushed out.
+  assert.match(said('TWO PASSES'), /didn't fit/);
 });

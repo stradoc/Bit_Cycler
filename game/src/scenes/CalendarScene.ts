@@ -24,14 +24,14 @@ const DETAIL_H = 362;
 function eventLines(event: CalendarEvent): string[] {
   switch (event.kind) {
     case 'offers-end':
-      return [`LAST DAY FOR ${event.clients.length} OFFER${event.clients.length === 1 ? '' : 'S'}:`, ...event.clients.map((client) => `  ${client}`)];
+      return [`LAST DAY FOR ${event.offers.length} OFFER${event.offers.length === 1 ? '' : 'S'}:`, ...event.offers.map((offer) => `  ${offer}`)];
   }
 }
 
 function eventCell(event: CalendarEvent): string {
   switch (event.kind) {
     case 'offers-end':
-      return `${event.clients.length} OFFER${event.clients.length === 1 ? '' : 'S'}`;
+      return `${event.offers.length} OFFER${event.offers.length === 1 ? '' : 'S'}`;
   }
 }
 

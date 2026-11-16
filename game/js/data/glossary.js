@@ -51,11 +51,11 @@ export const GLOSSARY = {
     },
     CACHE: {
         title: 'L1 CACHE',
-        body: 'A tiny, fast memory beside the CPU: 4 lines, each holding one 4-byte block. A load whose block is there is a HIT (no wait); a MISS brings the whole block in from RAM.',
+        body: 'A tiny, fast memory beside the CPU: 4 lines, each holding one 4-byte block, any block in any line. A load whose block is there is a HIT (no wait); a MISS brings the whole block in from RAM.',
     },
     LOOKUP: {
         title: 'CACHE LOOKUP',
-        body: 'An address splits into tttt ii oo: ii picks the line, tttt (the tag) says which block is in it, oo is the byte. Valid line + same tag = HIT. Stores go out through a write buffer.',
+        body: 'A load asks every line at once: does one hold the block with this address? If so, a HIT. If not, a MISS: the block comes in, and when all lines are full the one used longest ago makes room. Stores go out through a write buffer.',
     },
     BUS: {
         title: 'WRITE-BACK BUS',

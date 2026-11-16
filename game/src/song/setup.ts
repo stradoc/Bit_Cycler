@@ -1,4 +1,4 @@
-import { CACHE_UPGRADES, DEEP_PIPELINE, MEMORY_PARTS } from '../data/economy.ts';
+import { DEEP_PIPELINE, MEMORY_PARTS } from '../data/economy.ts';
 import { programByName, type ProgramSpec } from '../data/programs.ts';
 import { songFor, type Song } from '../data/songs.ts';
 import type { TierOptions } from '../data/tiers.ts';
@@ -6,9 +6,9 @@ import type { Judgment } from '../rhythm/judge.ts';
 import type { Action, Outcome } from '../rhythm/pipelineRun.ts';
 import { DEFAULT_DIFFICULTY, DIFFICULTIES, isDifficulty, type Difficulty, type Pace } from '../rhythm/tempo.ts';
 import type { WordBits } from '../sim/cpu.ts';
-import { cacheShape, type CacheShape } from '../sim/memory.ts';
+import { cachesBelow, cacheShape, type CacheShape, type LowerCache } from '../sim/memory.ts';
 import type { PipelineOptions, Predictor } from '../sim/pipeline.ts';
-import { cacheOf, deepActive, lowerCachesOf, ratedMhzFor, type Contract, type Progress } from '../sim/progress.ts';
+import { cacheOf, deepActive, lowerCachesOf, ratedMhzFor, type Contract, type JobResult, type Progress } from '../sim/progress.ts';
 import { THERMAL } from '../sim/thermal.ts';
 import { ROWS, SINGLE_CYCLE_ROWS, type Rows } from './layout.ts';
 
@@ -30,9 +30,8 @@ export type Recording = {
   /** The chip as the run started: its top clock (its wear), and whether H could pass the rated clock. */
   readonly maxDial: number;
   readonly canOverclock: boolean;
-  /** The run paid its contract (half pay if `late`). */
-  readonly paid: boolean;
-  readonly late: boolean;
+  /** The run's contract, settled when it ended (sim/progress.ts settleJob): late or not, what it paid, what it did to reputation. None if it wasn't a paid job. */
+  readonly job?: JobResult;
 };
 
 /**
@@ -44,8 +43,8 @@ export type SongStart = TierOptions & {
   readonly difficulty?: Difficulty;
   /** The L1 data cache, as it's built, or false for none. */
   readonly l1?: CacheShape | false;
-  /** How many caches below the L1 (sim/memory.ts LOWER_CACHES: 1 the L2, 2 the L2 and L3). Given an L1 without this: none. */
-  readonly lowerCaches?: number;
+  /** The caches below the L1, as they're built (sim/memory.ts cachesBelow). Given an L1 without this: none. */
+  readonly lowerCaches?: readonly LowerCache[];
   /** The deep pipeline: a faster clock, dearer wrong guesses. */
   readonly deep?: boolean;
   /** Notes wait for the player, and mistakes are explained. */
@@ -78,10 +77,10 @@ export type SongSetup = {
   readonly guessing: boolean;
   /** Tiers 5-6: a hardware predictor guesses first. */
   readonly predictor: Predictor | undefined;
-  /** The L1 data cache (from the shop, with its upgrades), or false without one. */
+  /** The L1 data cache (from the shop, with its size steps), or false without one. */
   readonly l1: CacheShape | false;
-  /** How many of the caches below the L1 an L1 miss checks before RAM (LOWER_CACHES: 0, 1 the L2, 2 the L2 and L3); 0 without an L1. */
-  readonly lowerCaches: number;
+  /** The caches below the L1 an L1 miss checks before RAM, with their size steps (none, the L2, or the L2 and L3); none without an L1. */
+  readonly lowerCaches: readonly LowerCache[];
   /** The deep pipeline, switched on in the shop (with branch guessing): the rated clock is faster and a wrong guess costs more. */
   readonly deep: boolean;
   /** Superscalar (tier 7): two instructions can start together, a chord. */
@@ -137,10 +136,10 @@ export function songSetup(start: SongStart, progress: Progress, params: URLSearc
   const clock = Number(params.get('clock')) / 100;
   const asked = params.get('difficulty');
   const difficulty = start.difficulty ?? (isDifficulty(asked) ? asked : DEFAULT_DIFFICULTY);
-  // ?cache fits the L1 cache; ?cache=lines,ways,blocks with those upgrades, and l2 or l3 with the caches below it.
+  // ?cache fits the L1 cache; ?cache=l2 or l3 with the caches below it, and ?sizes=2,1,0 with those size steps.
   // A lesson that names its L1 runs it alone unless it names the levels below too.
   const l1 = start.l1 ?? cacheOf(progress) ?? cacheParam(params);
-  const lowerCaches = !l1 ? 0 : (start.lowerCaches ?? (start.l1 !== undefined ? 0 : cacheOf(progress) ? lowerCachesOf(progress) : lowerParam(params)));
+  const lowerCaches = !l1 ? [] : (start.lowerCaches ?? (start.l1 !== undefined ? [] : cacheOf(progress) ? lowerCachesOf(progress) : lowerParam(params)));
   return {
     program,
     spec: programByName(program),
@@ -176,17 +175,22 @@ export function songSetup(start: SongStart, progress: Progress, params: URLSearc
   };
 }
 
-/** The L1 the URL asks for: ?cache for the first one, ?cache=lines,ways with those upgrades (CACHE_UPGRADES' ids). */
-function cacheParam(params: URLSearchParams): CacheShape | false {
-  if (!params.has('cache')) return false;
-  const asked = (params.get('cache') ?? '').split(',');
-  return cacheShape(CACHE_UPGRADES.filter((upgrade) => asked.includes(upgrade.id)).map((upgrade) => upgrade.id));
+/** The size steps the URL asks for, each level's (?sizes=2,1,0: the L1 first), as Progress.cacheSizes keeps them. */
+function sizesParam(params: URLSearchParams): number[] {
+  return (params.get('sizes') ?? '').split(',').map((steps) => Number(steps) || 0);
 }
 
-/** The caches below the L1 the URL asks for: ?cache=l2 the L2, ?cache=l3 the L2 and L3 (MEMORY_PARTS' ids). */
-function lowerParam(params: URLSearchParams): number {
+/** The L1 the URL asks for: ?cache for the first one, with ?sizes' steps. */
+function cacheParam(params: URLSearchParams): CacheShape | false {
+  if (!params.has('cache')) return false;
+  return cacheShape(0, sizesParam(params)[0] ?? 0);
+}
+
+/** The caches below the L1 the URL asks for: ?cache=l2 the L2, ?cache=l3 the L2 and L3 (MEMORY_PARTS' ids), with ?sizes' steps. */
+function lowerParam(params: URLSearchParams): readonly LowerCache[] {
   const asked = (params.get('cache') ?? '').split(',');
-  return MEMORY_PARTS.reduce((levels, part, i) => (i > 0 && asked.includes(part.id) ? i : levels), 0);
+  const levels = MEMORY_PARTS.reduce((most, part, i) => (i > 0 && asked.includes(part.id) ? i : most), 0);
+  return cachesBelow(levels, sizesParam(params));
 }
 
 /** The hardware the simulator runs for this song, at a clock (MHz). */

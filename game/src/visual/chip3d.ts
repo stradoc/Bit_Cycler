@@ -1,6 +1,5 @@
 import { CLOCK, COOLING } from '../data/economy.ts';
 import { formatMhz } from '../format.ts';
-import { cachesBelow, setsOf } from '../sim/memory.ts';
 import { cacheOf, lowerCachesOf, ratedMhz, tierOf, type Progress } from '../sim/progress.ts';
 import { THERMAL } from '../sim/thermal.ts';
 import type { Era } from '../ui/eras.ts';
@@ -76,28 +75,26 @@ export function buildChip(progress: Progress): Part<Material>[] {
     }
   }
   // The L1 cache as it's built: a row of memory cells per line, a cell per byte of its block (4 lines of 4 at
-  // first), in the same patch of the die however many there are. The lines of a 2-way set sit together, a gap between sets.
+  // first), in the same patch of the die however many there are.
   const l1 = cacheOf(progress);
   if (l1) {
-    const ways = l1.ways;
-    const rows = l1.lines + (ways > 1 ? (setsOf(l1) - 1) * 0.5 : 0);
-    const [pitchX, pitchZ] = [26.5 / l1.blockBytes, 26.5 / rows];
+    const [pitchX, pitchZ] = [26.5 / l1.blockBytes, 26.5 / l1.lines];
     for (let line = 0; line < l1.lines; line++) {
-      const z = 4 + (line + (ways > 1 ? Math.floor(line / ways) * 0.5 : 0)) * pitchZ;
+      const z = 4 + line * pitchZ;
       for (let byte = 0; byte < l1.blockBytes; byte++) {
         const x = 6 + byte * pitchX;
         parts.push(box([x, DIE_TOP, z], [x + pitchX * 0.77, DIE_TOP + 3, z + pitchZ * 0.77], 'cache'));
       }
     }
   }
-  // The caches below the L1, each in its own patch of the die (LOWER_AREAS): a bar per line, the lines of a set
-  // together, standing taller the further down the level is.
-  cachesBelow(lowerCachesOf(progress)).forEach((level, i) => {
+  // The caches below the L1, each in its own patch of the die (LOWER_AREAS): a bar per line, standing taller the
+  // further down the level is.
+  lowerCachesOf(progress).forEach((level, i) => {
     const area = LOWER_AREAS[i];
-    const { lines, ways } = level.shape;
-    const pitch = (area.to - area.from) / (lines + (setsOf(level.shape) - 1) * 0.5);
+    const { lines } = level.shape;
+    const pitch = (area.to - area.from) / lines;
     for (let line = 0; line < lines; line++) {
-      const at = area.from + (line + Math.floor(line / ways) * 0.5) * pitch;
+      const at = area.from + line * pitch;
       const [a, b] = [at, at + pitch * 0.8];
       parts.push(area.along === 'z' ? box([area.across[0], DIE_TOP, a], [area.across[1], DIE_TOP + area.height, b], 'cache') : box([a, DIE_TOP, area.across[0]], [b, DIE_TOP + area.height, area.across[1]], 'cache'));
     }

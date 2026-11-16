@@ -15,7 +15,7 @@ export type ProgramSpec = {
   readonly roles?: Readonly<Record<number, string>>;
   /** What the interesting parts of memory hold (shown when memory is clicked). */
   readonly memoryNote?: string;
-  /** Who a contract is for (generated programs: a made-up company), shown on the board and in the song. */
+  /** Who a contract is for (generated programs: one of the five companies, data/companies.ts), shown on the board and in the song. */
   readonly client?: string;
   /** The loop's key registers (next address, end), tagged in the panel and introduced in the count-in. */
   readonly keys?: readonly KeyRegister[];
@@ -129,10 +129,10 @@ col:  lb   x4, 0(x1)
       { reg: 6, tag: 'GRID', about: 'END OF THE GRID: STOP AT 12' },
     ],
   },
-  // The L1's upgrades, each shown on a program made for the misses it fixes (data/lessons.ts).
+  // The caches' lessons, each shown on a program made for the misses a part fixes (data/lessons.ts).
   {
     name: 'SUM WORDS',
-    // BIGGER BLOCKS: six 32-bit numbers, each its own 4-byte block, so every load is a FIRST USE miss.
+    // A SIZE STEP: six 32-bit numbers, each its own 4-byte block, so every load is a FIRST USE miss.
     // In 8-byte blocks, each miss brings in the next number too: half the misses.
     source: `
       addi x1, x0, 0      # x1 = address of the next number
@@ -162,40 +162,10 @@ loop: lw   x4, 0(x1)
     ],
   },
   {
-    name: 'ADD TWO LISTS',
-    // 2-WAY: two lists of bytes 16 apart, a whole first L1 apart, so each pair's blocks need the same line and
-    // push each other out: every load misses (CONFLICT). In 2-way sets both blocks fit.
-    source: `
-      addi x1, x0, 0      # x1 = which pair (its address in the first list)
-      addi x2, x0, 6      # x2 = how many pairs
-loop: lb   x3, 0(x1)      # from the first list
-      lb   x4, 16(x1)     # from the second, 16 bytes on
-      add  x3, x3, x4
-      sb   x3, 0(x1)      # the sum replaces the first
-      addi x1, x1, 1
-      bne  x1, x2, loop
-    `,
-    memory: [4, 7, 2, 9, 5, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 1, 8, 2, 4, 7],
-    elements: 6,
-    verb: 'ADD PAIRS OF',
-    unit: 'BYTES',
-    roles: {
-      1: 'which pair: its address in the first list (the second is 16 bytes on)',
-      2: 'how many pairs (6): the loop stops when x1 reaches it',
-      3: 'a byte from the first list, then the sum',
-      4: 'a byte from the second list',
-    },
-    memoryNote: 'Addresses 0-5 and 16-21 hold two lists. They are 16 bytes apart, so on the first L1 each pair needs the same line. Each sum replaces the byte in the first list.',
-    keys: [
-      { reg: 1, tag: 'NEXT', about: 'WHICH PAIR IS NEXT, FROM 0' },
-      { reg: 2, tag: 'END', about: 'STOP WHEN x1 REACHES 6' },
-    ],
-  },
-  {
     name: 'TWO PASSES',
-    // MORE LINES: six 32-bit numbers (24 bytes) read twice: once for their total, again to work out each
+    // THE L2: six 32-bit numbers (24 bytes) read twice: once for their total, again to work out each
     // one's "all the others" (the total less itself). The first L1 holds 16 bytes, so by the second pass the
-    // first numbers are gone (TOO SMALL); with 8 lines all 24 bytes fit, and the second pass all hits.
+    // first numbers are gone (TOO SMALL): every load misses. The L2 holds all 24 bytes, so it answers them.
     source: `
       addi x1, x0, 0      # x1 = address of the next number
       addi x2, x0, 24     # x2 = end address: 6 numbers, 4 bytes each

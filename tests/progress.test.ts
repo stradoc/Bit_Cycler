@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CACHE_UPGRADES, CHIPS, CLOCK, DATA_WIDTHS, GRADES, MEMORY_PARTS, WORKDAY } from '../game/src/data/economy.ts';
+import { CHIPS, CLOCK, DATA_WIDTHS, GRADES, JOBS_PER_COMPANY, MEMORY_PARTS, WORKDAY } from '../game/src/data/economy.ts';
 import { bitsOf } from '../game/src/sim/generator.ts';
+import { finishJob } from '../game/src/sim/workday.ts';
 import { programByName } from '../game/src/data/programs.ts';
 import { isWip, LESSONS } from '../game/src/data/lessons.ts';
 import { formatCount, formatDuration, formatMhz, formatMoney } from '../game/src/format.ts';
@@ -11,7 +12,6 @@ import {
   cacheOf,
   chipByBits,
   chipNeeded,
-  completeContract,
   contractSeconds,
   cpiFor,
   cpuLine,
@@ -24,6 +24,7 @@ import {
   NEW_GAME,
   newContract,
   pastMemoryWall,
+  payFor,
   payPerHour,
   ratedMhz,
   shopItems,
@@ -194,15 +195,14 @@ test("a contract is locked when your CPU can't meet its deadline, and tight when
   assert.ok(!isTight(job, cached));
   assert.ok(isTight({ ...job, deadline: 22 * day }, cached)); // 19 of 22 days: a sloppy run could be late
   assert.ok(isLocked({ ...job, deadline: 15 * day }, cached));
-  // A huge job at 4 GHz with every part and the cache, on the program that misses the cache most when its
-  // data doesn't collide, is possible; without the cache it's out of reach.
+  // A huge job at 4 GHz with every part and the cache, on a program that misses the cache on its first use of
+  // every block, is possible; without the cache it's out of reach.
   const best: Progress = { ...NEW_GAME, parts: ['pipeline', 'forwarding', 'guessing', 'predictor1', 'predictor2'], clockLevel: 10, cacheLevels: 1 };
   const hardest = { ...job, instructions: 7e13, deadline: 7 * day, program: 'ADD ARRAYS #16' };
   assert.ok(!isLocked(hardest, best));
   assert.ok(isLocked(hardest, { ...best, cacheLevels: 0 }));
-  // Arrays a cache-full apart (ADD ARRAYS #1) miss on every load: over twice as slow, so that job is locked.
-  assert.ok(cpiFor('ADD ARRAYS #1', best) > 2 * cpiFor('ADD ARRAYS #16', best));
-  assert.ok(isLocked({ ...hardest, program: 'ADD ARRAYS #1' }, best));
+  // Any block can go in any line, so arrays a cache-full apart (ADD ARRAYS #1) no longer fight over one: the same speed.
+  assert.equal(cpiFor('ADD ARRAYS #1', best), cpiFor('ADD ARRAYS #16', best));
 });
 
 test('the memory wall: clock upgrades past it help less, and the L1 cache goes on sale', () => {
@@ -230,29 +230,46 @@ test('the memory wall: clock upgrades past it help less, and the L1 cache goes o
   assert.ok(savedCached > saved, `${savedCached}% vs ${saved}%`);
 });
 
-test("the L1's upgrades: on sale once the L1 is in, in any order, each with its lesson", () => {
+test('size steps: one at a time once their level is in, the lesson once, then max', () => {
   const cached: Progress = { ...NEW_GAME, wordBits: 32, parts: ['pipeline', 'forwarding'], money: 10_000, clockLevel: 3, cacheLevels: 1 };
   const item = (p: Progress, key: string) => shopItems(p).find((i) => i.key === key);
-  for (const upgrade of CACHE_UPGRADES) {
-    assert.equal(item({ ...cached, cacheLevels: 0 }, upgrade.id)?.state, 'later', upgrade.id);
-    assert.equal(item(cached, upgrade.id)?.state, 'buy', upgrade.id);
-    assert.equal(item(cached, upgrade.id)?.lessonId, upgrade.lessonId);
-    assert.equal(item(cached, upgrade.id)?.group, 'MEMORY');
-  }
-  // Bought out of order, each one says what the cache becomes, and stays bought.
-  const ways = buy(cached, 'ways');
-  assert.ok(ways);
-  assert.deepEqual(ways.cacheUpgrades, ['ways']);
-  assert.equal(item(ways, 'ways')?.state, 'owned');
-  assert.match(item(ways, 'blocks')?.about ?? '', /32 BYTES: 4 LINES OF 8, 2-WAY/);
-  const both = buy(ways, 'blocks');
-  assert.ok(both);
-  assert.deepEqual(cacheOf(both), { lines: 4, blockBytes: 8, ways: 2 });
-  assert.equal(cacheOf({ ...both, cacheLevels: 0 }), undefined);
-  // The board's estimates use the cache you own: two lists that collide in the first L1 are quicker on 2-way sets.
-  const colliding = 'ADD TWO LISTS';
-  assert.ok(cpiFor(colliding, ways) < cpiFor(colliding, cached), `${cpiFor(colliding, ways)} vs ${cpiFor(colliding, cached)}`);
-  assert.deepEqual(withEverything(NEW_GAME).cacheUpgrades, CACHE_UPGRADES.map((upgrade) => upgrade.id));
+  assert.equal(item({ ...cached, cacheLevels: 0 }, 'l1size')?.state, 'later');
+  const first = item(cached, 'l1size');
+  assert.deepEqual([first?.state, first?.price, first?.lessonId, first?.group], ['buy', 400, 'size', 'MEMORY']);
+  assert.match(first?.about ?? '', /32 BYTES: 4 LINES OF 8/);
+  assert.match(first?.about ?? '', /5 ns longer/);
+  const one = buy(cached, 'l1size');
+  assert.ok(one);
+  assert.deepEqual(one.cacheSizes, [1, 0, 0]);
+  assert.equal(one.money, 10_000 - 400);
+  assert.deepEqual(cacheOf(one), { lines: 4, blockBytes: 8 });
+  assert.deepEqual([item(one, 'l1size')?.state, item(one, 'l1size')?.price], ['buy', 800]);
+  // The lesson plays once: after it's been seen, the next step comes without it.
+  assert.equal(item({ ...one, seenLessons: ['size'] }, 'l1size')?.lessonId, undefined);
+  const two = buy(one, 'l1size');
+  assert.ok(two);
+  assert.deepEqual(two.cacheSizes, [2, 0, 0]);
+  const top = item(two, 'l1size');
+  assert.deepEqual([top?.state, top?.price, top?.name], ['max', 0, 'L1 SIZE: 64 BYTES (WIP)']);
+  assert.equal(buy(two, 'l1size'), null);
+  assert.deepEqual(two.cacheSizes, [2, 0, 0]);
+  assert.equal(cacheOf({ ...two, cacheLevels: 0 }), undefined);
+  // A lower level's steps go on sale once it's in, and cost no time per trip.
+  assert.equal(item(two, 'l2size')?.state, 'later');
+  const l2: Progress = { ...two, cacheLevels: 2 };
+  assert.deepEqual([item(l2, 'l2size')?.state, item(l2, 'l2size')?.price], ['buy', 600]);
+  assert.match(item(l2, 'l2size')?.about ?? '', /256 BYTES: 8 LINES OF 32/);
+  // The board's estimates use the cache you own: data read twice is quicker once it fits.
+  assert.ok(cpiFor('TWO PASSES', one) < cpiFor('TWO PASSES', cached), `${cpiFor('TWO PASSES', one)} vs ${cpiFor('TWO PASSES', cached)}`);
+  assert.deepEqual(withEverything(NEW_GAME).cacheSizes, [2, 2, 2]);
+});
+
+test("an owned cache level's shop line says its size now, steps and all", () => {
+  const item = (p: Progress, key: string) => shopItems(p).find((i) => i.key === key);
+  const owned: Progress = { ...NEW_GAME, wordBits: 64, parts: ['pipeline', 'forwarding'], clockLevel: 4, cacheLevels: 2, cacheSizes: [2, 1, 0] };
+  assert.equal(item(owned, 'l1')?.state, 'owned');
+  assert.match(item(owned, 'l1')?.about ?? '', /64 BYTES: 4 LINES OF 16/);
+  assert.match(item(owned, 'l2')?.about ?? '', /256 BYTES: 8 LINES OF 32/);
 });
 
 test('the L2 and L3: each on sale after the level above it, once the chip is wide enough, each with its lesson', () => {
@@ -269,19 +286,19 @@ test('the L2 and L3: each on sale after the level above it, once the chip is wid
   const l2 = buy(wide, 'l2');
   assert.ok(l2);
   assert.equal(l2.cacheLevels, 2);
-  assert.equal(lowerCachesOf(l2), 1);
+  assert.equal(lowerCachesOf(l2).length, 1);
   assert.equal(l2.money, 10_000 - MEMORY_PARTS[1].price);
   // The L3 needs the L2 and the 64-bit chip.
   assert.equal(item(l2, 'l3')?.state, 'later');
   assert.equal(item({ ...l2, wordBits: 64, cacheLevels: 1 }, 'l3')?.state, 'later', 'not before the L2');
   const l3 = buy({ ...l2, wordBits: 64 }, 'l3');
   assert.ok(l3);
-  assert.equal(lowerCachesOf(l3), 2);
+  assert.equal(lowerCachesOf(l3).length, 2);
   assert.equal(item(l3, 'l3')?.state, 'owned');
   assert.equal(item(l3, 'l3')?.lessonId, 'l3');
-  // The shop lists the L1, its upgrades, then the levels below it.
+  // The shop lists each level, then its size steps.
   const keys = shopItems(l3).filter((i) => i.group === 'MEMORY').map((i) => i.key);
-  assert.deepEqual(keys, ['l1', ...CACHE_UPGRADES.map((upgrade) => upgrade.id), 'l2', 'l3']);
+  assert.deepEqual(keys, ['l1', 'l1size', 'l2', 'l2size', 'l3', 'l3size']);
   // The board's estimates use them: a 32-bit job that outgrows the L1 is quicker with the L2 behind it.
   const fast: Progress = { ...wide, clockLevel: 9 };
   assert.ok(cpiFor('TWO PASSES', { ...fast, cacheLevels: 2 }) < cpiFor('TWO PASSES', fast));
@@ -290,9 +307,9 @@ test('the L2 and L3: each on sale after the level above it, once the chip is wid
 test('parts still being reworked are marked WIP in the shop, and their lessons too', () => {
   const all = shopItems({ ...withEverything(NEW_GAME), money: 0 });
   const name = (key: string) => all.find((item) => item.key === key)?.name ?? '';
-  for (const key of ['lines', 'ways', 'blocks', 'l2', 'l3']) assert.match(name(key), / \(WIP\)$/, key);
+  for (const key of ['l1size', 'l2', 'l2size', 'l3', 'l3size']) assert.match(name(key), / \(WIP\)$/, key);
   for (const key of ['l1', 'superscalar', 'clock']) assert.doesNotMatch(name(key), /WIP/, key);
-  assert.deepEqual(Object.keys(LESSONS).filter(isWip).sort(), ['bigblocks', 'l2', 'l3', 'morelines', 'twoway']);
+  assert.deepEqual(Object.keys(LESSONS).filter(isWip).sort(), ['l2', 'l3', 'size']);
 });
 
 test('the board is endless: finishing a contract pays and puts a new one in its place', () => {
@@ -300,20 +317,30 @@ test('the board is endless: finishing a contract pays and puts a new one in its 
   const board = fillBoard(NEW_GAME, random);
   assert.equal(board.board.length, GRADES.length * 2);
   const done = board.board[0];
-  const after = completeContract(board, done.id, random);
+  const after = finishJob(board, done, 3600, false, random).progress;
   assert.equal(after.money, done.pay);
-  const late = completeContract(board, done.id, random, true);
+  const late = finishJob(board, done, 3600, true, random).progress;
   assert.equal(late.money, Math.round(done.pay / 2)); // past its deadline: half pay
   assert.equal(after.board.length, board.board.length);
   assert.ok(!after.board.some((c) => c.id === done.id));
   assert.equal(after.board.filter((c) => c.grade === done.grade).length, 2);
 });
 
-test('the board never shows the same client twice', () => {
-  for (let seed = 1; seed <= 50; seed++) {
-    const board = fillBoard(NEW_GAME, seeded(seed)).board;
-    const clients = board.map((c) => programByName(c.program).client);
-    assert.equal(new Set(clients).size, clients.length, clients.join(', '));
+test("a job's pay: its own at a new game's reputation, half if late, and more as reputation grows", () => {
+  const contract = fillBoard(NEW_GAME, seeded(3)).board[0];
+  assert.equal(payFor(NEW_GAME, contract), contract.pay);
+  assert.equal(payFor(NEW_GAME, contract, true), Math.round(contract.pay / 2));
+  assert.equal(payFor({ ...NEW_GAME, day: 8, reputation: { good: 15, bad: 0 } }, contract), Math.round(contract.pay * 1.5));
+  assert.equal(payFor({ ...NEW_GAME, day: 8, reputation: { good: 15, bad: 2 } }, contract), Math.round(contract.pay * 1.35));
+});
+
+test('no company has more than two jobs on the board', () => {
+  for (let seed = 1; seed <= 200; seed++) {
+    for (const start of [NEW_GAME, withTier(NEW_GAME, 7)]) {
+      const board = fillBoard(start, seeded(seed)).board;
+      const clients = board.map((c) => programByName(c.program).client ?? '');
+      for (const client of new Set(clients)) assert.ok(clients.filter((each) => each === client).length <= JOBS_PER_COMPANY, `seed ${seed}: ${clients.join(', ')}`);
+    }
   }
 });
 

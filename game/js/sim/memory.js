@@ -4,13 +4,16 @@
 // load waits, the whole pipeline freezes (the textbook's in-order pipeline),
 // so the waiting cycles raise CPI.
 //
-// The L1 cache starts as the textbook's first cache: 16 bytes, direct-mapped,
-// 4 lines of 4 bytes. An 8-bit address splits into tag (4 bits), line (2) and
-// offset (2): tttt ii oo. Its shape is data (CacheShape): the shop's upgrades
-// (data/economy.ts CACHE_UPGRADES) give it 8 lines, 2-way sets (lines paired,
-// a block going in either line of its set, the one used longest ago making
-// room) or 8-byte blocks, and the address split follows. A hit is served
-// inside the MEMORY stage. A miss checks L1, then the caches below it in turn
+// The L1 cache starts at 16 bytes: 4 lines of 4-byte blocks. Every cache here
+// is fully associative: a block can go in any line, and when all are full the
+// line used longest ago makes room (least recently used). That's a
+// simplification: real L1 caches are seldom built that way, since every line
+// has to be checked at once, and use sets instead. It leaves two kinds of
+// miss, both easy to see: a block's first use, and a cache too small to keep
+// it. A cache's shape is data (CacheShape): each level's size steps (the
+// shop's, data/economy.ts MEMORY_PARTS' sizes) double its blocks, so each
+// trip brings back more of the data next to it. A hit is served inside the
+// MEMORY stage. A miss checks L1, then the caches below it in turn
 // (LOWER_CACHES: the L2, then the L3, once bought), each lookup adding its
 // time, and the first level that has the block answers; RAM if none does.
 // Every level it missed on keeps a copy of its own (bigger) block on the way
@@ -20,7 +23,7 @@
 // stores wait for RAM like loads. Instruction fetch is always fast: like the
 // textbook's separate instruction memory, or an instruction cache that always
 // hits on small loops.
-import { CACHE_UPGRADES } from '../data/economy.js';
+import { MEMORY_PARTS } from '../data/economy.js';
 export const MEMORY_TIMING = {
     /** One DRAM access (ns), bringing 4 bytes. Approximate: the textbook gives 50-70 ns for DRAM. */
     ramNs: 60,
@@ -35,53 +38,62 @@ export const MEMORY_TIMING = {
      */
     moreBytesNs: 5,
 };
-/** The L1 cache as it's first bought: 16 bytes, 4 lines of 4, direct-mapped. */
-export const L1_BASE = { lines: 4, blockBytes: 4, ways: 1 };
-/** The L1 with these shop upgrades (CACHE_UPGRADES), in any order. */
-export function cacheShape(upgrades) {
-    return CACHE_UPGRADES.reduce((shape, upgrade) => (upgrades.includes(upgrade.id) ? { ...shape, [upgrade.field]: upgrade.value } : shape), L1_BASE);
+/** The L1 cache as it's first bought: 16 bytes, 4 lines of 4. */
+export const L1_BASE = { lines: 4, blockBytes: 4 };
+/**
+ * A cache level (0 the L1, 1 the L2, 2 the L3) with `steps` of its size steps
+ * (MEMORY_PARTS' sizes) bought: its lines as first bought, its blocks from
+ * the last step (more steps than there are count as all of them).
+ */
+export function cacheShape(level, steps = 0) {
+    const base = level === 0 ? L1_BASE : LOWER_CACHES[level - 1].shape;
+    const sizes = MEMORY_PARTS[level].sizes;
+    const owned = Math.max(0, Math.min(sizes.length, Math.floor(steps)));
+    return owned === 0 ? base : { lines: base.lines, blockBytes: sizes[owned - 1].blockBytes };
 }
 /** Two caches built the same way. */
-export const sameShape = (a, b) => a.lines === b.lines && a.blockBytes === b.blockBytes && a.ways === b.ways;
+export const sameShape = (a, b) => a.lines === b.lines && a.blockBytes === b.blockBytes;
 /** The cache's size in bytes. */
 export const cacheBytes = (shape) => shape.lines * shape.blockBytes;
-/** How many sets it has: places a block can be found (a set holds `ways` lines). */
-export const setsOf = (shape) => shape.lines / shape.ways;
 /**
- * The caches below the L1 (the shop's memory parts after it), in the order a
- * miss checks them. Each is bigger, with bigger blocks, and slower: lower
- * levels are larger and often use larger blocks (Patterson & Hennessy 5.4).
- * The L2 (128 bytes) holds a whole 32-bit job's data, the L3 (256 bytes) a
- * whole 64-bit job's, so it misses only on first use. Times approximate: the
- * textbook's example of a second-level cache takes 5 ns.
+ * The caches below the L1 (the shop's memory parts after it), as first
+ * bought, in the order a miss checks them. Each is bigger, with bigger
+ * blocks, and slower: lower levels are larger and often use larger blocks
+ * (Patterson & Hennessy 5.4). The L2 (128 bytes) holds a whole 32-bit job's
+ * data, the L3 (256 bytes) a whole 64-bit job's, so it misses only on first
+ * use. Times approximate: the textbook's example of a second-level cache
+ * takes 5 ns.
  */
 export const LOWER_CACHES = [
-    { name: 'L2', shape: { lines: 8, blockBytes: 16, ways: 2 }, ns: 5 },
-    { name: 'L3', shape: { lines: 4, blockBytes: 64, ways: 4 }, ns: 12 },
+    { name: 'L2', shape: { lines: 8, blockBytes: 16 }, ns: 5 },
+    { name: 'L3', shape: { lines: 4, blockBytes: 64 }, ns: 12 },
 ];
-/** The caches below the L1 on a CPU that has `lower` of them (0, 1 or 2), in the order a miss checks them. */
-export const cachesBelow = (lower) => LOWER_CACHES.slice(0, lower);
-/** The cache in a few words, as the boot and the shop say it: "16 BYTES: 4 LINES OF 4, DIRECT-MAPPED". */
+/**
+ * The caches below the L1 on a CPU that has `lower` of them (0, 1 or 2), in
+ * the order a miss checks them, each grown by its size steps: `sizes` is the
+ * save's steps per level, the L1 first (Progress.cacheSizes).
+ */
+export const cachesBelow = (lower, sizes = []) => LOWER_CACHES.slice(0, lower).map((level, i) => ({ ...level, shape: cacheShape(i + 1, sizes[i + 1] ?? 0) }));
+/** The cache in a few words, as the boot and the shop say it: "16 BYTES: 4 LINES OF 4". */
 export function cacheWords(shape) {
-    const placing = shape.ways === 1 ? 'DIRECT-MAPPED' : `${shape.ways}-WAY`;
-    return `${cacheBytes(shape)} BYTES: ${shape.lines} LINES OF ${shape.blockBytes}, ${placing}`;
+    return `${cacheBytes(shape)} BYTES: ${shape.lines} LINES OF ${shape.blockBytes}`;
 }
 /**
  * Memory a byte job uses and the panel shows at once (4 rows of 8): two
- * first caches' worth, so blocks can compete for a line. A job's data fits in
+ * first caches' worth, so some jobs outgrow the first L1. A job's data fits in
  * this many items, so wider data uses more bytes (up to 256), shown through a window.
  */
 export const SHOWN_BYTES = 32;
 /**
- * How long an L1 miss takes when `from` answers it (ns), with the first
- * `lower` of LOWER_CACHES fitted: the L1 check, each lookup below it on the
+ * How long an L1 miss takes when `from` answers it (ns), with the caches
+ * `lower` below the L1 (cachesBelow): the L1 check, each lookup below it on the
  * way down to `from` (found or not), and if it came to RAM, RAM's 60 ns and
  * the time to send the rest of a bigger L1 block. A lower level's own bigger
  * block comes in behind the bytes asked for (the textbook's "critical word
  * first"), so it adds nothing here (approximate).
  */
-export function missNs(shape, lower = 0, from = 'RAM') {
-    const levels = cachesBelow(lower);
+export function missNs(shape, lower = [], from = 'RAM') {
+    const levels = lower;
     const reached = from === 'RAM' ? levels.length : levels.findIndex((level) => level.name === from) + 1;
     if (reached === 0 && from !== 'RAM')
         throw new Error(`no ${from} among ${lower} lower caches`);
@@ -94,8 +106,8 @@ export function cyclesFor(ns, mhz) {
     // The tiny margin keeps 60 ns at 4 GHz at 240 cycles despite rounding (4400.000000000001 MHz and so on).
     return Math.max(1, Math.ceil((ns * mhz) / 1000 - 1e-9));
 }
-/** Cycles a trip to RAM takes at `mhz`: without a cache, or a miss in `cache` that every level below it (the first `lower`) missed too. */
-export function ramCycles(mhz, cache, lower = 0) {
+/** Cycles a trip to RAM takes at `mhz`: without a cache, or a miss in `cache` that every level below it (`lower`) missed too. */
+export function ramCycles(mhz, cache, lower = []) {
     return cyclesFor(cache ? missNs(cache, lower) : MEMORY_TIMING.ramNs, mhz);
 }
 /**
@@ -115,47 +127,28 @@ export function freezeBeats(extraCycles) {
 }
 /** The block holding `address`: blocks are numbered from address 0, `blockBytes` each. */
 export const blockOf = (shape, address) => Math.floor(address / shape.blockBytes);
-/** The set (direct-mapped: the line) a block must go in: its number's last bits. */
-export const setOf = (shape, address) => blockOf(shape, address) % setsOf(shape);
-/** The tag: the rest of the block's number, saying which of the blocks that share a set is there. */
-export const tagOf = (shape, address) => Math.floor(blockOf(shape, address) / setsOf(shape));
-/** How many of an 8-bit address's bits are its tag, its set (or line) and its offset in the block: 4, 2, 2 at first. */
-export function addressSplit(shape) {
-    const offset = Math.log2(shape.blockBytes);
-    const set = Math.log2(setsOf(shape));
-    return { tag: 8 - set - offset, set, offset };
-}
 /**
- * A cache of any shape. Each block has one set it can go in; within the set,
- * any of its lines (an empty one first, else the one used longest ago).
- * Direct-mapped, a set is one line.
+ * A cache of any shape, fully associative: a block can go in any line (an
+ * empty one first, else the one used longest ago).
  */
 export class Cache {
     shape;
-    /** The lines, set by set: set s holds lines s x ways to s x ways + ways - 1. */
     lines;
-    /** When each line was last used, to find the one used longest ago in a set. */
+    /** When each line was last used, to find the one used longest ago. */
     lastUse;
     uses = 0;
     /** Every block ever brought in, to tell first-use misses apart. */
     seen = new Set();
-    /** The same size of cache with no fixed places (least recently used goes): most recent last. */
-    anywhere = [];
     constructor(shape = L1_BASE) {
         this.shape = shape;
-        this.lines = Array.from({ length: shape.lines }, () => ({ valid: false, tag: 0 }));
+        this.lines = Array.from({ length: shape.lines }, () => ({ valid: false, block: 0 }));
         this.lastUse = new Array(shape.lines).fill(0);
     }
     /** The line holding the block with `address`, if it's in. */
     find(address) {
-        const { ways } = this.shape;
-        const [set, tag] = [setOf(this.shape, address), tagOf(this.shape, address)];
-        for (let way = 0; way < ways; way++) {
-            const line = this.lines[set * ways + way];
-            if (line.valid && line.tag === tag)
-                return set * ways + way;
-        }
-        return undefined;
+        const block = blockOf(this.shape, address);
+        const line = this.lines.findIndex((each) => each.valid && each.block === block);
+        return line >= 0 ? line : undefined;
     }
     /** Is the block holding `address` in the cache? */
     holds(address) {
@@ -164,22 +157,18 @@ export class Cache {
     /** A load: a hit (in `line`), or a miss (and why) that brings the block into `line`. */
     read(address) {
         const block = blockOf(this.shape, address);
-        const kept = this.anywhere.includes(block);
-        this.touch(block);
         const found = this.find(address);
         if (found !== undefined) {
             this.lastUse[found] = ++this.uses;
             return { hit: true, line: found };
         }
-        const missKind = !this.seen.has(block) ? 'first-use' : kept ? 'conflict' : 'too-small';
+        const missKind = this.seen.has(block) ? 'too-small' : 'first-use';
         this.seen.add(block);
-        const set = setOf(this.shape, address);
-        const line = this.room(set);
+        const line = this.room();
         const old = this.lines[line];
-        this.lines[line] = { valid: true, tag: tagOf(this.shape, address) };
+        this.lines[line] = { valid: true, block };
         this.lastUse[line] = ++this.uses;
-        const evicted = old.valid ? old.tag * setsOf(this.shape) + set : undefined;
-        return evicted === undefined ? { hit: false, line, missKind } : { hit: false, line, missKind, evicted };
+        return old.valid ? { hit: false, line, missKind, evicted: old.block } : { hit: false, line, missKind };
     }
     /** A store: write-through, so the cache only matters if the block is already in (no write allocate). */
     write(address) {
@@ -187,28 +176,18 @@ export class Cache {
         if (found === undefined)
             return { hit: false };
         this.lastUse[found] = ++this.uses;
-        this.touch(blockOf(this.shape, address));
         return { hit: true, line: found };
     }
-    /** The line a new block takes in `set`: an empty one, else the one used longest ago. */
-    room(set) {
-        const { ways } = this.shape;
-        let best = set * ways;
-        for (let line = set * ways; line < (set + 1) * ways; line++) {
+    /** The line a new block takes: an empty one, else the one used longest ago. */
+    room() {
+        let best = 0;
+        for (let line = 0; line < this.lines.length; line++) {
             if (!this.lines[line].valid)
                 return line;
             if (this.lastUse[line] < this.lastUse[best])
                 best = line;
         }
         return best;
-    }
-    touch(block) {
-        const at = this.anywhere.indexOf(block);
-        if (at >= 0)
-            this.anywhere.splice(at, 1);
-        this.anywhere.push(block);
-        if (this.anywhere.length > this.shape.lines)
-            this.anywhere.shift();
     }
 }
 /** How far down each level is, to find the deepest one an access reached. */
@@ -222,17 +201,17 @@ export class MemorySystem {
     stores = 0;
     hits = 0;
     misses = 0;
-    missKinds = { 'first-use': 0, conflict: 0, 'too-small': 0 };
+    missKinds = { 'first-use': 0, 'too-small': 0 };
     /** Accesses by where they were served (a load whose blocks came from different levels counts at the deepest). */
     served = { L1: 0, L2: 0, L3: 0, RAM: 0, BUFFER: 0 };
     /** Every load's time added up (ns), for the average memory access time. */
     loadNs = 0;
     /** Trips to RAM that made the pipeline wait. */
     ramTrips = 0;
-    /** `lower`: how many of LOWER_CACHES sit below the L1 (0 without; none without an L1). */
-    constructor(cache, lower = 0) {
+    /** `lower`: the caches below the L1 (cachesBelow; none without an L1). */
+    constructor(cache, lower = []) {
         this.cache = cache ? new Cache(cache) : undefined;
-        this.lower = cache ? cachesBelow(lower).map((level) => ({ ...level, cache: new Cache(level.shape) })) : [];
+        this.lower = cache ? lower.map((level) => ({ ...level, cache: new Cache(level.shape) })) : [];
     }
     /**
      * The average memory access time (ns) over the loads so far, the textbook's
@@ -288,7 +267,7 @@ export class MemorySystem {
                         this.missKinds[missed[0].missKind]++;
                 }
                 const used = results.filter((result) => result.hit).map((result) => result.line);
-                const trips = missed.map((result) => missNs(shape, this.lower.length, result.from));
+                const trips = missed.map((result) => missNs(shape, this.lower, result.from));
                 access =
                     missed.length === 0
                         ? { kind, address, size, level: 'L1', cycles: 1, ns: MEMORY_TIMING.l1Ns, hit: true, used }

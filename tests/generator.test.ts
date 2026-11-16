@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { COMPANIES, companyOf } from '../game/src/data/companies.ts';
 import { programByName } from '../game/src/data/programs.ts';
 import { jobSheet } from '../game/src/sim/jobSheet.ts';
 import { assemble } from '../game/src/sim/assembler.ts';
@@ -29,27 +30,28 @@ test('every generated program finishes, leaves the right answer, and stays in th
   }
 });
 
-test('ADD ARRAYS sometimes puts its arrays a cache-full apart: then every load is a conflict miss', () => {
+test('ADD ARRAYS sometimes puts its arrays a cache-full apart: any block can go in any line, so they never collide', () => {
   const runs = SEEDS.map((seed) => generateProgram(seed))
     .filter((spec) => spec.name.startsWith('ADD ARRAYS'))
     .map((spec) => perfectRun(new Cpu(assemble(spec.source, 8), 8, spec.memory), { forwarding: true, cache: L1_BASE }).memory);
-  const colliding = runs.filter((m) => m.missKinds.conflict > 0);
-  const apart = runs.filter((m) => m.missKinds.conflict === 0);
-  assert.ok(colliding.length > runs.length / 4 && apart.length > runs.length / 4, `${colliding.length} of ${runs.length} collide`);
-  // Colliding: every load misses (after the first two, all conflicts). Apart: one miss per 4-byte block of each array.
-  for (const m of colliding) assert.equal(m.hits, 0);
-  for (const m of apart) assert.ok(m.hits > m.misses);
+  assert.ok(runs.length > 10);
+  // One miss per 4-byte block of each array, then hits: never a block pushed out before it's done with.
+  for (const m of runs) assert.ok(m.hits > m.misses);
 });
 
-test('every generated program has a client whose name fits a board card, and a job in its own words', () => {
+test('every generated program is for one of the five companies, always the same one for its kind, with a job in its own words', () => {
   const clients = new Set<string>();
+  const byKind = new Map<string, string>();
   for (const seed of SEEDS) {
     const spec = generateProgram(seed);
-    assert.ok(spec.client && spec.client.length <= 19, `${spec.name}: client "${spec.client}"`);
+    assert.ok(companyOf(spec.client), `${spec.name}: client "${spec.client}"`);
     assert.ok(spec.verb.length > 0 && spec.unit.length > 0, spec.name);
-    clients.add(spec.client);
+    const kind = kindOf(spec.name);
+    assert.equal(byKind.get(kind) ?? spec.client, spec.client, `${kind} comes from two companies`);
+    byKind.set(kind, spec.client ?? '');
+    clients.add(spec.client ?? '');
   }
-  assert.ok(clients.size >= 20, `only ${clients.size} clients turn up`);
+  assert.equal(clients.size, COMPANIES.length);
 });
 
 test('every program tags its NEXT (always x1) and END (always x2) registers: the pair its loop branch compares', () => {
@@ -168,16 +170,16 @@ test('wide data fills the cache faster: a 32-bit item takes a whole 4-byte block
   assert.ok(run.memoryCycles >= 2 * bytes.loads * 200, `${run.memoryCycles} cycles waiting`);
 });
 
-test('OTHERS reads its data twice: wider data outgrows the first L1 (TOO SMALL), and 8 lines hold it', () => {
-  const missKinds = (bits: 8 | 16 | 32 | 64, seed: number, upgrades: Parameters<typeof cacheShape>[0] = []) =>
-    perfectRun(cpuFor(generateProgram(seed, 'OTHERS', bits)), { forwarding: true, cache: cacheShape(upgrades), mhz: 4000 }).memory.missKinds;
+test('OTHERS reads its data twice: wider data outgrows the first L1 (TOO SMALL), and one size step holds it', () => {
+  const missKinds = (bits: 8 | 16 | 32 | 64, seed: number, steps = 0) =>
+    perfectRun(cpuFor(generateProgram(seed, 'OTHERS', bits)), { forwarding: true, cache: cacheShape(0, steps), mhz: 4000 }).memory.missKinds;
   for (const seed of SEEDS.slice(0, 200)) {
     // Bytes (8-12 of them) fit the first L1, so the second pass only hits.
     assert.equal(missKinds(8, seed)['too-small'], 0, `bytes #${seed}`);
     for (const bits of WIDE) {
-      // 20-32 bytes: more than its 16, so the second pass finds the first items gone; 8 lines (32 bytes) keep them all.
+      // 20-32 bytes: more than its 16, so the second pass finds the first items gone; one size step (32 bytes) keeps them all.
       assert.ok(missKinds(bits, seed)['too-small'] > 0, `${bits}-bit #${seed}: no TOO SMALL misses`);
-      assert.equal(missKinds(bits, seed, ['lines'])['too-small'], 0, `${bits}-bit #${seed} with 8 lines`);
+      assert.equal(missKinds(bits, seed, 1)['too-small'], 0, `${bits}-bit #${seed} with a size step`);
     }
   }
 });
@@ -204,19 +206,19 @@ test('the showcase kinds, at every width: finish, leave the right answer, stay i
         const keys = spec.keys ?? [];
         assert.deepEqual(keys.slice(0, 2).map((key) => [key.reg, key.tag]), [[1, 'NEXT'], [2, 'END']], spec.name);
         for (const key of keys) assert.ok(`x${key.reg} = ${key.tag}: ${key.about}`.length <= 44, `${spec.name}: "${key.about}" too long for the count-in`);
-        assert.ok(spec.client && spec.client.length <= 19, spec.name);
+        assert.ok(companyOf(spec.client), spec.name);
         assert.ok(jobSheet(spec.name).loop.length <= 7, `${spec.name}: its loop won't fit the job sheet`);
       }
     }
   }
 });
 
-test('CHECKED COPY reads its data twice: wider data outgrows the first L1 (TOO SMALL), and 8 lines hold it', () => {
+test('CHECKED COPY reads its data twice: wider data outgrows the first L1 (TOO SMALL), and one size step holds it', () => {
   for (const seed of SEEDS.slice(0, 100)) {
-    const missKinds = (bits: 8 | 32, upgrades: Parameters<typeof cacheShape>[0] = []) =>
-      perfectRun(cpuFor(generateProgram(seed, 'CHECKED COPY', bits)), { forwarding: true, cache: cacheShape(upgrades), mhz: 4000 }).memory.missKinds;
+    const missKinds = (bits: 8 | 32, steps = 0) =>
+      perfectRun(cpuFor(generateProgram(seed, 'CHECKED COPY', bits)), { forwarding: true, cache: cacheShape(0, steps), mhz: 4000 }).memory.missKinds;
     assert.equal(missKinds(8)['too-small'], 0, `bytes #${seed}`);
     assert.ok(missKinds(32)['too-small'] > 0, `32-bit #${seed}`);
-    assert.equal(missKinds(32, ['lines'])['too-small'], 0, `32-bit #${seed} with 8 lines`);
+    assert.equal(missKinds(32, 1)['too-small'], 0, `32-bit #${seed} with a size step`);
   }
 });

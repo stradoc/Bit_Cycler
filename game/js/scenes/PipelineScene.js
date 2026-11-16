@@ -6,7 +6,7 @@ import { SONG_TOURS } from '../data/tours.js';
 import { keyOf } from '../input/keys.js';
 import { evaluate, PipelineRun } from '../rhythm/pipelineRun.js';
 import { tempoForClock } from '../rhythm/tempo.js';
-import { getProgress, updateProgress } from '../save.js';
+import { getProgress, setProgress, updateProgress } from '../save.js';
 import { getSettings, teaching } from '../settings.js';
 import { addressOf, cpuFor, itemAt } from '../sim/cpu.js';
 import { isLoad, keepsTotal, unitOf } from '../sim/isa.js';
@@ -189,7 +189,7 @@ export class PipelineScene extends Screen {
         const shown = {
             regs: [...this.run.pipeline.regs],
             memory: cpu.memory.slice(),
-            lines: Array.from({ length: setup.l1 ? setup.l1.lines : 0 }, () => ({ valid: false, tag: 0 })),
+            lines: Array.from({ length: setup.l1 ? setup.l1.lines : 0 }, () => ({ valid: false, block: 0 })),
         };
         this.replayControls = new ReplayControls(this, this.era, setup.watching, {
             speed: (step) => this.setSpeed(this.speedIndex + step),
@@ -321,7 +321,7 @@ export class PipelineScene extends Screen {
         }
         else if (key === 'Enter' && this.showingResults) {
             // A paid contract goes back to the board for the next one; otherwise play again.
-            if (setup.contract && setup.replay?.paid)
+            if (setup.contract && setup.replay?.job)
                 this.scene.start('board');
             else
                 this.scene.restart(playAgain(setup));
@@ -859,11 +859,14 @@ export class PipelineScene extends Screen {
             const late = contract ? jobSeconds(this.run, contract) > contract.deadline : false;
             // It pays, and the workday's clock moves on by the whole job's time at the pace played.
             // ...and the job's calls go in the log REPORT.TXT charts (the learning objective, measured).
+            // Settled once, here: the replay's card shows what this job paid, not what the save says after it.
+            let job;
             if (contract) {
-                updateProgress((p) => {
-                    const job = { day: p.day, tier: tierOf(p).number, calls: this.calls };
-                    return { ...finishJob(p, contract, jobSeconds(this.run, contract), late, Math.random), skills: logJob(p.skills, job) };
-                });
+                const p = getProgress();
+                const done = finishJob(p, contract, jobSeconds(this.run, contract), late, Math.random);
+                job = done.job;
+                if (job)
+                    setProgress({ ...done.progress, skills: logJob(p.skills, { day: p.day, tier: tierOf(p).number, calls: this.calls }) });
             }
             // Every real run is followed by its replay; the results come at the end of it.
             if (teaching().tips)
@@ -873,8 +876,7 @@ export class PipelineScene extends Screen {
                 dials: this.dialRecording,
                 maxDial: setup.maxDial,
                 canOverclock: setup.canOverclock,
-                paid: Boolean(contract),
-                late,
+                job,
             };
             this.time.delayedCall(2000, () => this.scene.restart(watch(setup, recording)));
             return;

@@ -6,13 +6,13 @@ import { SONG_TOURS, type SongTarget } from '../data/tours.ts';
 import { keyOf } from '../input/keys.ts';
 import { evaluate, PipelineRun, type Action, type CycleReport, type Decision } from '../rhythm/pipelineRun.ts';
 import { tempoForClock } from '../rhythm/tempo.ts';
-import { getProgress, updateProgress } from '../save.ts';
+import { getProgress, setProgress, updateProgress } from '../save.ts';
 import { getSettings, teaching } from '../settings.ts';
 import { addressOf, cpuFor, itemAt, type Cpu } from '../sim/cpu.ts';
 import { isLoad, keepsTotal, unitOf, type Unit } from '../sim/isa.ts';
 import { freezeBeats, type Access } from '../sim/memory.ts';
 import type { Slot } from '../sim/pipeline.ts';
-import { thermalConfig, tierOf, withSeen, withTipSeen } from '../sim/progress.ts';
+import { thermalConfig, tierOf, withSeen, withTipSeen, type JobResult } from '../sim/progress.ts';
 import { logJob, NO_CALLS, tallyCycle, type Tally } from '../rhythm/skills.ts';
 import { finishJob } from '../sim/workday.ts';
 import { Chip, THERMAL } from '../sim/thermal.ts';
@@ -202,7 +202,7 @@ export class PipelineScene extends Screen {
     const shown: Shown = {
       regs: [...this.run.pipeline.regs],
       memory: cpu.memory.slice(),
-      lines: Array.from({ length: setup.l1 ? setup.l1.lines : 0 }, () => ({ valid: false, tag: 0 })),
+      lines: Array.from({ length: setup.l1 ? setup.l1.lines : 0 }, () => ({ valid: false, block: 0 })),
     };
     this.replayControls = new ReplayControls(this, this.era, setup.watching, {
       speed: (step) => this.setSpeed(this.speedIndex + step),
@@ -320,7 +320,7 @@ export class PipelineScene extends Screen {
       this.scene.start(setup.returnTo);
     } else if (key === 'Enter' && this.showingResults) {
       // A paid contract goes back to the board for the next one; otherwise play again.
-      if (setup.contract && setup.replay?.paid) this.scene.start('board');
+      if (setup.contract && setup.replay?.job) this.scene.start('board');
       else this.scene.restart(playAgain(setup));
     } else if (key === 'T' && this.report) {
       // TICK goes through the numbers behind the card.
@@ -825,11 +825,13 @@ export class PipelineScene extends Screen {
       const late = contract ? jobSeconds(this.run, contract) > contract.deadline : false;
       // It pays, and the workday's clock moves on by the whole job's time at the pace played.
       // ...and the job's calls go in the log REPORT.TXT charts (the learning objective, measured).
+      // Settled once, here: the replay's card shows what this job paid, not what the save says after it.
+      let job: JobResult | undefined;
       if (contract) {
-        updateProgress((p) => {
-          const job = { day: p.day, tier: tierOf(p).number, calls: this.calls };
-          return { ...finishJob(p, contract, jobSeconds(this.run, contract), late, Math.random), skills: logJob(p.skills, job) };
-        });
+        const p = getProgress();
+        const done = finishJob(p, contract, jobSeconds(this.run, contract), late, Math.random);
+        job = done.job;
+        if (job) setProgress({ ...done.progress, skills: logJob(p.skills, { day: p.day, tier: tierOf(p).number, calls: this.calls }) });
       }
       // Every real run is followed by its replay; the results come at the end of it.
       if (teaching().tips) this.guide.say({ say: 'Run complete! Now watch your replay. Click anything in it to learn what it is.', dim: 0.3, keys: '[ENTER] OK', hold: true, mood: 'cheer' });
@@ -838,8 +840,7 @@ export class PipelineScene extends Screen {
         dials: this.dialRecording,
         maxDial: setup.maxDial,
         canOverclock: setup.canOverclock,
-        paid: Boolean(contract),
-        late,
+        job,
       };
       this.time.delayedCall(2000, () => this.scene.restart(watch(setup, recording)));
       return;

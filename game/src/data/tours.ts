@@ -1,4 +1,4 @@
-import { cacheBytes, L1_BASE, LOWER_CACHES, missNs, type Source } from '../sim/memory.ts';
+import { cacheBytes, cachesBelow, cacheShape, L1_BASE, LOWER_CACHES, missNs, type Source } from '../sim/memory.ts';
 import { LESSONS, type DiagramId } from './lessons.ts';
 import type { Mood } from './tick.ts';
 
@@ -35,7 +35,7 @@ export type TourStep<Target extends string> = {
 export type MenuTarget = 'menu' | 'new' | 'briefs' | 'readme' | 'settings';
 
 /** The contract board's parts the guide can point at (scenes/BoardScene.ts). */
-export type BoardTarget = 'list' | 'job' | 'loop' | 'notes' | 'memory' | 'time' | 'calendar' | 'workday' | 'card';
+export type BoardTarget = 'list' | 'job' | 'loop' | 'notes' | 'memory' | 'time' | 'calendar' | 'workday' | 'card' | 'reputation';
 
 /** The calendar screen's parts the guide can point at (scenes/CalendarScene.ts). */
 export type CalendarTarget = 'month' | 'today' | 'day';
@@ -117,6 +117,8 @@ export const FIRST_DAY_TOUR: readonly TourStep<BoardTarget>[] = [
   { say: 'This bar is your workday: 8 hours from 9:00. The # marks are the hours used; the = marks are what the chosen job would take.', point: 'workday' },
   { say: "Move to a job, or hover over it, to see its = marks. One that won't fit before 5:00 says LATER and waits for tomorrow.", point: 'list' },
   { say: "Each job is due a few hours after you take it, and only stays on the board for a day or two, so don't wait too long.", point: 'time' },
+  { say: 'Work comes from five COMPANIES. Each has its own logo on the job sheet.', point: 'job' },
+  { say: 'Your REPUTATION: jobs done on time raise it and your pay. Late jobs leave BAD MARKS that cut pay for a while.', point: 'reputation' },
   { say: "When you've done enough, press L to log off. The day's timecard comes up, then a new morning with new jobs.", point: 'calendar' },
   { say: 'Press C any time to see your calendar: every day so far, and what\'s coming. Have a good first day!', mood: 'happy' },
 ];
@@ -139,7 +141,9 @@ export const CALENDAR_TOUR: readonly TourStep<CalendarTarget>[] = [
 const [L2, L3] = LOWER_CACHES;
 const bytes = (level: (typeof LOWER_CACHES)[number]) => cacheBytes(level.shape);
 /** How long a load found at `from` takes on the first L1 with `lower` caches below it (ns). */
-const ns = (lower: number, from: Source) => missNs(L1_BASE, lower, from);
+const ns = (lower: number, from: Source) => missNs(L1_BASE, cachesBelow(lower), from);
+/** The L1 one size step up, as the size lesson shows it. */
+const SIZE = cacheShape(0, 1);
 
 /** Every lesson as a tour of the song screen, by lesson id (data/lessons.ts). */
 export const SONG_TOURS: Readonly<Record<string, readonly TourStep<SongTarget>[]>> = {
@@ -235,39 +239,22 @@ export const SONG_TOURS: Readonly<Record<string, readonly TourStep<SongTarget>[]
   cache: [
     { say: 'This is your L1 CACHE: a small, fast memory right beside the CPU. It keeps copies of the numbers used lately.', point: 'cache' },
     { say: "If a load finds its number in the cache, that's a HIT: no trip to RAM. If not, it's a MISS, and it waits.", picture: 'desk' },
-    { say: 'The cache moves memory in BLOCKS of 4 bytes, and has 4 LINES of one block each. Every block has one line it can go in.', picture: 'lines' },
-    { say: "An ADDRESS (a byte's number in memory) says which line to look in; the line's TAG says which block is there now.", picture: 'address' },
+    { say: 'The cache moves memory in BLOCKS of 4 bytes, and has 4 LINES of one block each, like 4 spots on a desk.', picture: 'lines' },
+    { say: 'Any block can go in any LINE. When all 4 are full, the one used longest ago makes room.', picture: 'lines' },
+    { say: 'Real L1 caches are a little pickier about where a block can go; this game lets a block go anywhere.' },
     { say: 'A miss brings in the whole block, so the next bytes are already there. Programs use nearby data, so this pays off.', picture: 'locality' },
-    { say: 'Misses come in 3 kinds: FIRST USE, CONFLICT (two blocks fighting over a line) and TOO SMALL. Replays label each one.', picture: 'misskinds' },
+    { say: 'Misses come in 2 kinds: FIRST USE (never loaded before) and TOO SMALL (pushed out for lack of room). Replays label each one.', picture: 'misskinds' },
     { say: 'Watch the cache here as you play. Stores go out through a WRITE BUFFER, so they never wait.', point: 'cache' },
     { say: 'Fewer trips to RAM means a lower CPI, and faster clocks start paying off again.', picture: 'cachescore' },
     { say: "Let's practice with the cache.", point: 'line' },
   ],
-  morelines: [
-    { say: 'Your L1 cache now has 8 LINES instead of 4, so it holds 32 bytes. Just as fast, with twice the room.', point: 'cache', mood: 'happy' },
-    { say: 'Think of a desk: a bigger desk keeps more books open at once, so you walk back to the shelf less often.' },
-    { say: 'Some jobs read their data TWICE. The first L1 holds 16 bytes, so by the second pass the first numbers were pushed out.', picture: 'morelines' },
-    { say: "Those are TOO SMALL misses: the data was used before, but there wasn't room to keep it. More lines fix them.", picture: 'morelines' },
-    { say: "More lines can't help a FIRST USE: data that was never loaded still has to come from RAM.", picture: 'misskinds' },
-    { say: "With 8 lines, the cache box shows each line's TAG. In a replay, click a line to see which bytes it holds.", point: 'cache' },
-    { say: "Let's practice: this job reads 24 bytes twice. Watch the second pass hit.", point: 'line' },
-  ],
-  twoway: [
-    { say: 'Your L1 now has 2-WAY SETS: its 4 lines are paired into 2 SETS. Still 16 bytes, but each block gets a choice.', point: 'cache', mood: 'happy' },
-    { say: 'Before, each block had exactly one line, like a parking lot where your car must take spot 3, even if someone is in it.', picture: 'lines' },
-    { say: 'Two blocks that needed the same line kept pushing each other out, even with other lines empty. Those are CONFLICT misses.', picture: 'lines', mood: 'worried' },
-    { say: 'Now a block can take either line of its SET. When both are full, the one used longest ago makes room.', picture: 'sets' },
-    { say: 'Two lists 16 bytes apart used to fight over one line, missing every time. Now both fit in their set.', picture: 'twoway' },
-    { say: 'An address now picks a SET instead of a line. There are fewer sets than lines, so its tag takes one more bit.', point: 'cache' },
-    { say: "Let's practice with two lists that used to collide.", point: 'line' },
-  ],
-  bigblocks: [
-    { say: 'Your L1 now moves BLOCKS of 8 bytes instead of 4. It still has 4 lines, so it holds 32 bytes.', point: 'cache', mood: 'happy' },
+  size: [
+    { say: `A SIZE STEP doubles a cache's BLOCKS, on any cache: one step up, an L1 moves ${SIZE.blockBytes} bytes at a time instead of ${L1_BASE.blockBytes}, and holds ${cacheBytes(SIZE)}.`, point: 'cache', mood: 'happy' },
     { say: "It's like carrying two bags in from the car on each trip instead of one: fewer trips, each a little longer." },
-    { say: 'Each miss now brings in a whole 8-byte block, so more of the data next to it is already there. Fewer FIRST USE misses.', picture: 'bigblocks' },
-    { say: 'Wide data needs this most: a 32-bit number fills a whole 4-byte block, so every new number was a miss.', picture: 'bigblocks' },
-    { say: "A bigger block takes longer to send, about 5 ns more per miss. Here, half the trips is well worth it.", picture: 'bigblocks' },
-    { say: "Let's practice: a job that sums 32-bit numbers.", point: 'line' },
+    { say: 'Each trip now brings back more of the numbers next to the one asked for, so fewer of them are FIRST USE misses.', picture: 'size' },
+    { say: 'And twice the bytes fit, so data read twice is still there the second time: fewer TOO SMALL misses too.', picture: 'size' },
+    { say: `A bigger L1 block takes longer to send from RAM: about ${missNs(SIZE) - missNs(L1_BASE)} ns more a trip. The L2 and L3 hand theirs over at once, so theirs cost nothing.`, picture: 'size' },
+    { say: "Let's practice on an L1 one step up: a job that sums 32-bit numbers. Every cache's steps work the same way.", point: 'line' },
   ],
   l2: [
     { say: `Meet your L2 CACHE: a second, bigger cache behind the L1. It holds ${bytes(L2)} bytes, eight times the first L1, but it's a little slower.`, picture: 'shelf', mood: 'happy' },

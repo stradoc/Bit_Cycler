@@ -1,3 +1,4 @@
+import { COMPANIES } from '../data/companies.js';
 import { cpuFor, trace, wrapTo, writeItem } from './cpu.js';
 import { memoryOps } from './isa.js';
 /** A small, fast, seeded random number generator (mulberry32). */
@@ -617,73 +618,17 @@ const KERNELS = [
 ];
 /** The kinds dealt at random (every kind but the showcase ones), in the order the seeds' draw has always used. */
 const DRAWN = KERNELS.filter((kernel) => !kernel.showcase);
-const CLIENTS = {
-    SUM: [
-        { name: 'FAIRVIEW SAVINGS', verb: 'TOTAL', unit: 'DEPOSITS' },
-        { name: 'PEBBLE ROAD MARKET', verb: 'ADD UP', unit: 'SALES' },
-        { name: 'HIGH PLAINS WEATHER', verb: 'SUM', unit: 'RAIN READINGS' },
-    ],
-    CHECKSUM: [
-        { name: 'DEEP VAULT BACKUP', verb: 'CHECKSUM', unit: 'ARCHIVED BYTES' },
-        { name: 'LANTERN MAIL', verb: 'VERIFY', unit: 'EMAIL BYTES' },
-        { name: 'COPPER WIRE TELECOM', verb: 'CHECK', unit: 'PACKET BYTES' },
-    ],
-    COUNT: [
-        { name: 'GREENLEAF CLINIC', unit: 'TEST RESULTS' },
-        { name: 'TOWN HALL POLLING', unit: 'BALLOTS' },
-        { name: 'RIVERBEND SCHOOLS', unit: 'ANSWERS' },
-    ],
-    COPY: [
-        { name: 'SKYLINE STUDIOS', verb: 'COPY', unit: 'VIDEO BYTES' },
-        { name: 'CEDAR HILL LIBRARY', verb: 'BACK UP', unit: 'BOOK SCANS' },
-    ],
-    DOUBLE: [
-        { name: 'BRIGHTWAVE AUDIO', verb: 'DOUBLE', unit: 'AUDIO SAMPLES' },
-        { name: 'STARGAZER LABS', verb: 'BRIGHTEN (x2)', unit: 'PIXELS' },
-    ],
-    'ADD ARRAYS': [
-        { name: 'TWIN RIVERS FARMS', verb: 'ADD PAIRS OF', unit: 'TALLIES' },
-        { name: 'MERIDIAN MIXING', verb: 'MIX PAIRS OF', unit: 'SAMPLES' },
-    ],
-    FIND: [
-        { name: 'LOST & FOUND NET', unit: 'RECORDS' },
-        { name: 'QUARRY GEOLOGY', unit: 'CORE SAMPLES' },
-    ],
-    FILL: [
-        { name: 'CLEAN SLATE DRIVES', unit: 'DISK BYTES' },
-        { name: 'SIGNPOST PRINTING', unit: 'PAGE BYTES' },
-    ],
-    'GRID SUM': [
-        { name: 'CROPWATCH SURVEY', verb: (v) => v.replace('GRIDS', 'FIELDS'), unit: 'CELLS' },
-        { name: 'MAPLE CITY TRANSIT', verb: (v) => v.replace('GRIDS', 'MAPS'), unit: 'CELLS' },
-    ],
-    REVERSE: [
-        { name: 'MIRROR LAKE PHOTO', verb: 'MIRROR', unit: 'PIXELS' },
-        { name: 'BACKSPIN RECORDS', verb: 'PLAY BACKWARDS:', unit: 'AUDIO SAMPLES' },
-    ],
-    'RUNNING TOTAL': [
-        { name: 'NORTHGATE CREDIT', verb: 'RUNNING BALANCES FOR', unit: 'PAYMENTS' },
-        { name: 'STRIDE FITNESS', verb: 'RUNNING TOTALS OF', unit: 'STEP COUNTS' },
-    ],
-    CHANGES: [
-        { name: 'TREMOR WATCH', verb: 'CHANGES BETWEEN', unit: 'QUAKE READINGS' },
-        { name: 'TIDEWATER PORT', verb: 'RISE AND FALL OF', unit: 'TIDE LEVELS' },
-    ],
-    REPLACE: [
-        { name: 'BLACKLINE LEGAL', unit: 'DOCUMENT BYTES' },
-        { name: 'PIXEL MEDICS', unit: 'SCREEN PIXELS' },
-    ],
-    OTHERS: [
-        { name: 'TRUE NORTH RETAIL', verb: 'ALL-BUT-ONE TOTALS OF', unit: 'STORE SALES' },
-        { name: 'HILLCREST LEAGUE', verb: 'REST-OF-TEAM TOTALS OF', unit: 'PLAYER SCORES' },
-    ],
-    'CHECKED COPY': [
-        { name: 'IRONCLAD ARCHIVES', verb: 'COPY AND CHECK', unit: 'RECORDS' },
-        { name: 'SAFE HARBOR BANK', verb: 'COPY AND VERIFY', unit: 'LEDGER ENTRIES' },
-    ],
-};
-/** An unrolled job is the same job for the same clients, compiled for a CPU that starts two at once. */
+/** Every kind of job, by name (a test checks each belongs to one company). */
+export const KINDS = KERNELS.map((kernel) => kernel.kind);
+/** An unrolled job is the same job for the same company, compiled for a CPU that starts two at once. */
 const CLIENTS_OF = { 'UNROLLED SUM': 'SUM', 'UNROLLED CHECKSUM': 'CHECKSUM' };
+/** Who sends each kind of job (data/companies.ts), and their ways of putting it. */
+const SENDERS = new Map(KINDS.map((kind) => {
+    const company = COMPANIES.find((each) => each.jobs[CLIENTS_OF[kind] ?? kind]);
+    if (!company)
+        throw new Error(`no company sends ${kind} jobs`);
+    return [kind, { company, wordings: company.jobs[CLIENTS_OF[kind] ?? kind] }];
+}));
 /**
  * The program for `seed`, with data `bits` wide: named "<KIND> #<seed>" for
  * bytes, "<BITS>-BIT <KIND> #<seed>" for wider data (a contract stores only the
@@ -696,10 +641,14 @@ export function generateProgram(seed, kind, bits = 8) {
     // One draw picks the kind, whichever kind is used, so the rest of the seed's choices stay the same as when the program was first made.
     const drawn = r.pick(DRAWN);
     const { kind: built, memory: items, answer, ...kernel } = (KERNELS.find((k) => k.kind === kind) ?? drawn).build(r, L);
-    const client = r.pick(CLIENTS[CLIENTS_OF[built] ?? built]);
-    const verb = typeof client.verb === 'function' ? client.verb(kernel.verb) : (client.verb ?? kernel.verb);
-    // Wider data: its width in the job's words ("32-BIT DEPOSITS"), and each item laid out in memory as bytes.
-    const unit = bits === 8 ? client.unit : `${bits}-BIT ${client.unit.replace(/ BYTES$/, ' WORDS')}`;
+    // One draw picks the company's way of putting it, the last use of the seed's numbers.
+    const sender = SENDERS.get(built);
+    if (!sender)
+        throw new Error(`no company sends ${built} jobs`);
+    const wording = r.pick(sender.wordings);
+    const verb = typeof wording.verb === 'function' ? wording.verb(kernel.verb) : (wording.verb ?? kernel.verb);
+    // Wider data: its width in the job's words ("32-BIT CHIP ORDERS"), and each item laid out in memory as bytes.
+    const unit = bits === 8 ? wording.unit : `${bits}-BIT ${wording.unit.replace(/ BYTES$/, ' WORDS')}`;
     const memory = new Uint8Array(items.length * L.bytes);
     items.forEach((value, i) => writeItem(memory, L.at(i), L.bytes, value));
     const name = `${bits === 8 ? '' : `${bits}-BIT `}${built} #${seed}`;
@@ -709,7 +658,7 @@ export function generateProgram(seed, kind, bits = 8) {
         answer: answer.map(({ address, value }) => ({ address: L.at(address), value })),
         verb,
         unit,
-        client: client.name,
+        client: sender.company.name,
         name,
         ...(bits === 8 ? {} : { dataBits: bits }),
     };

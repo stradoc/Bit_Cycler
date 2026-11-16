@@ -1,17 +1,17 @@
-import { CACHE_UPGRADES, DATA_WIDTHS, SHOWCASE } from '../data/economy.ts';
+import { DATA_WIDTHS, MEMORY_PARTS, SHOWCASE } from '../data/economy.ts';
 import type { WordBits } from './cpu.ts';
 import { generateProgram, type GeneratedProgram } from './generator.ts';
 import { cacheShape } from './memory.ts';
 import type { PipelineOptions } from './pipeline.ts';
-import { cacheOf, cpiOn, deepActive, hardwareOptions, ratedMhzFor, tierOf, type Contract, type Progress, type Random } from './progress.ts';
+import { cpiOn, deepActive, hardwareOptions, ratedMhzFor, tierOf, type Contract, type Progress, type Random } from './progress.ts';
 
 // Jobs adapt to what you buy. Most new contracts are picked because a part
 // your CPU uses makes them faster (the newest part most often), so a new part
 // shows up job after job, not only in its practice. The pick is measured: each
 // candidate job runs on your hardware with and without the part, and the one
 // it speeds up most is dealt. Parts that only some jobs show off say which
-// kinds to try (superscalar: loops unrolled for two at once; 2-WAY: arrays
-// that collide in the cache; 8 LINES: jobs that read their data twice), and
+// kinds to try (superscalar: loops unrolled for two at once; a bigger L1:
+// jobs that read their data twice), and
 // the job sheet says what the part saves on the job. Numbers: SHOWCASE.
 
 /**
@@ -49,37 +49,42 @@ export const SHOWCASES: readonly Showcase[] = [
   { id: 'deep', name: 'DEEP PIPELINE', inUse: deepActive, without: (o, p) => ({ ...o, wrongGuessCycles: 1, mhz: ratedMhzFor(p, true, false) }) },
   // Each cache level is shown off while it's the lowest (there's no L3 without the L2 above it, nor either without the L1).
   { id: 'l1', name: 'L1 CACHE', inUse: (p) => p.cacheLevels === 1, without: (o) => ({ ...o, cache: undefined }) },
-
+  // A level's size step against the same level one step smaller.
   {
-    id: 'lines',
-    name: '8-LINE L1',
-    inUse: (p) => p.cacheLevels >= 1 && p.cacheUpgrades.includes('lines'),
-    without: (o, p) => ({ ...o, cache: cacheShape(p.cacheUpgrades.filter((id) => id !== 'lines')) }),
+    id: `${MEMORY_PARTS[0].id}size`,
+    name: 'BIGGER L1',
+    inUse: (p) => p.cacheLevels >= 1 && p.cacheSizes[0] > 0,
+    without: (o, p) => ({ ...o, cache: cacheShape(0, p.cacheSizes[0] - 1) }),
     // Bytes fit the first L1 already: only wider data outgrows it before the second pass.
     kinds: ['OTHERS', 'CHECKED COPY'],
     widths: () => [16, 32, 64],
   },
+  { id: 'l2', name: 'L2 CACHE', inUse: (p) => p.cacheLevels === 2, without: (o) => ({ ...o, lowerCaches: [] }) },
   {
-    id: 'ways',
-    name: '2-WAY L1',
-    inUse: (p) => p.cacheLevels >= 1 && p.cacheUpgrades.includes('ways'),
-    without: (o, p) => ({ ...o, cache: cacheShape(p.cacheUpgrades.filter((id) => id !== 'ways')) }),
-    // Two arrays a cache apart only fight over a line if a block holds more than one item, so it's used again.
-    kinds: ['ADD ARRAYS'],
-    widths: (p) => DATA_WIDTHS.map((width) => width.bits).filter((bits) => bits / 8 < (cacheOf(p)?.blockBytes ?? 4)),
+    id: `${MEMORY_PARTS[1].id}size`,
+    name: 'BIGGER L2',
+    inUse: (p) => p.cacheLevels >= 2 && p.cacheSizes[1] > 0,
+    without: (o, p) => ({ ...o, lowerCaches: smaller(o, 1, p.cacheSizes[1] - 1) }),
+    // Only data wider than the L1 keeps going down to the L2.
+    widths: () => [32, 64],
   },
+  { id: 'l3', name: 'L3 CACHE', inUse: (p) => p.cacheLevels >= 3, without: (o) => ({ ...o, lowerCaches: (o.lowerCaches ?? []).slice(0, 1) }) },
   {
-    id: 'blocks',
-    name: '8-BYTE BLOCKS',
-    inUse: (p) => p.cacheLevels >= 1 && p.cacheUpgrades.includes('blocks'),
-    without: (o, p) => ({ ...o, cache: cacheShape(p.cacheUpgrades.filter((id) => id !== 'blocks')) }),
+    id: `${MEMORY_PARTS[2].id}size`,
+    name: 'BIGGER L3',
+    inUse: (p) => p.cacheLevels >= 3 && p.cacheSizes[2] > 0,
+    without: (o, p) => ({ ...o, lowerCaches: smaller(o, 2, p.cacheSizes[2] - 1) }),
+    widths: () => [64],
   },
-  { id: 'l2', name: 'L2 CACHE', inUse: (p) => p.cacheLevels === 2, without: (o) => ({ ...o, lowerCaches: 0 }) },
-  { id: 'l3', name: 'L3 CACHE', inUse: (p) => p.cacheLevels >= 3, without: (o) => ({ ...o, lowerCaches: 1 }) },
 ];
 
-// The cache upgrades are all here, under their shop keys.
-for (const upgrade of CACHE_UPGRADES) if (!SHOWCASES.some((part) => part.id === upgrade.id)) throw new Error(`no showcase for ${upgrade.id}`);
+/** The caches below the L1 in `options`, with `level` (1 the L2, 2 the L3) at `steps` instead. */
+function smaller(options: PipelineOptions, level: number, steps: number): PipelineOptions['lowerCaches'] {
+  return (options.lowerCaches ?? []).map((each, i) => (i === level - 1 ? { ...each, shape: cacheShape(level, steps) } : each));
+}
+
+// Every cache level's size step is here, under its shop key.
+for (const part of MEMORY_PARTS) if (!SHOWCASES.some((each) => each.id === `${part.id}size`)) throw new Error(`no showcase for ${part.id}size`);
 
 /** The parts your CPU uses now, newest last: in the order bought, those bought before the shop kept a log first, in the table's order. */
 export function partsInUse(progress: Progress): Showcase[] {
@@ -109,8 +114,8 @@ function choosePart(parts: readonly Showcase[], random: Random): Showcase {
  * A new job picked to show off one of your parts, or undefined for an
  * ordinary job: most of the time (SHOWCASE.share), the job among a few
  * candidates that the part speeds up most, if it speeds it up enough. Draws
- * nothing from `random` while your CPU has no part to show. Skips clients in
- * `busy` (already on the board).
+ * nothing from `random` while your CPU has no part to show. Skips companies in
+ * `busy` (full on the board: JOBS_PER_COMPANY).
  */
 export function showcaseJob(progress: Progress, random: Random, busy: ReadonlySet<string> = new Set()): { readonly program: GeneratedProgram; readonly part: Showcase } | undefined {
   const parts = partsInUse(progress);

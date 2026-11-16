@@ -31,16 +31,39 @@ test('a job fits today if a perfect run would finish by 5:00; the tutorial job a
 test("finishing a job pays, moves the clock on by its time as played, and counts on the day's tally", () => {
   const board = fillBoard(NEW_GAME, seeded(5));
   const [first, second] = board.board;
-  const one = finishJob(board, first, 3 * 3600, false, seeded(6));
+  const done = finishJob(board, first, 3 * 3600, false, seeded(6));
+  const one = done.progress;
   assert.equal(one.worked, 3 * 3600);
   assert.equal(one.money, first.pay);
+  assert.equal(done.job?.pay, first.pay);
   assert.deepEqual(one.today, { jobs: 1, late: 0, earned: first.pay });
-  // Late: half pay, counted as late. A sloppy run past 5:00 is overtime, and the day is over.
-  const two = finishJob(one, second, 6 * 3600, true, seeded(7));
+  assert.deepEqual(one.reputation, { good: 1, bad: 0 });
+  // Late: half pay, counted as late, and a bad mark. A sloppy run past 5:00 is overtime, and the day is over.
+  const lateJob = finishJob(one, second, 6 * 3600, true, seeded(7));
+  const two = lateJob.progress;
+  assert.equal(lateJob.job?.pay, Math.round(second.pay / 2));
   assert.equal(two.money, first.pay + Math.round(second.pay / 2));
   assert.deepEqual(two.today, { jobs: 2, late: 1, earned: first.pay + Math.round(second.pay / 2) });
+  assert.deepEqual(two.reputation, { good: 1, bad: 1 });
   assert.ok(dayOver(two));
   assert.equal(timeLeft(two), 0);
+});
+
+test('a job is paid at the reputation it was taken on; the next one at the new level', () => {
+  const board = fillBoard({ ...NEW_GAME, reputation: { good: 4, bad: 0 } }, seeded(5));
+  const [first, second] = board.board;
+  const done = finishJob(board, first, 3600, false, seeded(6));
+  assert.equal(done.job?.pay, first.pay, 'reaching LOCAL pays the job at x1.0');
+  assert.equal(done.job?.reputation.levelUp, 'LOCAL');
+  assert.equal(finishJob(done.progress, second, 3600, false, seeded(7)).job?.pay, Math.round(second.pay * 1.25));
+});
+
+test("a job that's no longer on the board isn't counted twice", () => {
+  const board = fillBoard(NEW_GAME, seeded(5));
+  const once = finishJob(board, board.board[0], 3600, false, seeded(6)).progress;
+  const twice = finishJob(once, board.board[0], 3600, false, seeded(7));
+  assert.equal(twice.job, undefined);
+  assert.equal(twice.progress, once);
 });
 
 test('ending the day: its timecard, then the next morning with the expired offers gone and new ones dealt', () => {
@@ -48,12 +71,13 @@ test('ending the day: its timecard, then the next morning with the expired offer
   // One offer on its last day, one on offer till tomorrow.
   const lastDay = { ...start.board[0], expires: 3 };
   const tomorrow = { ...start.board[1], expires: 4 };
-  const evening: Progress = { ...start, board: [lastDay, tomorrow, ...start.board.slice(2)], worked: 5 * 3600, today: { jobs: 2, late: 1, earned: 150 } };
+  const evening: Progress = { ...start, board: [lastDay, tomorrow, ...start.board.slice(2)], worked: 5 * 3600, today: { jobs: 2, late: 1, earned: 150 }, reputation: { good: 3, bad: 2 } };
   const { progress, timecard: card } = endDay(evening, seeded(10));
   assert.deepEqual(card, { jobs: 2, late: 1, earned: 150, day: 3, out: 14 * 3600 });
   assert.equal(progress.day, 4);
   assert.equal(progress.worked, 0);
   assert.deepEqual(progress.today, { jobs: 0, late: 0, earned: 0 });
+  assert.deepEqual(progress.reputation, { good: 3, bad: 1 }, 'a bad mark fades overnight');
   assert.ok(!progress.board.some((c) => c.id === lastDay.id), 'its last day is over');
   assert.ok(progress.board.some((c) => c.id === tomorrow.id), 'still on offer');
   assert.equal(progress.board.length, GRADES.length * CONTRACTS_PER_GRADE);
@@ -127,8 +151,10 @@ test('the calendar remembers each finished day, and marks the days offers end on
   assert.equal(progress.history.length, WORKDAY.historyDays);
   assert.equal(progress.history.at(-1)?.day, progress.day - 1);
   // Every offer on the board ends today or tomorrow, and the calendar says so.
-  const marked = [progress.day, progress.day + 1].flatMap((day) => eventsOn(progress, day).flatMap((event) => event.clients));
+  const marked = [progress.day, progress.day + 1].flatMap((day) => eventsOn(progress, day).flatMap((event) => event.offers));
   assert.equal(marked.length, progress.board.length);
+  // Each offer says who it's from and what it pays now.
+  for (const offer of marked) assert.match(offer, / \$[\d,]+$/);
   assert.deepEqual(eventsOn(progress, progress.day - 1), [], 'nothing is marked on a day gone by');
 });
 

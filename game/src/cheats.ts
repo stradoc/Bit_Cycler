@@ -1,5 +1,6 @@
 import { cheatFlags } from './cheatFlags.ts';
-import { CACHE_UPGRADES, CHIPS, CLOCK, COOLING, MEMORY_PARTS } from './data/economy.ts';
+import { CHIPS, CLOCK, COOLING, MEMORY_PARTS } from './data/economy.ts';
+import { cleanReputation, reputationLine } from './sim/reputation.ts';
 import { TAUGHT_IDS } from './data/tours.ts';
 import { formatMhz, formatMoney } from './format.ts';
 import { activeSlot, getProgress, newGame, slotName, updateProgress } from './save.ts';
@@ -20,11 +21,12 @@ const HELP = `Bit Cycler cheats (type in this console):
   cheat.clock(5)        clock upgrade level (0-${CLOCK.factors.length - 1}), on a chip that runs it
   cheat.cooling(2)      cooler (0 stock, 1 heatsink, 2 fan)
   cheat.cache(3)        own the caches: 1 the L1, 2 with the L2, 3 with the L3 too (no number: the L1; 0 or false: none)
-  cheat.l1('ways')      the L1 with these upgrades: 'lines', 'ways', 'blocks' (none: the first one); keeps the L2 and L3
+  cheat.size(2, 1, 0)   each cache level's size steps, the L1 first (0-2 each; no numbers: none); keeps the levels owned
   cheat.overclock()     own the overclocking upgrade (false to remove)
   cheat.deep('on')      the deep pipeline: 'on', 'off' (owned) or 'none'
   cheat.wear(1.2)       chip's max clock after overheating (1.0-1.5)
-  cheat.unlockAll()     every part, max clock, fan, overclocking, every cache and the L1's upgrades, $100,000
+  cheat.rep(15, 2)      reputation: GOOD (levels at 5, 15, 30, 50) and bad marks
+  cheat.unlockAll()     every part, max clock, fan, overclocking, every cache at full size, $100,000
   cheat.board()         new random contracts
   cheat.time(6)         hours of today's workday already used (0-8; past 8 the day is over)
   cheat.endDay()        log off: the next morning, with new offers
@@ -45,8 +47,8 @@ export function installCheats(game: Phaser.Game): void {
     const tier = tierOf(p);
     return (
       `${slotName(activeSlot())} | ${formatMoney(p.money)} | ${bitsName(p.wordBits).toLowerCase()} | tier ${tier.number} ${tier.name} | ${formatMhz(ratedMhz(p))} (clock level ${p.clockLevel}) | ` +
-      `${COOLING[p.cooling].name} | overclocking ${p.overclocking ? 'yes' : 'no'} | deep pipeline ${p.deepPipeline} | caches ${p.cacheLevels > 0 ? MEMORY_PARTS.slice(0, p.cacheLevels).map((part) => part.id.toUpperCase()).join(' ') : 'none'} | ` +
-      `max clock ${Math.round(p.chipMaxDial * 100)}%`
+      `${COOLING[p.cooling].name} | overclocking ${p.overclocking ? 'yes' : 'no'} | deep pipeline ${p.deepPipeline} | caches ${p.cacheLevels > 0 ? MEMORY_PARTS.slice(0, p.cacheLevels).map((part, i) => `${part.id.toUpperCase()}${p.cacheSizes[i] > 0 ? `+${p.cacheSizes[i]}` : ''}`).join(' ') : 'none'} | ` +
+      `max clock ${Math.round(p.chipMaxDial * 100)}% | ${reputationLine(p.reputation, p.day)}`
     );
   };
   const clampInt = (n: number, max: number) => Math.max(0, Math.min(max, Math.round(n)));
@@ -65,11 +67,9 @@ export function installCheats(game: Phaser.Game): void {
     overclock: (on = true) => change((p) => ({ ...p, overclocking: on })),
     deep: (state: 'none' | 'off' | 'on' = 'on') => change((p) => ({ ...p, deepPipeline: ['none', 'off', 'on'].includes(state) ? state : 'on' })),
     cache: (levels: number | boolean = 1) => change((p) => ({ ...p, cacheLevels: clampInt(levels === true ? 1 : Number(levels), MEMORY_PARTS.length) })),
-    l1: (...upgrades: string[]) => {
-      const ids = CACHE_UPGRADES.filter((upgrade) => upgrades.includes(upgrade.id)).map((upgrade) => upgrade.id);
-      return change((p) => ({ ...p, cacheLevels: Math.max(1, p.cacheLevels), cacheUpgrades: ids }));
-    },
+    size: (...steps: number[]) => change((p) => ({ ...p, cacheSizes: MEMORY_PARTS.map((part, i) => clampInt(Number(steps[i]) || 0, part.sizes.length)) })),
     wear: (maxDial: number) => change((p) => ({ ...p, chipMaxDial: Math.min(THERMAL.maxDial, Math.max(1, maxDial)) })),
+    rep: (good: number, bad = 0) => change((p) => ({ ...p, reputation: cleanReputation({ good: Math.round(good), bad: Math.round(bad) }) })),
     unlockAll: () => change(withEverything),
     board: () => change((p) => fillBoard({ ...p, board: [] }, Math.random)),
     time: (hours: number) => change((p) => ({ ...p, worked: Math.max(0, Math.min(24, hours)) * 3600 })),

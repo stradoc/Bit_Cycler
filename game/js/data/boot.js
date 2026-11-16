@@ -8,7 +8,7 @@
 import { COOLING } from './economy.js';
 import { programByName } from './programs.js';
 import { formatDuration, formatMhz, formatMoney } from '../format.js';
-import { cachesBelow, cacheWords, MEMORY_TIMING, missNs, ramCycles, SHOWN_BYTES } from '../sim/memory.js';
+import { cacheWords, MEMORY_TIMING, missNs, ramCycles, SHOWN_BYTES } from '../sim/memory.js';
 import { cacheOf, cpuName, lowerCachesOf, ratedMhz } from '../sim/progress.js';
 import { THERMAL } from '../sim/thermal.js';
 import { dateLine } from '../sim/workday.js';
@@ -119,7 +119,7 @@ function hardware(progress) {
         clock: `${formatMhz(mhz)}, A CYCLE EVERY ${formatDuration(1 / (mhz * 1e6))}`,
         ram: `A TRIP TAKES ${ramNs} ns = ${cycles} CYCLE${cycles === 1 ? '' : 'S'}`,
         cache: cache ? cacheWords(cache) : 'NONE',
-        lower: cachesBelow(lower).map((level) => ({ name: level.name, words: `${cacheWords(level.shape)}, +${level.ns} ns` })),
+        lower: lower.map((level) => ({ name: level.name, words: `${cacheWords(level.shape)}, +${level.ns} ns` })),
         cooler: COOLING[progress.cooling].name,
         wear: progress.chipMaxDial < THERMAL.maxDial ? `MAX CLOCK ${Math.round(progress.chipMaxDial * 100)}%` : undefined,
     };

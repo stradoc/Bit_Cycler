@@ -1,5 +1,6 @@
 import { GRADES } from '../data/economy.js';
 import { banner } from '../data/menuFiles.js';
+import { companyOf, shortClient } from '../data/companies.js';
 import { programByName } from '../data/programs.js';
 import { playContract } from '../flow.js';
 import { BOARD_TOUR, BOARD_TOUR_ID, FIRST_DAY_ID, FIRST_DAY_TOUR, TIMECARD_TOUR, TIMECARD_TOUR_ID, TUTORIAL_QUESTION, TUTORIAL_REPLY } from '../data/tours.js';
@@ -9,7 +10,8 @@ import { teaching, updateSettings } from '../settings.js';
 import { UNITS } from '../sim/isa.js';
 import { jobSheet } from '../sim/jobSheet.js';
 import { showcaseLine } from '../sim/showcase.js';
-import { contractSeconds, cpiFor, cpuLine, hasSeen, isLocked, isTight, isTutorial, jobItems, ratedMhz, withSeen } from '../sim/progress.js';
+import { contractSeconds, cpiFor, cpuLine, hasSeen, isLocked, isTight, isTutorial, jobItems, payFor, ratedMhz, withSeen } from '../sim/progress.js';
+import { reputationLine } from '../sim/reputation.js';
 import { THERMAL } from '../sim/thermal.js';
 import { clockSeconds, DAY_END, DAY_SECONDS, DAY_START, dayOver, endDay, fitsToday, gradeName, shortDate, timeLeft, weekday } from '../sim/workday.js';
 import { cssColor } from '../ui/eras.js';
@@ -31,26 +33,30 @@ const SHEET_W = LAYOUT.right - SHEET_X;
 const SHEET_H = 362;
 const SHEET_MID = SHEET_X + SHEET_W / 2;
 /**
- * Where the job sheet's rows are: what matters for choosing (who, what, the
- * pay, the time against the deadline, the verdict) large in the middle, and
+ * Where the job sheet's rows are: who it's for (the company's logo, with its
+ * name and the job beside it) at the top; what matters for choosing (the
+ * pay, the time against the deadline, the verdict) large in the middle; and
  * the details (the loop, its notes, the memory it uses, the time's working
  * out) small along the bottom.
  */
 const SHEET_ROWS = {
-    client: SHEET_Y + 20,
-    job: SHEET_Y + 46,
-    figures: SHEET_Y + 78,
-    bar: SHEET_Y + 138,
-    verdict: SHEET_Y + 158,
-    when: SHEET_Y + 177,
-    details: SHEET_Y + 208,
-    working: SHEET_Y + SHEET_H - 22,
+    client: SHEET_Y + 16,
+    job: SHEET_Y + 42,
+    figures: SHEET_Y + 104,
+    bar: SHEET_Y + 160,
+    verdict: SHEET_Y + 178,
+    when: SHEET_Y + 195,
+    details: SHEET_Y + 226,
+    working: SHEET_Y + SHEET_H - 18,
 };
+/** The company's logo: a box at the sheet's top left, kept for 7 lines so nothing moves between jobs; the name and the job sit to its right. */
+const LOGO = { x: SHEET_X + 12, y: SHEET_Y + 10, w: 173, h: 84 };
+const BESIDE_LOGO = LOGO.x + LOGO.w + 15;
 /** The three big figures' middles, and the details' columns. */
 const FIGURE_XS = [SHEET_MID - 170, SHEET_MID, SHEET_MID + 170];
 /** The space between the details' two columns, which are centered together on the sheet. */
 const DETAIL_GAP = 44;
-const DETAIL_LINE = 16;
+const DETAIL_LINE = 14;
 /** The memory map's heading, in lines below the details' top (under the notes). */
 const MEMORY_ROW = 4.4;
 /** The details' text: smaller and dimmer than what matters. */
@@ -95,6 +101,8 @@ export class BoardScene extends Screen {
     guide;
     /** The workday bar along the bottom (showDay). */
     dayBar;
+    /** Your reputation, under the money (sim/reputation.ts). */
+    reputation;
     /** Where the calendar starts, under the list (for TICK to point at). */
     calendarTop = 0;
     /** Where the job sheet's two detail columns start, and how wide they are (they're centered together, so it depends on the job). */
@@ -114,16 +122,18 @@ export class BoardScene extends Screen {
         this.setUp();
         const progress = getProgress();
         const worn = progress.chipMaxDial < THERMAL.maxDial ? `   CHIP WORN: MAX ${Math.round(progress.chipMaxDial * 100)}%` : '';
-        this.header('CONTRACT BOARD', `YOUR CPU: ${cpuLine(progress)}${worn}`);
+        // The CPU's line starts at the left, so your reputation fits under the money on the right.
+        this.header('CONTRACT BOARD', `YOUR CPU: ${cpuLine(progress)}${worn}`).subtitle?.setOrigin(0, 0.5).setX(LAYOUT.left);
         this.corner(formatMoney(progress.money));
+        this.reputation = this.text(LAYOUT.right, LAYOUT.subtitle, reputationLine(progress.reputation, progress.day), TEXT.subtitle).setOrigin(1, 0.5);
         // Grade by grade, easy first.
         this.contracts = GRADES.flatMap((grade) => progress.board.filter((c) => c.grade === grade.id));
         const rows = this.contracts.map((contract, i) => {
             const standing = STANDING[standingOf(contract)];
             const first = i === 0 || this.contracts[i - 1].grade !== contract.grade;
             return {
-                label: programByName(contract.program).client ?? contract.program,
-                middle: formatMoney(contract.pay),
+                label: shortClient(programByName(contract.program).client) ?? contract.program,
+                middle: formatMoney(payFor(progress, contract)),
                 value: standing.value,
                 dim: !standing.open,
                 group: first ? (isTutorial(contract) ? 'YOUR FIRST JOB' : gradeName(contract)) : undefined,
@@ -254,7 +264,7 @@ export class BoardScene extends Screen {
         const top = SHEET_ROWS.details;
         const areas = {
             list: { x: LIST_X - 12, y: LIST_TOP - 30, w: LIST_W + 24, h: bottom - LIST_TOP + 30 },
-            job: { ...inner, y: SHEET_ROWS.client - 8, h: SHEET_ROWS.figures + 50 - (SHEET_ROWS.client - 8) },
+            job: { ...inner, y: LOGO.y - 4, h: SHEET_ROWS.figures + 50 - (LOGO.y - 4) },
             loop: { x: this.columns.left - 8, y: top - 6, w: this.columns.leftW + 16, h: 7 * DETAIL_LINE + 10 },
             notes: { x: this.columns.right - 8, y: top - 6, w: this.columns.rightW + 16, h: 4 * DETAIL_LINE + 8 },
             memory: { x: this.columns.right - 8, y: top + MEMORY_ROW * DETAIL_LINE - 6, w: this.columns.rightW + 16, h: 3 * DETAIL_LINE + 8 },
@@ -262,6 +272,7 @@ export class BoardScene extends Screen {
             calendar: { x: LIST_X - 12, y: this.calendarTop - 8, w: LAYOUT.right - LIST_X + 24, h: LAYOUT.about + 12 - (this.calendarTop - 8) },
             workday: { x: this.dayBar.x - this.dayBar.width / 2 - 8, y: LAYOUT.about - 13, w: this.dayBar.width + 16, h: 26 },
             card: { x: WIDTH / 2 - CARD.w / 2 - 6, y: CARD.y - CARD.h / 2 - 6, w: CARD.w + 12, h: CARD.h + 12 },
+            reputation: { x: this.reputation.x - this.reputation.width - 8, y: LAYOUT.subtitle - 12, w: this.reputation.width + 16, h: 24 },
         };
         return areas[target];
     }
@@ -293,12 +304,24 @@ export class BoardScene extends Screen {
         const heading = (x, y, content) => detail(x, y, content, 0.8).setColor(cssColor(this.era.accent));
         // The warning color for every standing but ready: the danger red is hard to read on DOS blue.
         const color = cssColor(standing === 'ready' ? this.era.fg : this.colors.warn);
-        // Who it's for, and the job in their words.
-        centered(SHEET_ROWS.client, spec.client ?? spec.name, TEXT.body + 4).setFontStyle('bold');
-        centered(SHEET_ROWS.job, `${spec.verb} ${formatCount(jobItems(contract))} ${spec.unit}`, TEXT.body, 0.85);
+        // Who it's for, and the job in their words: beside the company's logo, or centered for a job of its own (the tutorial's).
+        const company = companyOf(spec.client);
+        const task = `${spec.verb} ${formatCount(jobItems(contract))} ${spec.unit}`;
+        if (company) {
+            // Any letter spacing makes Phaser draw a character at a time, so the modern era's font can't join "<=" or "==" into one sign;
+            // the padding keeps the last line's underscores, which some fonts draw below the text's measured height.
+            const logo = add(this.textAt(LOGO.x + LOGO.w / 2, LOGO.y + LOGO.h / 2, company.logo.join('\n'), TEXT.small).setOrigin(0.5).setLineSpacing(0).setLetterSpacing(0.01).setPadding({ bottom: 4 }));
+            logo.setColor(cssColor(this.era.accent)).setScale(Math.min(1, LOGO.w / logo.width, LOGO.h / logo.height));
+            add(this.textAt(BESIDE_LOGO, SHEET_ROWS.client, company.name, TEXT.body + 4).setFontStyle('bold'));
+            add(this.textAt(BESIDE_LOGO, SHEET_ROWS.job, task, TEXT.body).setAlpha(0.85).setWordWrapWidth(SHEET_X + SHEET_W - 10 - BESIDE_LOGO));
+        }
+        else {
+            centered(SHEET_ROWS.client, spec.client ?? spec.name, TEXT.body + 4).setFontStyle('bold');
+            centered(SHEET_ROWS.job, task, TEXT.body, 0.85);
+        }
         // The three figures that decide it: the pay, how long your CPU takes (played perfectly), and the deadline.
         const figures = [
-            ['PAYS', formatMoney(contract.pay)],
+            ['PAYS', formatMoney(payFor(progress, contract))],
             ['YOUR CPU TAKES', formatHours(seconds), color],
             ['DUE IN', formatHours(contract.deadline)],
         ];

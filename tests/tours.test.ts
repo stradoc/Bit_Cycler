@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { GLOSSARY } from '../game/src/data/glossary.ts';
 import { LESSONS } from '../game/src/data/lessons.ts';
+import { cacheShape } from '../game/src/sim/memory.ts';
 import { BOARD_TOUR, BOARD_TOUR_ID, CALENDAR_TOUR, CALENDAR_TOUR_ID, FIRST_DAY_ID, FIRST_DAY_TOUR, SONG_TOURS, TAUGHT_IDS, TIMECARD_TOUR, TIMECARD_TOUR_ID, TUTORIAL, TUTORIAL_QUESTION, TUTORIAL_REPLY, WELCOME_TOUR } from '../game/src/data/tours.ts';
 import type { Instruction } from '../game/src/sim/isa.ts';
 import { SongWords } from '../game/src/song/words.ts';
@@ -115,4 +117,37 @@ test("TICK asks how much to teach at the first job: one answer per level, from e
   assert.deepEqual(TUTORIAL.skip, { tours: false, closeLooks: false, tips: false });
   // The welcome no longer asks: it says the first job will.
   assert.match(WELCOME_TOUR.at(-1)!.say, /first job/);
+});
+
+test('no lesson and no cache entry in the glossary talks about mapping', () => {
+  const MAPPING = /\bCONFLICT\b|\bTAGS?\b|\bSETS?\b|DIRECT-MAPPED|\d-WAY|tttt|line bits/i;
+  for (const [id, steps] of Object.entries(SONG_TOURS)) for (const step of steps) assert.doesNotMatch(step.say, MAPPING, `${id}: ${step.say}`);
+  for (const key of ['CACHE', 'LOOKUP', 'MEMORY'] as const) assert.doesNotMatch(GLOSSARY[key].body, MAPPING, key);
+});
+
+test('your first day shows you your reputation', () => {
+  assert.ok(FIRST_DAY_TOUR.some((step) => step.point === 'reputation' && /REPUTATION/.test(step.say)));
+});
+
+test('the cache lesson says the game simplifies where a block can go', () => {
+  assert.ok(SONG_TOURS.cache.some((step) => /anywhere/.test(step.say)));
+});
+
+test("the size lesson: practice on the L1 one step up, with its picture held up", () => {
+  const size = LESSONS.size;
+  assert.ok(size, 'no size lesson');
+  assert.equal(size.practice, true);
+  assert.deepEqual(size.options?.l1, cacheShape(0, 1));
+  assert.ok(SONG_TOURS.size.some((step) => step.picture === 'size'));
+  for (const gone of ['morelines', 'twoway', 'bigblocks']) assert.equal(LESSONS[gone], undefined, gone);
+});
+
+test('your first day meets the five companies on the job sheet', () => {
+  assert.ok(FIRST_DAY_TOUR.some((step) => step.point === 'job' && /COMPANIES/.test(step.say)));
+});
+
+test("the size lesson is true whichever level's step was bought", () => {
+  // It plays the first time any cache's size step is bought: it never says the player's L1 is the one that grew.
+  for (const step of SONG_TOURS.size) assert.doesNotMatch(step.say, /your L1 (now|has)/i, step.say);
+  assert.match(SONG_TOURS.size[0].say, /any cache|a cache/i);
 });

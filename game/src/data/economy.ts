@@ -135,7 +135,10 @@ export const CLOCK = {
  * cycle); each level after it once your chip is `bits` wide, when the data
  * outgrows the level above (a 32-bit job's 128 bytes, a 64-bit job's 256).
  * `later` is what the shop says before it's on sale. `wip`: still being
- * reworked (WIP_PARTS). Prices are provisional until the balance pass.
+ * reworked (WIP_PARTS). `sizes`: the level's size steps, on sale one at a
+ * time once it's in: `sizes[i]` buys step i + 1, which makes each block
+ * `blockBytes` (the lines stay as they are, so the cache doubles), like
+ * CLOCK's prices. Prices are provisional until the balance pass.
  */
 export const MEMORY_PARTS = [
   {
@@ -145,6 +148,10 @@ export const MEMORY_PARTS = [
     bits: 8,
     lessonId: 'cache',
     wip: false,
+    sizes: [
+      { blockBytes: 8, price: 400 },
+      { blockBytes: 16, price: 800 },
+    ],
     about: 'A tiny, fast memory beside the CPU: 4 lines of 4 bytes. A load it holds needs no trip to RAM; a miss brings in the whole 4-byte block, so the next bytes hit. Stores go out through a write buffer and never wait.',
     later: 'RAM keeps up with your clock for now: a trip fits in one cycle. Once a faster clock makes loads wait for RAM, this goes on sale.',
   },
@@ -155,7 +162,11 @@ export const MEMORY_PARTS = [
     bits: 32,
     lessonId: 'l2',
     wip: true,
-    about: "A second, bigger cache behind the L1: 8 lines of 16 bytes, 2-way. When the L1 misses, the L2 answers in 5 ns instead of RAM's 60; each miss on the way to RAM takes 5 ns longer.",
+    sizes: [
+      { blockBytes: 32, price: 600 },
+      { blockBytes: 64, price: 1200 },
+    ],
+    about: "A second, bigger cache behind the L1: 8 lines of 16 bytes. When the L1 misses, the L2 answers in 5 ns instead of RAM's 60; each miss on the way to RAM takes 5 ns longer.",
     later: 'A bigger cache behind the L1, for wide data. Needs the L1 cache and the 32-bit chip.',
   },
   {
@@ -165,65 +176,30 @@ export const MEMORY_PARTS = [
     bits: 64,
     lessonId: 'l3',
     wip: true,
+    sizes: [
+      { blockBytes: 128, price: 900 },
+      { blockBytes: 256, price: 1800 },
+    ],
     about: 'A third cache behind the L2: 4 lines of 64 bytes, room for a whole 64-bit job. When the L2 misses, the L3 answers in 12 ns more; each miss on the way to RAM takes 12 ns longer.',
     later: 'The biggest cache, behind the L2. Needs the L2 cache and the 64-bit chip.',
   },
 ] as const;
 
 /**
- * Upgrades to the L1 cache, on sale once it's bought, in any order. Each
- * changes one thing about its shape (sim/memory.ts `cacheShape`) and fixes one
- * kind of miss the game names (Patterson & Hennessy 5.3-5.4): more lines hold
- * more blocks (fewer TOO SMALL), two lines per set let two blocks share a place
- * (fewer CONFLICT; the same 16 bytes, so only the placement rule changes),
- * bigger blocks bring in more neighbours per miss (fewer FIRST USE) at a
- * slightly longer miss. Lines and blocks each double the cache. All three are
- * still being reworked (`wip`, WIP_PARTS). Prices are provisional until the
- * balance pass.
+ * Every cache level's size steps (MEMORY_PARTS' `sizes`, bought one at a
+ * time once the level is in) share one lesson, played the first time any is
+ * bought, and are still being reworked (`wip`, WIP_PARTS).
  */
-export const CACHE_UPGRADES = [
-  {
-    id: 'lines',
-    name: 'L1: 8 LINES',
-    price: 600,
-    field: 'lines',
-    value: 8,
-    lessonId: 'morelines',
-    wip: true,
-    about: 'Twice the lines, so twice the blocks fit: data you come back to is still there. Fewer TOO SMALL misses.',
-  },
-  {
-    id: 'ways',
-    name: 'L1: 2-WAY SETS',
-    price: 800,
-    field: 'ways',
-    value: 2,
-    lessonId: 'twoway',
-    wip: true,
-    about: 'Pairs the lines into sets: a block can go in either line of its set, so two blocks no longer push each other out. Fewer CONFLICT misses.',
-  },
-  {
-    id: 'blocks',
-    name: 'L1: 8-BYTE BLOCKS',
-    price: 700,
-    field: 'blockBytes',
-    value: 8,
-    lessonId: 'bigblocks',
-    wip: true,
-    about: 'Each miss brings in 8 bytes instead of 4, so more of the next data is already there. Fewer FIRST USE misses; each trip to RAM takes 5 ns longer.',
-  },
-] as const;
-
-export type CacheUpgradeId = (typeof CACHE_UPGRADES)[number]['id'];
+export const CACHE_SIZE = { lessonId: 'size', wip: true } as const;
 
 /**
  * Work in progress: parts that are in the game but still being reworked
  * (`wip` above). The shop and BRIEFS mark them and their lessons WIP. The
- * L1's upgrades and the L2 and L3 (user, 2026-11-02): first-use misses
+ * size steps and the L2 and L3 (user, 2026-11-02): first-use misses
  * interrupt the song too often once the data is wide, and TICK's lessons
  * on them are too technical for players new to computers (ROADMAP.md).
  */
-export const WIP_PARTS = [...MEMORY_PARTS, ...CACHE_UPGRADES].filter((part) => part.wip);
+export const WIP_PARTS = [...MEMORY_PARTS, CACHE_SIZE].filter((part) => part.wip);
 
 /** Unlocks H (overclocking past the rated clock) in songs. Underclocking (G) is always allowed. */
 export const OVERCLOCKING_PRICE = 400;
@@ -276,6 +252,9 @@ export type GradeId = (typeof GRADES)[number]['id'];
 
 export const CONTRACTS_PER_GRADE = 2;
 
+/** At most this many jobs from one company on the board at once (there are five companies: data/companies.ts). */
+export const JOBS_PER_COMPANY = 2;
+
 /**
  * Pay per hour of job time grows with how fast your CPU is (its typical
  * instructions per second), more slowly than the speed itself: a CPU 1000x
@@ -312,5 +291,31 @@ export const SHOWCASE = { share: 0.75, newest: [0.5, 0.25], candidates: 4, minGa
 export const TUTORIAL_JOB = { pay: 50, deadline: 2 * HOUR } as const;
 /** Finishing after the deadline pays this much of the pay. */
 export const LATE_PAY_FACTOR = 0.5;
+
+/**
+ * Reputation (sim/reputation.ts): how the companies see you, as two counts.
+ * GOOD counts jobs done on time (each grade's weight) and never goes down;
+ * it sets your level, and each level pays more. BAD counts late jobs, each
+ * mark cutting pay by `cutPerMark`; marks fade (one per job on time, one per
+ * day ended). Pay never drops below the floor: x1.0 for the first
+ * `graceDays` (companies forgive a new player), x0.75 after. A later reward
+ * (special jobs, cosmetics, sketchier clients) is a new field on a level.
+ * Numbers to tune by playing.
+ */
+export const REPUTATION = {
+  levels: [
+    { name: 'UNKNOWN', good: 0, pay: 1 },
+    { name: 'LOCAL', good: 5, pay: 1.25 },
+    { name: 'TRUSTED', good: 15, pay: 1.5 },
+    { name: 'RESPECTED', good: 30, pay: 1.75 },
+    { name: 'FAMOUS', good: 50, pay: 2 },
+  ],
+  goodPerJob: { easy: 1, fair: 1, stretch: 1 },
+  badPerLate: 1,
+  fades: { onTime: 1, dayEnd: 1 },
+  cutPerMark: 0.05,
+  floor: { grace: 1, after: 0.75 },
+  graceDays: 7,
+} as const satisfies { readonly goodPerJob: Readonly<Record<GradeId, number>> } & Record<string, unknown>;
 /** A job your CPU would finish within this share of its deadline (playing perfectly) is tight: a sloppy run could be late. */
 export const TIGHT_SHARE = 0.8;

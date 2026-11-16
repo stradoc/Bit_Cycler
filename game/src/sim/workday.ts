@@ -1,7 +1,9 @@
 import { GRADES, WORKDAY } from '../data/economy.ts';
-import { formatClock } from '../format.ts';
+import { shortClient } from '../data/companies.ts';
+import { formatClock, formatMoney } from '../format.ts';
 import { programByName } from '../data/programs.ts';
-import { completeContract, contractSeconds, fillBoard, isTutorial, payFor, type Contract, type DayRecord, type DayTally, type Progress, type Random } from './progress.ts';
+import { contractSeconds, fillBoard, isTutorial, payFor, settleJob, type Contract, type DayRecord, type DayTally, type JobResult, type Progress, type Random } from './progress.ts';
+import { afterDay } from './reputation.ts';
 
 // The calendar: one home for the workday (the decisions are in CHANGELOG.md,
 // 2026-11-01). A day is WORKDAY.hours of your CPU's time, from 9:00. Time
@@ -81,18 +83,30 @@ export function fitsToday(contract: Contract, progress: Progress): boolean {
 }
 
 /**
- * A real run of a job finished: it pays (half if `late`), the clock moves on
- * by the job's time as played (`seconds`; past 5:00 it's overtime, and the
- * day is over), and the day's tally counts it.
+ * A real run of a job finished: it pays (half if `late`, at the reputation it
+ * was played on), reputation takes the job's change, a new offer takes its
+ * place on the board (it never runs out), the clock moves on by the job's
+ * time as played (`seconds`; past 5:00 it's overtime, and the day is over),
+ * and the day's tally counts it. A job no longer on the board (finished
+ * already) changes nothing and settles nothing.
  */
-export function finishJob(progress: Progress, contract: Contract, seconds: number, late: boolean, random: Random): Progress {
-  const paid = completeContract(progress, contract.id, random, late);
+export function finishJob(progress: Progress, contract: Contract, seconds: number, late: boolean, random: Random): { progress: Progress; job?: JobResult } {
+  if (!progress.board.some((c) => c.id === contract.id)) return { progress };
+  const job = settleJob(progress, contract, late);
   const today: DayTally = {
     jobs: progress.today.jobs + 1,
     late: progress.today.late + (late ? 1 : 0),
-    earned: progress.today.earned + payFor(contract, late),
+    earned: progress.today.earned + job.pay,
   };
-  return { ...paid, worked: progress.worked + seconds, today };
+  const paid: Progress = {
+    ...progress,
+    money: progress.money + job.pay,
+    reputation: job.reputation.after,
+    board: progress.board.filter((c) => c.id !== contract.id),
+    worked: progress.worked + seconds,
+    today,
+  };
+  return { progress: fillBoard(paid, random), job };
 }
 
 /**
@@ -105,7 +119,7 @@ export function endDay(progress: Progress, random: Random): { progress: Progress
   const day = progress.day + 1;
   const board = progress.board.filter((contract) => contract.expires >= day);
   const history = [...progress.history, timecard].slice(-WORKDAY.historyDays);
-  const morning = fillBoard({ ...progress, day, worked: 0, today: { jobs: 0, late: 0, earned: 0 }, board, history }, random);
+  const morning = fillBoard({ ...progress, day, worked: 0, today: { jobs: 0, late: 0, earned: 0 }, board, history, reputation: afterDay(progress.reputation) }, random);
   return { progress: morning, timecard };
 }
 
@@ -123,13 +137,14 @@ export function recordOf(progress: Progress, day: number): DayRecord | undefined
  * Something marked on the calendar. One list, so new kinds (special
  * contracts, a campaign's deadline) are added here and every screen shows them.
  */
-export type CalendarEvent = { readonly kind: 'offers-end'; readonly clients: readonly string[] };
+export type CalendarEvent = { readonly kind: 'offers-end'; readonly offers: readonly string[] };
 
-/** What's marked on a day from today on: the offers on the board whose last day it is. */
+/** What's marked on a day from today on: the offers on the board whose last day it is, each by who it's from and what it pays now. */
 export function eventsOn(progress: Progress, day: number): CalendarEvent[] {
   if (day < progress.day) return [];
   const ending = progress.board.filter((contract) => contract.expires === day && !isTutorial(contract));
-  return ending.length > 0 ? [{ kind: 'offers-end', clients: ending.map((contract) => programByName(contract.program).client ?? contract.program) }] : [];
+  const offer = (contract: Contract) => `${shortClient(programByName(contract.program).client) ?? contract.program} ${formatMoney(payFor(progress, contract))}`;
+  return ending.length > 0 ? [{ kind: 'offers-end', offers: ending.map(offer) }] : [];
 }
 
 /** A grade's heading on the board (GRADES). */

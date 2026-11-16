@@ -4,7 +4,7 @@ import { DEEP_PIPELINE } from '../game/src/data/economy.ts';
 import { RELAXED_WINDOWS, NORMAL_WINDOWS } from '../game/src/rhythm/judge.ts';
 import { DEFAULT_DIFFICULTY, DIFFICULTIES } from '../game/src/rhythm/tempo.ts';
 import { NEW_GAME, newContract, ratedMhzFor, type Progress } from '../game/src/sim/progress.ts';
-import { cacheShape, L1_BASE } from '../game/src/sim/memory.ts';
+import { cachesBelow, cacheShape, L1_BASE } from '../game/src/sim/memory.ts';
 import { THERMAL } from '../game/src/sim/thermal.ts';
 import { ROWS, SINGLE_CYCLE_ROWS } from '../game/src/song/layout.ts';
 import { pipelineOptions, playAgain, songSetup, watch, type Recording } from '../game/src/song/setup.ts';
@@ -16,7 +16,7 @@ const url = (query = '') => new URLSearchParams(query);
 const contract = newContract('easy', 7, () => 0.5, NEW_GAME);
 /** A save with the L1, the overclocking upgrade and a worn chip. */
 const worn: Progress = { ...NEW_GAME, cacheLevels: 1, overclocking: true, chipMaxDial: 1.3 };
-const recording: Recording = { cycles: [], dials: [1, 1.1], maxDial: 1.5, canOverclock: true, paid: true, late: true };
+const recording: Recording = { cycles: [], dials: [1, 1.1], maxDial: 1.5, canOverclock: true };
 
 test('a song is set up from what it was started with, then the save, then the URL', () => {
   const tier3 = songSetup({ forwarding: true }, NEW_GAME, url());
@@ -31,8 +31,8 @@ test('a song is set up from what it was started with, then the save, then the UR
 
   const fromUrl = songSetup({}, NEW_GAME, url('forwarding&guessing&predictor=2-bit&cache&practice'));
   assert.deepEqual([fromUrl.forwarding, fromUrl.guessing, fromUrl.predictor, fromUrl.l1, fromUrl.practice], [true, true, '2-bit', L1_BASE, true]);
-  // ?cache=ways,blocks: the L1 with those upgrades.
-  assert.deepEqual(songSetup({}, NEW_GAME, url('cache=ways,blocks')).l1, cacheShape(['ways', 'blocks']));
+  // ?cache&sizes=2: the L1 two size steps up.
+  assert.deepEqual(songSetup({}, NEW_GAME, url('cache&sizes=2')).l1, cacheShape(0, 2));
   assert.equal(fromUrl.program, 'SUM GRID');
   assert.equal(songSetup({}, NEW_GAME, url('predictor=3-bit')).predictor, undefined);
   // What the song was started with wins over the URL.
@@ -49,8 +49,8 @@ test('a contract plays its own program, and the save fits the cache and sets the
   assert.equal(setup.spec.name, contract.program);
   assert.deepEqual(setup.l1, L1_BASE);
   assert.equal(setup.maxDial, 1.3);
-  // The save's L1 upgrades come with it.
-  assert.deepEqual(songSetup({ contract }, { ...worn, cacheUpgrades: ['lines'] }, url()).l1, { lines: 8, blockBytes: 4, ways: 1 });
+  // The save's size steps come with it.
+  assert.deepEqual(songSetup({ contract }, { ...worn, cacheSizes: [1, 0, 0] }, url()).l1, { lines: 4, blockBytes: 8 });
   assert.equal(setup.canOverclock, true);
   // Practice always runs on a new chip.
   assert.equal(songSetup({ contract, practice: true }, worn, url()).maxDial, THERMAL.maxDial);
@@ -94,25 +94,33 @@ test('a replay plays on the chip its run started on, and watching again or playi
 
 test('the caches below the L1: from the save, ?cache=l2 or l3, a lesson\'s own; never without an L1; kept by retries and replays', () => {
   const three: Progress = { ...worn, cacheLevels: 3 };
-  assert.equal(songSetup({ forwarding: true }, three, url()).lowerCaches, 2);
-  assert.equal(songSetup({ forwarding: true }, { ...worn, cacheLevels: 2 }, url()).lowerCaches, 1);
-  assert.equal(songSetup({ forwarding: true }, worn, url()).lowerCaches, 0);
-  assert.equal(songSetup({}, NEW_GAME, url('cache=l2')).lowerCaches, 1);
-  assert.equal(songSetup({}, NEW_GAME, url('cache=lines,l3')).lowerCaches, 2);
-  assert.deepEqual(songSetup({}, NEW_GAME, url('cache=lines,l3')).l1, cacheShape(['lines']));
-  assert.equal(songSetup({}, NEW_GAME, url()).lowerCaches, 0, 'no L1, no levels below it');
+  const levels = (setup: { lowerCaches: readonly { name: string }[] }) => setup.lowerCaches.map((level) => level.name);
+  assert.deepEqual(levels(songSetup({ forwarding: true }, three, url())), ['L2', 'L3']);
+  assert.deepEqual(levels(songSetup({ forwarding: true }, { ...worn, cacheLevels: 2 }, url())), ['L2']);
+  assert.deepEqual(songSetup({ forwarding: true }, worn, url()).lowerCaches, []);
+  assert.deepEqual(levels(songSetup({}, NEW_GAME, url('cache=l2'))), ['L2']);
+  assert.deepEqual(levels(songSetup({}, NEW_GAME, url('cache=l3'))), ['L2', 'L3']);
+  assert.deepEqual(songSetup({}, NEW_GAME, url()).lowerCaches, [], 'no L1, no levels below it');
+  // The save's size steps reach every level; so do the URL's (?sizes=L1,L2,L3).
+  const grown = songSetup({ forwarding: true }, { ...three, cacheSizes: [2, 1, 0] }, url());
+  assert.deepEqual(grown.l1, { lines: 4, blockBytes: 16 });
+  assert.deepEqual(grown.lowerCaches.map((level) => level.shape), [{ lines: 8, blockBytes: 32 }, { lines: 4, blockBytes: 64 }]);
+  const asked = songSetup({}, NEW_GAME, url('cache=l3&sizes=2,1,0'));
+  assert.deepEqual(asked.l1, { lines: 4, blockBytes: 16 });
+  assert.deepEqual(asked.lowerCaches, cachesBelow(2, [2, 1, 0]));
   // A lesson that names its L1 plays it alone, unless it names the levels too (the L2's and L3's lessons do).
-  assert.equal(songSetup({ l1: cacheShape(['lines']) }, three, url()).lowerCaches, 0);
-  assert.equal(songSetup({ l1: L1_BASE, lowerCaches: 1 }, three, url()).lowerCaches, 1);
-  const run = songSetup({ forwarding: true }, three, url());
-  assert.equal(songSetup(playAgain(run), worn, url()).lowerCaches, 2, 'a retry plays the same CPU');
-  assert.equal(songSetup(watch(run, recording), worn, url()).lowerCaches, 2);
-  assert.equal(pipelineOptions(run, 4000).lowerCaches, 2);
+  assert.deepEqual(songSetup({ l1: cacheShape(0, 1) }, three, url()).lowerCaches, []);
+  assert.deepEqual(levels(songSetup({ l1: L1_BASE, lowerCaches: cachesBelow(1) }, three, url())), ['L2']);
+  const run = songSetup({ forwarding: true }, { ...three, cacheSizes: [2, 1, 0] }, url());
+  assert.deepEqual(songSetup(playAgain(run), worn, url()).lowerCaches, run.lowerCaches, 'a retry plays the same CPU');
+  assert.deepEqual(songSetup(playAgain(run), worn, url()).l1, run.l1);
+  assert.deepEqual(songSetup(watch(run, recording), worn, url()).lowerCaches, run.lowerCaches);
+  assert.deepEqual(pipelineOptions(run, 4000).lowerCaches, run.lowerCaches);
 });
 
 test('the simulator runs the setup\'s hardware', () => {
   const setup = songSetup({ forwarding: true, predictor: '1-bit' }, worn, url());
-  assert.deepEqual(pipelineOptions(setup, 40), { forwarding: true, predictor: '1-bit', singleCycle: false, cache: L1_BASE, lowerCaches: 0, mhz: 40, wrongGuessCycles: 1, superscalar: false });
+  assert.deepEqual(pipelineOptions(setup, 40), { forwarding: true, predictor: '1-bit', singleCycle: false, cache: L1_BASE, lowerCaches: [], mhz: 40, wrongGuessCycles: 1, superscalar: false });
 });
 
 test('the deep pipeline: from the save where branches are guessed, a faster rated clock, dearer wrong guesses, kept by retries and replays', () => {

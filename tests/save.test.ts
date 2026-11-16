@@ -8,7 +8,7 @@ import { THERMAL } from '../game/src/sim/thermal.ts';
 const SAVED_AT = Date.UTC(2026, 9, 30, 14, 2);
 
 test('a save reads back exactly as it was written, with when it was saved', () => {
-  const progress: Progress = { ...fillBoard(withEverything(NEW_GAME), () => 0.5), seenLessons: ['tier1', 'tier2'] };
+  const progress: Progress = { ...fillBoard(withEverything(NEW_GAME), () => 0.5), seenLessons: ['tier1', 'tier2'], reputation: { good: 24, bad: 2 } };
   const saved = parseSave(saveText(progress, SAVED_AT));
   assert.deepEqual(saved, { progress, savedAt: SAVED_AT });
 });
@@ -21,9 +21,10 @@ test('a save from before slots (the progress alone) loads, missing fields taking
   assert.equal(saved.progress.money, 750);
   assert.deepEqual(saved.progress.parts, ['pipeline']);
   assert.equal(saved.progress.cacheLevels, 0); // saved before the cache existed
-  assert.deepEqual(saved.progress.cacheUpgrades, []); // and before its upgrades
+  assert.deepEqual(saved.progress.cacheSizes, [0, 0, 0]); // and before its size steps
   assert.deepEqual(saved.progress.seenLessons, []); // the settings kept these then
   assert.deepEqual(saved.progress.seenTips, []); // saved before tips were remembered
+  assert.deepEqual(saved.progress.reputation, { good: 0, bad: 0 }); // and before reputation
   assert.equal(saved.progress.wordBits, 16); // saved before the chips: the pipeline needs the 16-bit one
 });
 
@@ -56,6 +57,7 @@ test('an edited save is pulled back into range', () => {
     seenLessons: ['tier1', 42],
     seenTips: ['hazard', null],
     wordBits: 12,
+    reputation: { good: -3, bad: 'x' },
   };
   const saved = parseSave(saveText(edited as unknown as Progress, SAVED_AT));
   assert.ok(saved);
@@ -64,8 +66,9 @@ test('an edited save is pulled back into range', () => {
   assert.deepEqual(p.parts, ['pipeline']);
   assert.equal(p.clockLevel, CLOCK.factors.length - 1);
   assert.equal(p.cacheLevels, MEMORY_PARTS.length); // the L1, the L2 and the L3: no more levels to own
-  // Each L1 upgrade once, unknown ones dropped, in the order bought.
-  assert.deepEqual(p.cacheUpgrades, ['ways', 'lines']);
+  // The old L1 upgrades, each once, unknown ones dropped: one L1 size step each.
+  assert.deepEqual(p.cacheSizes, [2, 0, 0]);
+  assert.equal('cacheUpgrades' in p, false);
   assert.equal(p.cooling, 0);
   assert.equal(p.overclocking, false);
   assert.equal(p.chipMaxDial, THERMAL.maxDial);
@@ -73,6 +76,20 @@ test('an edited save is pulled back into range', () => {
   assert.deepEqual(p.seenTips, ['hazard']);
   assert.ok(p.cooling < COOLING.length);
   assert.equal(p.wordBits, 64); // no 12-bit chip: the narrowest that runs the top clock
+  assert.deepEqual(p.reputation, { good: 0, bad: 0 });
+});
+
+test("an old save's L1 upgrades become size steps, so nothing it paid for is lost", () => {
+  const load = (old: object) => parseSave(JSON.stringify({ money: 0, parts: [], clockLevel: 0, board: [], nextId: 1, ...old }))?.progress;
+  assert.deepEqual(load({ cacheLevels: 1, cacheUpgrades: ['lines'] })?.cacheSizes, [1, 0, 0]);
+  // All three are capped at the L1's last step.
+  const all = load({ cacheLevels: 1, cacheUpgrades: ['lines', 'ways', 'blocks'], bought: ['l1', 'ways', 'l2', 'blocks'] });
+  assert.deepEqual(all?.cacheSizes, [2, 0, 0]);
+  assert.equal(all && 'cacheUpgrades' in all, false);
+  // In the log of what was bought, the old upgrades are the L1's size step, at its latest place.
+  assert.deepEqual(all?.bought, ['l1', 'l2', 'l1size']);
+  // Size steps out of range are pulled back in.
+  assert.deepEqual(load({ cacheSizes: [9, -1, 'x'] })?.cacheSizes, [2, 0, 0]);
 });
 
 test('contracts saved before deadlines existed are dropped', () => {

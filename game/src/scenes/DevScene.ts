@@ -1,5 +1,6 @@
 import { cheatFlags } from '../cheatFlags.ts';
-import { CACHE_UPGRADES, CHIPS, CLOCK, COOLING, MEMORY_PARTS, type CacheUpgradeId } from '../data/economy.ts';
+import { CHIPS, CLOCK, COOLING, MEMORY_PARTS, REPUTATION } from '../data/economy.ts';
+import { reputationLine } from '../sim/reputation.ts';
 import { isWip, LESSONS } from '../data/lessons.ts';
 import { TIERS } from '../data/tiers.ts';
 import { folderPath } from '../data/menuFiles.ts';
@@ -8,19 +9,19 @@ import { openLesson } from '../flow.ts';
 import { formatHours, formatMhz, formatMoney, wipLabel } from '../format.ts';
 import { activeSlot, getProgress, hasSave, newGame, slotName, updateProgress } from '../save.ts';
 import { bitsName, cacheOf, chipOf, deepActive, fillBoard, fitChip, lowerCachesOf, ratedMhz, tierOf, withEverything, withTier, withWordBits, type Progress } from '../sim/progress.ts';
-import { cachesBelow, cacheWords } from '../sim/memory.ts';
+import { cacheBytes } from '../sim/memory.ts';
 import { dateLine, DAY_SECONDS, endDay } from '../sim/workday.ts';
 import { ListMenu, type MenuRow } from '../ui/list.ts';
 import { Screen } from '../ui/screen.ts';
 import { LAYOUT } from '../ui/theme.ts';
 
 type Row =
-  | 'chip' | 'tier' | 'clock' | 'deep' | 'cooling' | 'cache' | 'overclock' | 'money' | 'time' | 'endday' | 'board' | 'everything'
+  | 'chip' | 'tier' | 'clock' | 'deep' | 'cooling' | 'cache' | 'overclock' | 'money' | 'reputation' | 'marks' | 'time' | 'endday' | 'board' | 'everything'
   | 'lesson' | 'seen' | 'play' | 'practice' | 'autoplay' | 'motions' | 'reset';
 
 /** The rows in their groups (the first named after the save being changed), each with the line shown about it. */
 const GROUPS: readonly { readonly name: (slot: string) => string; readonly rows: readonly Row[] }[] = [
-  { name: (slot) => `YOUR SAVE (${slot}): CPU, MONEY AND DAY`, rows: ['chip', 'tier', 'clock', 'deep', 'cooling', 'cache', 'overclock', 'money', 'time', 'endday', 'board', 'everything'] },
+  { name: (slot) => `YOUR SAVE (${slot}): CPU, MONEY AND DAY`, rows: ['chip', 'tier', 'clock', 'deep', 'cooling', 'cache', 'overclock', 'money', 'reputation', 'marks', 'time', 'endday', 'board', 'everything'] },
   { name: () => 'LESSONS AND PLAY', rows: ['lesson', 'seen', 'play', 'practice', 'autoplay', 'motions'] },
   { name: () => 'START OVER', rows: ['reset'] },
 ];
@@ -31,10 +32,12 @@ const ABOUT: Readonly<Record<Row, string>> = {
   tier: 'THE CPU DESIGN: SINGLE-CYCLE, PIPELINE, FORWARDING, GUESSING, PREDICTORS. A TIER MAY NEED A WIDER CHIP.',
   clock: 'CLOCK UPGRADES BOUGHT. A FASTER CLOCK PLAYS SONGS FASTER.',
   cooling: 'HOW WELL THE CHIP SHEDS HEAT WHEN OVERCLOCKED.',
-  cache: "THE CACHES: LOADS THEY ALREADY HOLD DON'T WAIT FOR RAM. [LEFT/RIGHT] STEPS THROUGH THE L1'S UPGRADES, THEN THE L2 AND L3.",
+  cache: "THE CACHES: LOADS THEY ALREADY HOLD DON'T WAIT FOR RAM. [LEFT/RIGHT] STEPS THROUGH THE L1, THE L2 AND THE L3, EACH AT EVERY SIZE.",
   overclock: 'LETS G / H TURN THE CLOCK DOWN AND UP DURING A SONG.',
   deep: 'NOT BOUGHT, OFF OR ON: A FASTER CLOCK, BUT A WRONG GUESS COSTS MORE. IN USE FROM TIER 4, ON THE 32-BIT CHIP.',
   money: 'MONEY TO SPEND IN THE SHOP.',
+  reputation: 'JOBS DONE ON TIME (GOOD): [LEFT/RIGHT] STEPS THROUGH THE LEVELS, EACH PAYING MORE.',
+  marks: 'BAD MARKS FROM LATE JOBS: EACH CUTS PAY 5% (NOT BELOW NORMAL IN THE FIRST WEEK). ONE FADES PER JOB ON TIME AND PER DAY.',
   time: 'HOURS OF TODAY ALREADY WORKED (THE DAY ENDS AT 8). JOBS THAT NO LONGER FIT TODAY SAY LATER.',
   endday: "LOGS OFF: TODAY'S TIMECARD IS KEPT, AND THE NEXT MORNING DEALS NEW OFFERS.",
   board: "THROWS AWAY THE BOARD'S JOBS AND DEALS NEW ONES.",
@@ -53,40 +56,40 @@ const MONEY_STEPS = [0, 100, 500, 1_000, 5_000, 10_000, 100_000];
 const LESSON_IDS = Object.keys(LESSONS);
 
 /**
- * The caches the cache row steps through: none, the first L1, each upgrade
- * alone, all three, then the first L1 with the L2, with the L2 and L3, and
- * everything. `levels` counts MEMORY_PARTS owned.
+ * The caches the cache row steps through: none; then each level (the L1, the
+ * L2 behind it, the L3 behind both), first as bought and then at each of its
+ * size steps alone; then everything at full size. `levels` counts
+ * MEMORY_PARTS owned, `sizes` is Progress.cacheSizes.
  */
-const ALL_UPGRADES = CACHE_UPGRADES.map((upgrade) => upgrade.id);
-const CACHE_STEPS: readonly { readonly levels: number; readonly upgrades: readonly CacheUpgradeId[] }[] = [
-  { levels: 0, upgrades: [] },
-  { levels: 1, upgrades: [] },
-  ...CACHE_UPGRADES.map((upgrade) => ({ levels: 1, upgrades: [upgrade.id] })),
-  { levels: 1, upgrades: ALL_UPGRADES },
-  // Each level below the L1, behind the first L1; then everything.
-  ...MEMORY_PARTS.slice(1).map((_, i) => ({ levels: i + 2, upgrades: [] })),
-  { levels: MEMORY_PARTS.length, upgrades: ALL_UPGRADES },
+const NO_SIZES = MEMORY_PARTS.map(() => 0);
+const CACHE_STEPS: readonly { readonly levels: number; readonly sizes: readonly number[] }[] = [
+  { levels: 0, sizes: NO_SIZES },
+  ...MEMORY_PARTS.flatMap((part, level) => [
+    { levels: level + 1, sizes: NO_SIZES },
+    ...part.sizes.map((_, step) => ({ levels: level + 1, sizes: NO_SIZES.map((n, i) => (i === level ? step + 1 : n)) })),
+  ]),
+  { levels: MEMORY_PARTS.length, sizes: MEMORY_PARTS.map((part) => part.sizes.length) },
 ];
 
-/** Where a save's caches are among CACHE_STEPS (an order of upgrades not listed counts as the first L1's at that level). */
+/** Where a save's caches are among CACHE_STEPS (sizes not listed count as that level as bought). */
 function cacheStep(p: Progress): number {
   if (p.cacheLevels === 0) return 0;
-  const owned = [...p.cacheUpgrades].sort().join();
-  const exact = CACHE_STEPS.findIndex((step) => step.levels === p.cacheLevels && [...step.upgrades].sort().join() === owned);
+  const sizes = p.cacheSizes.join();
+  const exact = CACHE_STEPS.findIndex((step) => step.levels === p.cacheLevels && step.sizes.join() === sizes);
   return exact >= 0 ? exact : Math.max(1, CACHE_STEPS.findIndex((step) => step.levels === p.cacheLevels));
 }
 
-/** A save's caches in words, or OFF: the L1, then the levels below it. */
+/** A save's caches in a few words, or OFF: each level owned and its size ("L1 64 B + L2 512 B"). */
 function cacheText(p: Progress): string {
   const l1 = cacheOf(p);
-  const below = cachesBelow(lowerCachesOf(p)).map((level) => ` + ${level.name}`).join('');
-  return l1 ? `${cacheWords(l1)}${below}` : 'OFF';
+  const below = lowerCachesOf(p).map((level) => ` + ${level.name} ${cacheBytes(level.shape)} B`).join('');
+  return l1 ? `L1 ${cacheBytes(l1)} B${below}` : 'OFF';
 }
 
 /** A save with the caches at `step` of CACHE_STEPS. */
 function withCacheStep(p: Progress, step: number): Progress {
-  const { levels, upgrades } = CACHE_STEPS[step];
-  return { ...p, cacheLevels: levels, cacheUpgrades: upgrades };
+  const { levels, sizes } = CACHE_STEPS[step];
+  return { ...p, cacheLevels: levels, cacheSizes: sizes };
 }
 
 /** What a save's CPU is, field by field: compared before and after a change, to say what else it changed. */
@@ -155,6 +158,8 @@ export class DevScene extends Screen {
       overclock: ['OVERCLOCKING UPGRADE', onOff(p.overclocking)],
       deep: ['DEEP PIPELINE', p.deepPipeline === 'none' ? 'NOT BOUGHT' : `${p.deepPipeline.toUpperCase()}${p.deepPipeline === 'on' && !deepActive(p) ? ' (IDLE BELOW TIER 4)' : ''}`],
       money: ['MONEY', formatMoney(p.money)],
+      reputation: ['REPUTATION', reputationLine(p.reputation, p.day)],
+      marks: ['BAD MARKS', String(p.reputation.bad)],
       time: ['HOURS WORKED TODAY', p.worked >= DAY_SECONDS ? `${formatHours(p.worked)} (DAY OVER)` : formatHours(p.worked)],
       endday: ['END THE DAY', dateLine(p)],
       board: ['DEAL NEW CONTRACTS'],
@@ -238,6 +243,14 @@ export class DevScene extends Screen {
           const next = delta > 0 ? MONEY_STEPS.find((m) => m > p.money) : [...MONEY_STEPS].reverse().find((m) => m < p.money);
           return { ...p, money: next ?? p.money };
         });
+      case 'reputation':
+        return this.edit(row, (p) => {
+          const steps = REPUTATION.levels.map((level) => level.good);
+          const next = delta > 0 ? steps.find((good) => good > p.reputation.good) : [...steps].reverse().find((good) => good < p.reputation.good);
+          return { ...p, reputation: { ...p.reputation, good: next ?? p.reputation.good } };
+        });
+      case 'marks':
+        return this.edit(row, (p) => ({ ...p, reputation: { ...p.reputation, bad: Math.max(0, p.reputation.bad + delta) } }));
       case 'cooling':
         return this.edit(row, (p) => ({ ...p, cooling: clampInt(p.cooling + delta, COOLING.length - 1) }));
       case 'deep': {

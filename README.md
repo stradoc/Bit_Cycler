@@ -52,7 +52,7 @@ Add these to the URL, e.g. `http://localhost:8000/?scene=play&autoplay`. Any `?s
 | `?scene=pipeline&forwarding&guessing&predictor=1-bit` (or `2-bit`) | Tiers 5–6 (hardware predictor, SUM GRID) |
 | `&practice` | Practice mode |
 | `&difficulty=hard` | Play at that difficulty (`relaxed` / `easy` / `medium` / `hard`) instead of the settings' |
-| `&cache` / `&cache=lines,ways,blocks` / `&cache=l2` | The L1 cache / with those upgrades (8 lines, 2-way sets, 8-byte blocks; any of them) / with the L2 behind it (`l3`: the L2 and L3; mixes with the upgrades: `&cache=ways,l3`) |
+| `&cache` / `&cache=l2` / `&sizes=2,1,0` | The L1 cache / with the L2 behind it (`l3`: the L2 and L3) / each level's size steps, the L1 first (0-2 each; each step doubles that level's blocks) |
 | `&program=SUM WORDS` | Play a program by name (`data/programs.ts`, or a contract's, like `32-BIT SUM #4821`) |
 | `&clock=150` | Start with the clock dial at 50–150% |
 | `&deep` | The deep pipeline (on a pipelined tier): a 1.5x clock, 4 cycles per wrong guess |

@@ -3,8 +3,9 @@
 // into browser storage and into exported files, so an exported save can be
 // imported on another computer.
 import { cleanSkillLog } from './rhythm/skills.ts';
+import { cleanReputation } from './sim/reputation.ts';
 
-import { CACHE_UPGRADES, CLOCK, COOLING, CPU_PARTS, GRADES, MEMORY_PARTS, WORKDAY } from './data/economy.ts';
+import { CLOCK, COOLING, CPU_PARTS, GRADES, MEMORY_PARTS, WORKDAY } from './data/economy.ts';
 import { chipByBits, fitChip, NEW_GAME, type Contract, type DayRecord, type Progress } from './sim/progress.ts';
 import { SHOWCASES } from './sim/showcase.ts';
 import { THERMAL } from './sim/thermal.ts';
@@ -46,8 +47,28 @@ function isObject(value: unknown): value is Record<string, unknown> {
 const clamp = (value: unknown, min: number, max: number, fallback: number) =>
   typeof value === 'number' && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
 
+/**
+ * The L1's upgrades before 2026-11-16 (8 LINES, 2-WAY SETS, 8-BYTE BLOCKS),
+ * now gone: an old save's are one L1 size step each, so nothing it paid for
+ * is lost. Their shop keys in the log of what was bought become the L1's
+ * size step. The one place the old ids survive.
+ */
+const OLD_L1_UPGRADES = ['lines', 'ways', 'blocks'];
+const L1_SIZE_KEY = `${MEMORY_PARTS[0].id}size`;
+
+/** Each cache level's size steps, in range: from an old save's L1 upgrades if it has them, else from its own steps. */
+function cleanSizes(sizes: unknown, oldUpgrades: unknown): number[] {
+  if (Array.isArray(oldUpgrades)) {
+    const steps = new Set(oldUpgrades.filter((id) => OLD_L1_UPGRADES.includes(id))).size;
+    return MEMORY_PARTS.map((part, i) => (i === 0 ? Math.min(steps, part.sizes.length) : 0));
+  }
+  const given = Array.isArray(sizes) ? sizes : [];
+  return MEMORY_PARTS.map((part, i) => Math.round(clamp(given[i], 0, part.sizes.length, 0)));
+}
+
 function cleanProgress(raw: Record<string, unknown>): Progress {
-  const progress = { ...NEW_GAME, ...raw } as Progress;
+  const { cacheUpgrades: oldUpgrades, ...current } = raw;
+  const progress = { ...NEW_GAME, ...current } as Progress;
   // CPU parts are bought in order, so keep the parts that follow that order from the first one.
   let parts = 0;
   while (parts < CPU_PARTS.length && progress.parts[parts] === CPU_PARTS[parts].id) parts++;
@@ -59,12 +80,15 @@ function cleanProgress(raw: Record<string, unknown>): Progress {
     parts: CPU_PARTS.slice(0, parts).map((part) => part.id),
     clockLevel: Math.round(clamp(progress.clockLevel, 0, CLOCK.factors.length - 1, 0)),
     cacheLevels: Math.round(clamp(progress.cacheLevels, 0, MEMORY_PARTS.length, 0)),
-    // Saves from before the L1's upgrades have none; each upgrade is kept once, in the order bought.
-    cacheUpgrades: Array.isArray(progress.cacheUpgrades)
-      ? [...new Set(progress.cacheUpgrades)].filter((id) => CACHE_UPGRADES.some((upgrade) => upgrade.id === id))
-      : [],
+    // Saves from before the size steps have none (or their old L1 upgrades as steps).
+    cacheSizes: cleanSizes(current.cacheSizes, oldUpgrades),
     // Saves from before the shop kept a log start with none (sim/showcase.ts then goes by the parts' own order).
-    bought: Array.isArray(progress.bought) ? progress.bought.filter((key, i, keys) => typeof key === 'string' && keys.lastIndexOf(key) === i).slice(-64) : [],
+    bought: Array.isArray(progress.bought)
+      ? progress.bought
+          .map((key) => (OLD_L1_UPGRADES.includes(key) ? L1_SIZE_KEY : key))
+          .filter((key, i, keys) => typeof key === 'string' && keys.lastIndexOf(key) === i)
+          .slice(-64)
+      : [],
     cooling: Math.round(clamp(progress.cooling, 0, COOLING.length - 1, 0)),
     overclocking: progress.overclocking === true,
     deepPipeline: progress.deepPipeline === 'on' || progress.deepPipeline === 'off' ? progress.deepPipeline : 'none',
@@ -88,6 +112,7 @@ function cleanProgress(raw: Record<string, unknown>): Progress {
     history: Array.isArray(progress.history) ? progress.history.filter(isDayRecord).slice(-WORKDAY.historyDays) : [],
     // Saves from before the calls were counted start with none.
     skills: cleanSkillLog(progress.skills),
+    reputation: cleanReputation(progress.reputation),
   });
 }
 

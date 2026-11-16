@@ -5,7 +5,8 @@ import { programByName, TUTORIAL_PROGRAM } from '../game/src/data/programs.ts';
 import { assemble } from '../game/src/sim/assembler.ts';
 import { Cpu, trace } from '../game/src/sim/cpu.ts';
 import { keepsTotal } from '../game/src/sim/isa.ts';
-import { completeContract, fillBoard, isLocked, isTutorial, jobItems, newCampaign } from '../game/src/sim/progress.ts';
+import { fillBoard, isLocked, isTutorial, jobItems, newCampaign } from '../game/src/sim/progress.ts';
+import { finishJob } from '../game/src/sim/workday.ts';
 
 // The tutorial job: a new game's first, alone on the board, written so that
 // every core instruction comes up once, early, for TICK's close looks.
@@ -37,7 +38,7 @@ test('a new game offers only the tutorial job, takeable at once; finishing it pa
   assert.equal(fillBoard(start, () => 0.5), start, 'the board stays as it is');
   assert.equal(isLocked(start.board[0], start), false);
   assert.equal(jobItems(start.board[0]), 2);
-  const done = completeContract(start, start.board[0].id, () => 0.5);
+  const done = finishJob(start, start.board[0], 60, false, () => 0.5).progress;
   assert.equal(done.money, TUTORIAL_JOB.pay);
   assert.equal(done.board.length, GRADES.length * CONTRACTS_PER_GRADE);
   assert.ok(!done.board.some(isTutorial));

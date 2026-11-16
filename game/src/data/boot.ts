@@ -9,7 +9,7 @@
 import { COOLING } from './economy.ts';
 import { programByName } from './programs.ts';
 import { formatDuration, formatMhz, formatMoney } from '../format.ts';
-import { cachesBelow, cacheWords, MEMORY_TIMING, missNs, ramCycles, SHOWN_BYTES } from '../sim/memory.ts';
+import { cacheWords, MEMORY_TIMING, missNs, ramCycles, SHOWN_BYTES } from '../sim/memory.ts';
 import { cacheOf, cpuName, lowerCachesOf, ratedMhz, type Progress } from '../sim/progress.ts';
 import { THERMAL } from '../sim/thermal.ts';
 import { dateLine } from '../sim/workday.ts';
@@ -154,7 +154,7 @@ function hardware(progress: Progress): {
     clock: `${formatMhz(mhz)}, A CYCLE EVERY ${formatDuration(1 / (mhz * 1e6))}`,
     ram: `A TRIP TAKES ${ramNs} ns = ${cycles} CYCLE${cycles === 1 ? '' : 'S'}`,
     cache: cache ? cacheWords(cache) : 'NONE',
-    lower: cachesBelow(lower).map((level) => ({ name: level.name, words: `${cacheWords(level.shape)}, +${level.ns} ns` })),
+    lower: lower.map((level) => ({ name: level.name, words: `${cacheWords(level.shape)}, +${level.ns} ns` })),
     cooler: COOLING[progress.cooling].name,
     wear: progress.chipMaxDial < THERMAL.maxDial ? `MAX CLOCK ${Math.round(progress.chipMaxDial * 100)}%` : undefined,
   };

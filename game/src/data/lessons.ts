@@ -1,4 +1,4 @@
-import { cacheShape, L1_BASE, type CacheShape } from '../sim/memory.ts';
+import { cachesBelow, cacheShape, L1_BASE, type CacheShape, type LowerCache } from '../sim/memory.ts';
 import { WIP_PARTS } from './economy.ts';
 import type { TierOptions } from './tiers.ts';
 
@@ -18,8 +18,7 @@ export type DiagramId =
   | 'counter2' | 'misses2' | 'weak2' | 'when2' | 'score2'
   | 'overclock' | 'power' | 'throttle' | 'damage'
   | 'ramtrip' | 'wallchart' | 'floor' | 'freezeplay'
-  | 'desk' | 'lines' | 'address' | 'locality' | 'misskinds' | 'cacheplay' | 'cachescore'
-  | 'morelines' | 'twoway' | 'sets' | 'bigblocks'
+  | 'desk' | 'lines' | 'locality' | 'misskinds' | 'cachescore' | 'size'
   | 'shelf' | 'l2loads' | 'amat' | 'library' | 'l3loads'
   | 'deep' | 'deeptrade';
 
@@ -31,11 +30,11 @@ export type Lesson = {
   /**
    * How its song is set up. A practice right after buying (flow.ts) runs on
    * the player's own CPU, but keeps the lesson's `program`, `l1` and
-   * `lowerCaches`: the L1's upgrades and the caches below it are each shown on
-   * a program made for what they fix, on the first L1 with just that change,
-   * so the difference is plain.
+   * `lowerCaches`: a bigger cache and the caches below the L1 are each shown
+   * on a program made for what they fix, on the first L1 with just that
+   * change, so the difference is plain.
    */
-  readonly options?: TierOptions & { readonly l1?: CacheShape; readonly lowerCaches?: number; readonly deep?: boolean };
+  readonly options?: TierOptions & { readonly l1?: CacheShape; readonly lowerCaches?: readonly LowerCache[]; readonly deep?: boolean };
   /** A practice follows the tour (a new kind of CPU); without one, the tour explains and the game goes on. */
   readonly practice: boolean;
 };
@@ -53,11 +52,9 @@ export const LESSONS: Readonly<Record<string, Lesson>> = Object.fromEntries(
     { id: 'overclock', title: 'OVERCLOCKING', scene: 'pipeline', practice: false },
     { id: 'memwall', title: 'THE MEMORY WALL', scene: 'pipeline', options: { forwarding: true }, practice: false },
     { id: 'cache', title: 'THE L1 CACHE', scene: 'pipeline', options: { forwarding: true, l1: L1_BASE }, practice: true },
-    { id: 'morelines', title: 'L1: 8 LINES', scene: 'pipeline', options: { forwarding: true, l1: cacheShape(['lines']), program: 'TWO PASSES' }, practice: true },
-    { id: 'twoway', title: 'L1: 2-WAY SETS', scene: 'pipeline', options: { forwarding: true, l1: cacheShape(['ways']), program: 'ADD TWO LISTS' }, practice: true },
-    { id: 'bigblocks', title: 'L1: 8-BYTE BLOCKS', scene: 'pipeline', options: { forwarding: true, l1: cacheShape(['blocks']), program: 'SUM WORDS' }, practice: true },
-    { id: 'l2', title: 'THE L2 CACHE', scene: 'pipeline', options: { forwarding: true, l1: L1_BASE, lowerCaches: 1, program: 'TWO PASSES' }, practice: true },
-    { id: 'l3', title: 'THE L3 CACHE', scene: 'pipeline', options: { forwarding: true, l1: L1_BASE, lowerCaches: 2, program: 'SUM BIG NUMBERS' }, practice: true },
+    { id: 'size', title: 'BIGGER CACHE BLOCKS', scene: 'pipeline', options: { forwarding: true, l1: cacheShape(0, 1), program: 'SUM WORDS' }, practice: true },
+    { id: 'l2', title: 'THE L2 CACHE', scene: 'pipeline', options: { forwarding: true, l1: L1_BASE, lowerCaches: cachesBelow(1), program: 'TWO PASSES' }, practice: true },
+    { id: 'l3', title: 'THE L3 CACHE', scene: 'pipeline', options: { forwarding: true, l1: L1_BASE, lowerCaches: cachesBelow(2), program: 'SUM BIG NUMBERS' }, practice: true },
     { id: 'deep', title: 'THE DEEP PIPELINE', scene: 'pipeline', options: { forwarding: true, guessing: true, deep: true }, practice: true },
   ] satisfies Lesson[]).map((lesson) => [lesson.id, lesson]),
 );

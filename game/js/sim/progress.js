@@ -1,15 +1,16 @@
 // The player's progress: money, the CPU chip (its word size) and parts, clock,
 // memory and cooling upgrades, chip wear, and the contract board. Pure functions over a plain object, so the
 // rules are testable; game/src/save.ts stores it.
-import { BASE_MHZ, CACHE_UPGRADES, CHIPS, DATA_WIDTHS, CLOCK, CONTRACTS_PER_GRADE, COOLING, CPU_PARTS, DEEP_PIPELINE, LATE_PAY_FACTOR, MEMORY_PARTS, OVERCLOCKING_PRICE, REPAIR_PRICE_PER_STEP, GRADES, PAY, TIGHT_SHARE, TUTORIAL_JOB, WORKDAY, } from '../data/economy.js';
+import { BASE_MHZ, CACHE_SIZE, CHIPS, DATA_WIDTHS, CLOCK, CONTRACTS_PER_GRADE, JOBS_PER_COMPANY, COOLING, CPU_PARTS, DEEP_PIPELINE, LATE_PAY_FACTOR, MEMORY_PARTS, OVERCLOCKING_PRICE, REPAIR_PRICE_PER_STEP, GRADES, PAY, TIGHT_SHARE, TUTORIAL_JOB, WORKDAY, } from '../data/economy.js';
 import { programByName, TUTORIAL_PROGRAM } from '../data/programs.js';
 import { generateProgram } from './generator.js';
 import { showcaseJob } from './showcase.js';
 import { formatDuration, formatMhz, wipLabel } from '../format.js';
 import { tierByNumber } from '../data/tiers.js';
 import { cpuFor, trace } from './cpu.js';
-import { cacheShape, cacheWords, ramCycles } from './memory.js';
+import { cacheBytes, cachesBelow, cacheShape, cacheWords, missNs, MEMORY_TIMING, ramCycles } from './memory.js';
 import { perfectRun } from './pipeline.js';
+import { afterJob, NO_REPUTATION, payMultiplier } from './reputation.js';
 import { THERMAL } from './thermal.js';
 import { tempoForClock } from '../rhythm/tempo.js';
 export const NEW_GAME = {
@@ -18,7 +19,7 @@ export const NEW_GAME = {
     parts: [],
     clockLevel: 0,
     cacheLevels: 0,
-    cacheUpgrades: [],
+    cacheSizes: MEMORY_PARTS.map(() => 0),
     bought: [],
     cooling: 0,
     overclocking: false,
@@ -33,6 +34,7 @@ export const NEW_GAME = {
     today: { jobs: 0, late: 0, earned: 0 },
     history: [],
     skills: [],
+    reputation: NO_REPUTATION,
 };
 /** The player has seen a lesson or tour (data/tours.ts TAUGHT_IDS). */
 export function hasSeen(progress, id) {
@@ -127,13 +129,13 @@ export function ratedMhzFor(progress, pipelined, deep = pipelined && deepActive(
 export function hasCache(progress) {
     return progress.cacheLevels > 0;
 }
-/** The L1 cache you own, with its upgrades, or undefined without one. */
+/** The L1 cache you own, with its size steps, or undefined without one. */
 export function cacheOf(progress) {
-    return hasCache(progress) ? cacheShape(progress.cacheUpgrades) : undefined;
+    return hasCache(progress) ? cacheShape(0, progress.cacheSizes[0] ?? 0) : undefined;
 }
-/** How many of the caches below the L1 you own (sim/memory.ts LOWER_CACHES): 0, 1 (the L2) or 2 (the L2 and L3). */
+/** The caches below the L1 you own (sim/memory.ts LOWER_CACHES), with their size steps: none, the L2, or the L2 and L3. */
 export function lowerCachesOf(progress) {
-    return Math.max(0, progress.cacheLevels - 1);
+    return cachesBelow(Math.max(0, progress.cacheLevels - 1), progress.cacheSizes);
 }
 /**
  * The memory wall has arrived: at your rated clock, a trip to RAM (without a
@@ -203,9 +205,17 @@ export function isTight(contract, progress) {
     const seconds = contractSeconds(contract, progress);
     return seconds <= contract.deadline && seconds > contract.deadline * TIGHT_SHARE;
 }
-/** What a contract pays: the full amount, or LATE_PAY_FACTOR of it if the job ran past its deadline. */
-export function payFor(contract, late) {
-    return late ? Math.round(contract.pay * LATE_PAY_FACTOR) : contract.pay;
+/**
+ * What a contract pays now: its own pay (half if `late`) at your
+ * reputation's multiplier (sim/reputation.ts). The one place a job's pay is
+ * worked out: the board shows it, and settleJob pays it.
+ */
+export function payFor(progress, contract, late = false) {
+    return Math.round(contract.pay * (late ? LATE_PAY_FACTOR : 1) * payMultiplier(progress.reputation, progress.day));
+}
+/** Settles a finished job: paid at the reputation it was played on, then the job's change to reputation. */
+export function settleJob(progress, contract, late) {
+    return { late, pay: payFor(progress, contract, late), reputation: afterJob(progress.reputation, contract.grade, late, progress.day) };
 }
 /** How many items (e.g. bytes) the job works through, from its program's instructions per item. */
 export function jobItems(contract) {
@@ -227,7 +237,7 @@ export function withEverything(progress) {
         clockLevel: CLOCK.factors.length - 1,
         cooling: COOLING.length - 1,
         cacheLevels: MEMORY_PARTS.length,
-        cacheUpgrades: CACHE_UPGRADES.map((upgrade) => upgrade.id),
+        cacheSizes: MEMORY_PARTS.map((part) => part.sizes.length),
         overclocking: true,
         deepPipeline: 'on',
         chipMaxDial: THERMAL.maxDial,
@@ -246,19 +256,20 @@ export function payPerHour(progress) {
  * taken, and taking the grade's share of that on your hardware played
  * perfectly (on its own program, so a program heavy on memory is a smaller
  * job). Its pay is per hour of that time, with the grade's bonus. It stays
- * on offer a day or two from `progress.day`.
+ * on offer a day or two from `progress.day`. `fullCompanies`: the companies
+ * with as many jobs on the board as they may have (JOBS_PER_COMPANY).
  */
-export function newContract(grade, id, random, progress, busyClients = new Set()) {
+export function newContract(grade, id, random, progress, fullCompanies = new Set()) {
     const spec = GRADES.find((g) => g.id === grade) ?? GRADES[0];
-    // Each contract gets its own randomly generated program (sim/generator.ts), named after its seed, for a client
-    // who isn't already on the board (if one turns up within a few tries). Most are picked to show off a part your
+    // Each contract gets its own randomly generated program (sim/generator.ts), named after its seed, for a company
+    // that isn't full on the board (if one turns up within a few tries). Most are picked to show off a part your
     // CPU uses (sim/showcase.ts); the rest are on data as wide as your chip allows.
-    const showcase = showcaseJob(progress, random, busyClients);
+    const showcase = showcaseJob(progress, random, fullCompanies);
     let generated = showcase?.program;
     if (!generated) {
         const bits = dataWidth(progress, random).bits;
         generated = generateProgram(Math.floor(random() * 1_000_000), undefined, bits);
-        for (let tries = 0; tries < 10 && busyClients.has(generated.client ?? ''); tries++) {
+        for (let tries = 0; tries < 10 && fullCompanies.has(generated.client ?? ''); tries++) {
             generated = generateProgram(Math.floor(random() * 1_000_000), undefined, bits);
         }
     }
@@ -294,8 +305,10 @@ export function fillBoard(progress, random) {
     let { nextId } = progress;
     for (const grade of GRADES) {
         while (board.filter((c) => c.grade === grade.id).length < CONTRACTS_PER_GRADE) {
-            const clients = new Set(board.map((c) => programByName(c.program).client ?? ''));
-            board.push(newContract(grade.id, nextId++, random, progress, clients));
+            // A company with as many jobs on the board as it may have sends no more for now.
+            const clients = board.map((c) => programByName(c.program).client ?? '');
+            const full = new Set(clients.filter((client) => clients.filter((each) => each === client).length >= JOBS_PER_COMPANY));
+            board.push(newContract(grade.id, nextId++, random, progress, full));
         }
     }
     return { ...progress, board, nextId };
@@ -314,14 +327,6 @@ export function isTutorial(contract) {
 /** A new game: its board holds only the tutorial job, for TICK's first lesson; the usual jobs come once it's done. */
 export function newCampaign() {
     return { ...NEW_GAME, board: [tutorialContract(1)], nextId: 2 };
-}
-/** A contract was played: it pays (half if `late`), and a new one takes its place (the board never runs out). */
-export function completeContract(progress, id, random, late = false) {
-    const contract = progress.board.find((c) => c.id === id);
-    if (!contract)
-        return progress;
-    const paid = { ...progress, money: progress.money + payFor(contract, late), board: progress.board.filter((c) => c.id !== id) };
-    return fillBoard(paid, random);
 }
 function repairSteps(progress) {
     return Math.round((THERMAL.maxDial - progress.chipMaxDial) / THERMAL.damagePerOverheat);
@@ -371,7 +376,7 @@ export function shopItems(progress) {
         apply: (p) => ({ ...p, overclocking: true }),
     });
     // Each cache level after the one before it: the L1 once RAM is too slow for the clock, each one below it on a chip
-    // wide enough. The L1's upgrades come straight after it.
+    // wide enough. Each level's size steps come straight after it.
     MEMORY_PARTS.forEach((part, i) => {
         const owned = progress.cacheLevels > i;
         const ready = i === progress.cacheLevels && pastMemoryWall(progress) && progress.wordBits >= part.bits;
@@ -382,12 +387,11 @@ export function shopItems(progress) {
             price: part.price,
             state: owned ? 'owned' : ready ? 'buy' : 'later',
             lessonId: part.lessonId,
-            about: owned || ready ? part.about : part.later,
+            // Once owned, the line ends with the cache as it is now, its size steps and all.
+            about: owned ? `${part.about} Yours: ${cacheWords(cacheShape(i, progress.cacheSizes[i] ?? 0))}.` : ready ? part.about : part.later,
             apply: (p) => ({ ...p, cacheLevels: i + 1 }),
         });
-        if (i === 0)
-            for (const upgrade of CACHE_UPGRADES)
-                items.push(cacheUpgradeItem(progress, upgrade));
+        items.push(sizeItem(progress, i));
     });
     COOLING.forEach((cooler, i) => {
         if (i === 0)
@@ -416,21 +420,38 @@ export function shopItems(progress) {
     return items;
 }
 /**
- * An upgrade to the L1: on sale once the L1 is in, in any order. Its line
- * says what the cache becomes.
+ * A cache level's size steps (MEMORY_PARTS' sizes): one at a time once the
+ * level is in, each doubling its blocks. Its line says what the cache
+ * becomes and, for the L1, how much longer a trip to RAM takes. The first
+ * step bought, on any level, comes with the size lesson; later ones don't.
  */
-function cacheUpgradeItem(progress, upgrade) {
-    const owned = progress.cacheUpgrades.includes(upgrade.id);
-    const after = cacheShape([...progress.cacheUpgrades, upgrade.id]);
-    return {
-        key: upgrade.id,
+function sizeItem(progress, level) {
+    const part = MEMORY_PARTS[level];
+    const steps = progress.cacheSizes[level] ?? 0;
+    const owned = progress.cacheLevels > level;
+    const now = cacheShape(level, steps);
+    const next = steps < part.sizes.length ? cacheShape(level, steps + 1) : undefined;
+    const name = part.id.toUpperCase();
+    const base = {
+        key: `${part.id}size`,
         group: 'MEMORY',
-        name: wipLabel(upgrade.name, upgrade.wip),
-        price: upgrade.price,
-        state: owned ? 'owned' : hasCache(progress) ? 'buy' : 'later',
-        lessonId: upgrade.lessonId,
-        about: hasCache(progress) && !owned ? `${upgrade.about} Your L1 becomes ${cacheWords(after)}.` : hasCache(progress) ? upgrade.about : `An upgrade to the L1 cache. ${upgrade.about}`,
-        apply: (p) => ({ ...p, cacheUpgrades: [...p.cacheUpgrades, upgrade.id] }),
+        apply: (p) => ({ ...p, cacheSizes: p.cacheSizes.map((n, i) => (i === level ? Math.min(part.sizes.length, n + 1) : n)) }),
+    };
+    if (!next) {
+        return { ...base, name: wipLabel(`${name} SIZE: ${cacheBytes(now)} BYTES`, CACHE_SIZE.wip), price: 0, state: 'max', about: `Your ${name} is as big as it gets: ${cacheWords(now)}.` };
+    }
+    const cost = level === 0
+        ? ` Each trip to RAM takes ${missNs(next) - missNs(now)} ns longer, to send the bigger block.`
+        : ` It hands the L1 its block as fast as before, so a bigger block costs no time.`;
+    return {
+        ...base,
+        name: wipLabel(`${name} SIZE: ${cacheBytes(next)} BYTES`, CACHE_SIZE.wip),
+        price: part.sizes[steps].price,
+        state: owned ? 'buy' : 'later',
+        lessonId: owned && !hasSeen(progress, CACHE_SIZE.lessonId) ? CACHE_SIZE.lessonId : undefined,
+        about: owned
+            ? `Each trip brings ${next.blockBytes} bytes instead of ${now.blockBytes}, so the next numbers are already there, and it holds twice as much. Your ${name} becomes ${cacheWords(next)}.${cost}`
+            : `Makes the ${name} cache bigger, once you have it: each trip brings more of the numbers next to the one asked for.`,
     };
 }
 /**
@@ -499,7 +520,9 @@ function clockAbout(progress, before, after) {
     const [now, then] = [typicalSecondsPerInstruction(progress), typicalSecondsPerInstruction(upgraded)];
     const saved = Math.round((1 - then / now) * 100);
     const ram = [ramCycles(before, cacheOf(progress), lowerCachesOf(progress)), ramCycles(after, cacheOf(progress), lowerCachesOf(progress))];
-    const wall = ram[1] > 1 ? ` A trip to RAM still takes 60 ns: ${ram[0]} -> ${ram[1]} cycles.` : '';
+    const cache = cacheOf(progress);
+    const trip = cache ? missNs(cache, lowerCachesOf(progress)) : MEMORY_TIMING.ramNs;
+    const wall = ram[1] > 1 ? ` A trip to RAM still takes ${trip} ns: ${ram[0]} -> ${ram[1]} cycles.` : '';
     return (`Rated clock ${formatMhz(before)} -> ${formatMhz(after)}, beat ${Math.round(tempoForClock(before))} -> ${Math.round(tempoForClock(after))} BPM. ` +
         `A typical job: ${formatDuration(now)} -> ${formatDuration(then)} per instruction (${saved}% less).${wall}`);
 }

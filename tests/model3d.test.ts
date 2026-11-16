@@ -56,18 +56,18 @@ test('no two parts of a fully upgraded chip overlap, with the fan at any angle',
 
 test("the L1 drawn on the chip as it's built: a cell per byte of each line, none overlapping", () => {
   const cached = { ...withEverything(NEW_GAME), cooling: 0 };
-  for (const upgrades of [[], ['lines'], ['ways'], ['blocks'], ['lines', 'ways', 'blocks']] as const) {
-    const shapes = shapesAt(buildChip({ ...cached, cacheUpgrades: upgrades }), 0);
+  for (const steps of [0, 1, 2]) {
+    const shapes = shapesAt(buildChip({ ...cached, cacheSizes: [steps, 0, 0] }), 0);
     for (let i = 0; i < shapes.length; i++) {
-      for (let j = i + 1; j < shapes.length; j++) assert.notEqual(behind(shapes[i], shapes[j], cameraAt(0)), undefined, `${upgrades.join()}: parts ${i} and ${j} overlap`);
+      for (let j = i + 1; j < shapes.length; j++) assert.notEqual(behind(shapes[i], shapes[j], cameraAt(0)), undefined, `${steps} steps: parts ${i} and ${j} overlap`);
     }
   }
-  // 4 lines of 4 cells at first; all three upgrades: 8 lines of 8.
-  const cells = (upgrades: readonly ('lines' | 'ways' | 'blocks')[], cacheLevels = 1) => buildChip({ ...cached, cacheUpgrades: upgrades, cacheLevels }).length;
-  assert.equal(cells(['lines', 'ways', 'blocks']) - cells([]), 64 - 16);
+  // 4 lines of 4 cells at first; both size steps: 4 lines of 16.
+  const cells = (steps: number, cacheLevels = 1) => buildChip({ ...cached, cacheSizes: [steps, 0, 0], cacheLevels }).length;
+  assert.equal(cells(2) - cells(0), 64 - 16);
   // The L2 and the L3 add a bar for each of their lines: 8, then 4.
-  assert.equal(cells([], 2) - cells([]), 8);
-  assert.equal(cells([], 3) - cells([], 2), 4);
+  assert.equal(cells(0, 2) - cells(0), 8);
+  assert.equal(cells(0, 3) - cells(0, 2), 4);
 });
 
 test('as the chip turns, every part is drawn after every part it can hide', () => {

@@ -23,7 +23,7 @@ type Load = { readonly op: string; readonly address: number; readonly hit: boole
  * caches below it (its stores go through too: a hit refreshes its line).
  */
 function loadsOn(program: string, shape: CacheShape, lower = 0): Load[] {
-  const memory = new MemorySystem(shape, lower);
+  const memory = new MemorySystem(shape, cachesBelow(lower));
   const loads: Load[] = [];
   for (const step of trace(cpuFor(programByName(program)))) {
     if (step.loaded !== undefined) {
@@ -34,7 +34,7 @@ function loadsOn(program: string, shape: CacheShape, lower = 0): Load[] {
   return loads;
 }
 
-const MISS_SHORT: Readonly<Record<MissKind, string>> = { 'first-use': 'first use', conflict: 'conflict', 'too-small': 'too small' };
+const MISS_SHORT: Readonly<Record<MissKind, string>> = { 'first-use': 'first use', 'too-small': 'too small' };
 
 /**
  * A row of loads under a label: a before or after in an upgrade's picture.
@@ -94,7 +94,7 @@ function ladder(s: Sketch, cx: number, cy: number, lower: number): void {
     s.text(x, y - 12, level.name, 20, 1, true);
     if (level.bytes > 0) s.text(x, y + 14, `${level.bytes} BYTES`, 12, 0.8);
     if (!level.from) return;
-    const ns = level.from === 'L1' ? MEMORY_TIMING.l1Ns : missNs(L1_BASE, lower, level.from);
+    const ns = level.from === 'L1' ? MEMORY_TIMING.l1Ns : missNs(L1_BASE, cachesBelow(lower), level.from);
     s.text(x, y + 52, PLACES[level.from], 13, 0.85);
     s.text(x, y + 76, `${ns} ns`, 16, 1, true);
     // A hit fits in the MEMORY stage's own cycle; anything further freezes the pipeline for its cycles.
@@ -850,45 +850,25 @@ const DIAGRAMS: Record<DiagramId, (s: Sketch, cx: number, cy: number) => void> =
     s.text(cx + 58, cy + 50, `(${ramCycles(4000, L1_BASE)} cycles at 4 GHz)`, 12, 0.9);
   },
 
-  // Memory's blocks and the line each one must go in
+  // Memory's blocks taking the cache's lines in the order they're used (the game's own cache): any block, any free line
   lines(s, cx, cy) {
+    const cache = new Cache();
     const blockX = (b: number) => cx - 315 + b * 90;
     for (let b = 0; b < 8; b++) {
-      s.box(blockX(b), cy - 60, 80, 30, b % 4 === 0);
+      s.box(blockX(b), cy - 60, 80, 30, b === 0 || b === 4 || b === 1);
       s.text(blockX(b), cy - 60, `${b * 4}-${b * 4 + 3}`, 13);
     }
     s.text(cx, cy - 92, 'MEMORY, IN 4-BYTE BLOCKS', 12, 0.7);
     const lineX = (i: number) => cx - 135 + i * 90;
     for (let i = 0; i < 4; i++) {
-      s.box(lineX(i), cy + 50, 80, 30, i === 0);
+      s.box(lineX(i), cy + 50, 80, 30, i < 3);
       s.text(lineX(i), cy + 50, `LINE ${i}`, 13);
     }
     s.text(cx, cy + 84, 'L1 CACHE: 4 LINES', 12, 0.7);
-    s.arrow(blockX(0), cy - 44, lineX(0) - 10, cy + 34);
-    s.arrow(blockX(4), cy - 44, lineX(0) + 10, cy + 34);
-    s.arrow(blockX(1), cy - 44, lineX(1), cy + 34);
-    s.text(cx + 300, cy + 4, 'block number', 12, 0.8);
-    s.text(cx + 300, cy + 22, 'mod 4 = its line', 12, 0.8);
-  },
-
-  // Address 22 split into tag, line and byte, and the line it checks
-  address(s, cx, cy) {
-    s.text(cx - 150, cy - 70, 'ADDRESS 22 =', 20, 0.9);
-    const parts: [string, string, number][] = [['0001', 'TAG', -10], ['01', 'LINE', 80], ['10', 'BYTE', 140]];
-    for (const [bits, name, dx] of parts) {
-      s.text(cx + dx, cy - 70, bits, 24, 1, true);
-      s.text(cx + dx, cy - 40, name, 12, 0.8);
-    }
-    s.arrow(cx + 80, cy - 28, cx + 80, cy + 16);
-    const rows: [string, string, string][] = [['0', '0000', '03 05 07 02'], ['1', '0001', '14 15 2A 17'], ['2', '----', '-- -- -- --'], ['3', '----', '-- -- -- --']];
-    rows.forEach(([line, tag, data], i) => {
-      const y = cy + 6 + i * 22;
-      s.text(cx - 150, y, line, 14, i === 1 ? 1 : 0.6, i === 1);
-      s.text(cx - 90, y, tag, 14, i === 1 ? 1 : 0.6, i === 1);
-      s.text(cx + 20, y, data, 14, i === 1 ? 1 : 0.6, i === 1);
-    });
-    s.box(cx - 50, cy + 28, 260, 20, true, false);
-    s.hintText(cx + 240, cy + 28, 'TAG 0001 MATCHES: HIT, BYTE 2 = 2A', true, 13);
+    // Blocks 0, 4 and 1 are read in that order: each takes the next free line.
+    for (const block of [0, 4, 1]) s.arrow(blockX(block), cy - 44, lineX(cache.read(block * 4).line), cy + 34);
+    s.text(cx + 300, cy + 4, 'any block,', 12, 0.8);
+    s.text(cx + 300, cy + 22, 'any free line', 12, 0.8);
   },
 
   // Reading bytes 0-7 in order: one miss per block (the game's own cache)
@@ -905,37 +885,20 @@ const DIAGRAMS: Record<DiagramId, (s: Sketch, cx: number, cy: number) => void> =
     s.text(cx, cy + 66, 'READING IN ORDER: 1 MISS PER 4 BYTES', 15, 1, true);
   },
 
-  // First use, conflict, too small
+  // First use, too small
   misskinds(s, cx, cy) {
     const kinds: [string, string, string][] = [
       ['FIRST USE', 'lb 0 at the start:', 'never loaded before'],
-      ['CONFLICT', 'lb 0, lb 16, lb 1:', 'both want line 0'],
       ['TOO SMALL', '5 blocks in use,', 'only 4 lines'],
     ];
     kinds.forEach(([name, example, why], i) => {
-      const x = cx + (i - 1) * 240;
-      s.box(x, cy - 10, 210, 110, i === 1);
+      const x = cx + (i - 0.5) * 280;
+      s.box(x, cy - 10, 240, 110, i === 1);
       s.text(x, cy - 44, name, 18, 1, true);
       s.text(x, cy - 6, example, 13, 0.85);
       s.text(x, cy + 16, why, 13, 0.85);
     });
-    s.text(cx, cy + 74, 'a bigger cache fixes TOO SMALL, not FIRST USE', 13, 0.7);
-  },
-
-  // The panel with the cache: memory, the L1 box, the lookup line
-  cacheplay(s, cx, cy) {
-    s.box(cx - 150, cy - 30, 300, 100);
-    s.text(cx - 260, cy - 82, 'MEMORY', 12, 0.7);
-    ['00: 03 05 07 02  09 01 04 06', '08: 00 00 00 00  00 00 00 00', '10: 00 00 00 00  00 00 00 00'].forEach((row, i) =>
-      s.text(cx - 150, cy - 58 + i * 22, row, 13, 0.85),
-    );
-    s.box(cx + 140, cy - 30, 220, 100, true, false);
-    s.text(cx + 80, cy - 82, 'L1: LINE TAG DATA', 12, 0.8);
-    ['0 0000 03 05 07 02', '1 0000 09 01 04 06', '2 ---- -- -- -- --', '3 ---- -- -- -- --'].forEach((row, i) =>
-      s.text(cx + 140, cy - 64 + i * 20, row, 13, 0.9),
-    );
-    s.text(cx, cy + 46, 'lb 5: 0000 01 01 LINE 1 TAG 0 -> HIT', 15, 1, true);
-    s.text(cx, cy + 74, 'the lookup line: what every load and store just did', 12, 0.7);
+    s.text(cx, cy + 74, 'bigger blocks cut both: more comes in per trip, and more fits', 13, 0.7);
   },
 
   // SUM ARRAY at 4 GHz with and without the cache (the game's own runs)
@@ -951,51 +914,13 @@ const DIAGRAMS: Record<DiagramId, (s: Sketch, cx: number, cy: number) => void> =
     s.text(cx, cy + 74, `${(plain.cpi / cached.cpi).toFixed(1)}x FASTER: ${plain.memory.ramTrips} TRIPS TO RAM BECOME ${cached.memory.ramTrips}`, 16, 1, true);
   },
 
-  // MORE LINES: TWO PASSES's loads on the first L1 and with 8 lines (the game's own caches)
-  morelines(s, cx, cy) {
-    const [before, after] = [loadsOn('TWO PASSES', L1_BASE), loadsOn('TWO PASSES', cacheShape(['lines']))];
-    missRow(s, cx, cy - 64, 'FIRST L1: 4 LINES (16 BYTES)', before);
-    missRow(s, cx, cy + 28, '8 LINES (32 BYTES)', after);
-    const second = (loads: readonly Load[]) => loads.slice(loads.length / 2).filter((load) => !load.hit).length;
-    s.text(cx, cy + 96, `THE SECOND PASS: ${second(before)} MISSES -> ${second(after)}, ALL 24 BYTES STILL THERE`, 15, 1, true);
-  },
-
-  // 2-WAY: ADD TWO LISTS's loads, one line per block against two-way sets
-  twoway(s, cx, cy) {
-    const [before, after] = [loadsOn('ADD TWO LISTS', L1_BASE), loadsOn('ADD TWO LISTS', cacheShape(['ways']))];
-    missRow(s, cx, cy - 64, 'FIRST L1: ONE LINE PER BLOCK', before);
-    missRow(s, cx, cy + 28, '2-WAY: TWO LINES PER SET', after);
-    const misses = (loads: readonly Load[]) => loads.filter((load) => !load.hit).length;
-    s.text(cx, cy + 96, `THE SAME 16 BYTES: ${misses(before)} MISSES -> ${misses(after)}`, 15, 1, true);
-  },
-
-  // Blocks and the set each must go in: blocks 0 and 4 share set 0, and both fit
-  sets(s, cx, cy) {
-    const blockX = (b: number) => cx - 315 + b * 90;
-    for (let b = 0; b < 8; b++) {
-      s.box(blockX(b), cy - 60, 80, 30, b % 2 === 0 && b % 4 === 0);
-      s.text(blockX(b), cy - 60, `${b * 4}-${b * 4 + 3}`, 13);
-    }
-    s.text(cx, cy - 92, 'MEMORY, IN 4-BYTE BLOCKS', 12, 0.7);
-    const lineX = (i: number) => cx - 160 + i * 90 + (i >= 2 ? 50 : 0);
-    for (let i = 0; i < 4; i++) {
-      s.box(lineX(i), cy + 50, 80, 30, i < 2);
-      s.text(lineX(i), cy + 50, `SET ${i >> 1}`, 13);
-    }
-    s.text(cx - 115, cy + 84, 'SET 0: TWO LINES', 12, 0.7);
-    s.text(cx + 75, cy + 84, 'SET 1: TWO LINES', 12, 0.7);
-    s.arrow(blockX(0), cy - 44, lineX(0), cy + 34);
-    s.arrow(blockX(4), cy - 44, lineX(1), cy + 34);
-    s.text(cx + 330, cy + 4, 'block number', 12, 0.8);
-    s.text(cx + 330, cy + 22, 'mod 2 = its set', 12, 0.8);
-  },
-
-  // BIGGER BLOCKS: SUM WORDS's loads in 4-byte and 8-byte blocks
-  bigblocks(s, cx, cy) {
-    const big = cacheShape(['blocks']);
+  // A SIZE STEP: SUM WORDS's loads on the first L1 and one step bigger (the game's own caches)
+  size(s, cx, cy) {
+    const big = cacheShape(0, 1);
     const [before, after] = [loadsOn('SUM WORDS', L1_BASE), loadsOn('SUM WORDS', big)];
-    missRow(s, cx, cy - 64, 'FIRST L1: 4-BYTE BLOCKS, ONE NUMBER EACH', before);
-    missRow(s, cx, cy + 28, '8-BYTE BLOCKS: TWO NUMBERS EACH', after);
+    const each = (shape: CacheShape) => shape.blockBytes / 4;
+    missRow(s, cx, cy - 64, `FIRST L1: ${L1_BASE.blockBytes}-BYTE BLOCKS, ${each(L1_BASE)} NUMBER EACH`, before);
+    missRow(s, cx, cy + 28, `ONE SIZE STEP: ${big.blockBytes}-BYTE BLOCKS, ${each(big)} NUMBERS EACH`, after);
     const misses = (loads: readonly Load[]) => loads.filter((load) => !load.hit).length;
     s.text(cx, cy + 96, `${misses(before)} MISSES -> ${misses(after)}, EACH ${missNs(L1_BASE)} -> ${missNs(big)} ns`, 15, 1, true);
   },

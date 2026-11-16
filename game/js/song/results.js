@@ -1,7 +1,7 @@
 import { formatDuration, formatHours, formatMoney } from '../format.js';
 import { cachesBelow, L1_BASE, sameShape } from '../sim/memory.js';
 import { perfectCycles } from '../sim/pipeline.js';
-import { payFor } from '../sim/progress.js';
+import { changeLine } from '../sim/reputation.js';
 import { callsLine } from '../rhythm/skills.js';
 import { pipelineOptions } from './setup.js';
 /** The whole contract's time at this run's pace: its CPI and the clocks it actually ran at. */
@@ -31,8 +31,8 @@ export function runReport(f) {
     const p = run.pipeline;
     const { chip } = run;
     const n = Math.max(1, p.instructions);
-    const paid = Boolean(contract && setup.replay?.paid);
-    const late = setup.replay?.late ?? false;
+    // What the job paid and did to reputation was settled once, as the run ended (the save has moved on since).
+    const settled = contract ? setup.replay?.job : undefined;
     // Every cycle either finished an instruction or was lost; what's left over is the pipeline filling and emptying.
     // A pair finishes two instructions in one cycle, so the cycles that finished work are the instructions less the pairs.
     const worked = p.instructions - p.pairs;
@@ -51,12 +51,12 @@ export function runReport(f) {
         compare.push({ cpu: 'no-forwarding', time: best({ ...rated, forwarding: false }) });
     if (setup.l1)
         compare.push({ cpu: 'no-cache', time: best({ ...rated, cache: undefined }) });
-    // An upgraded L1 against the first one: what the upgrades bought.
+    // A bigger L1 against the first one: what its size steps bought (the levels below it as they are).
     if (setup.l1 && !sameShape(setup.l1, L1_BASE))
         compare.push({ cpu: 'first-l1', time: best({ ...rated, cache: L1_BASE }) });
     // The last cache level bought against the CPU without it.
-    if (setup.lowerCaches > 0)
-        compare.push({ cpu: setup.lowerCaches === 1 ? 'no-l2' : 'no-l3', time: best({ ...rated, lowerCaches: setup.lowerCaches - 1 }) });
+    if (setup.lowerCaches.length > 0)
+        compare.push({ cpu: setup.lowerCaches.length === 1 ? 'no-l2' : 'no-l3', time: best({ ...rated, lowerCaches: setup.lowerCaches.slice(0, -1) }) });
     if (!setup.singleCycle) {
         // A single-cycle CPU's clock is a quarter of a pipelined one's (its cycle is all five stages long).
         const singleMhz = ratedMhz / 4;
@@ -65,8 +65,8 @@ export function runReport(f) {
     const period = chip.micros / Math.max(1, chip.cycles) / 1e6;
     return {
         client: setup.spec.client ?? setup.spec.name,
-        verdict: paid ? (late ? 'late' : 'on-time') : 'done',
-        job: paid && contract ? { pay: payFor(contract, late), seconds: jobSeconds(run, contract), deadline: contract.deadline } : undefined,
+        verdict: settled ? (settled.late ? 'late' : 'on-time') : 'done',
+        job: settled && contract ? { pay: settled.pay, seconds: jobSeconds(run, contract), deadline: contract.deadline, reputation: settled.reputation } : undefined,
         cycles: p.cycles,
         instructions: p.instructions,
         cpi: p.cpi,
@@ -74,13 +74,13 @@ export function runReport(f) {
         singleCycle: setup.singleCycle,
         pairs: p.pairs,
         ramTrips: p.memory.ramTrips,
-        lowerCaches: setup.lowerCaches,
+        lowerCaches: setup.lowerCaches.length,
         period,
         cooling: chip.haltedMicros / n / 1e6,
         compare,
         branches: setup.guessing ? { right: p.branches - p.mispredicted, total: p.branches, predictorRight: setup.predictor ? p.branches - p.predictorMisses : undefined } : undefined,
         calls: f.calls,
-        cache: setup.l1 && p.memory.loads > 0 ? cacheReport(p.memory, setup.lowerCaches) : undefined,
+        cache: setup.l1 && p.memory.loads > 0 ? cacheReport(p.memory, setup.lowerCaches.length) : undefined,
         clock: chip.cycles > 0 && (f.dials.some((d) => d !== 1) || chip.overheats > 0)
             ? { averageMhz: Number((1 / period / 1e6).toPrecision(3)), peak: Math.round(chip.peak), overheats: chip.overheats, maxDial: chip.maxDial }
             : undefined,
@@ -90,7 +90,7 @@ export function runReport(f) {
 function cacheReport(memory, lowerCaches) {
     const levels = ['L1', ...cachesBelow(lowerCaches).map((level) => level.name), 'RAM'];
     // Stores go to the write buffer, so every load is in one of these.
-    return { hits: memory.hits, loads: memory.loads, found: levels.map((level) => ({ level, loads: memory.served[level] })), amatNs: memory.averageLoadNs() };
+    return { hits: memory.hits, loads: memory.loads, missKinds: { ...memory.missKinds }, found: levels.map((level) => ({ level, loads: memory.served[level] })), amatNs: memory.averageLoadNs() };
 }
 /** Each use's mark in the cycles' bar (the pipeline filling is its empty part), and its name in the key under it. */
 const USE_MARKS = {
@@ -118,7 +118,7 @@ export function resultCard(report) {
     const rows = [];
     const { job } = report;
     if (job) {
-        rows.push({ kind: 'line', left: report.client, right: report.verdict === 'late' ? `HALF PAY: ${formatMoney(job.pay)}` : `PAID ${formatMoney(job.pay)}`, part: 'verdict' }, { kind: 'line', left: `THE JOB TOOK ${formatHours(job.seconds)}`, right: `DUE IN ${formatHours(job.deadline)}`, part: 'verdict' }, { kind: 'deadline', seconds: job.seconds, deadline: job.deadline, part: 'verdict' }, { kind: 'gap' });
+        rows.push({ kind: 'line', left: report.client, right: report.verdict === 'late' ? `HALF PAY: ${formatMoney(job.pay)}` : `PAID ${formatMoney(job.pay)}`, part: 'verdict' }, { kind: 'line', left: `THE JOB TOOK ${formatHours(job.seconds)}`, right: `DUE IN ${formatHours(job.deadline)}`, part: 'verdict' }, { kind: 'deadline', seconds: job.seconds, deadline: job.deadline, part: 'verdict' }, { kind: 'line', ...changeLine(job.reputation), part: 'reputation' }, { kind: 'gap' });
     }
     else {
         rows.push({ kind: 'line', left: report.client, part: 'verdict' }, { kind: 'gap' });

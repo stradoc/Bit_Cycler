@@ -1,8 +1,8 @@
-import { CACHE_UPGRADES, DEEP_PIPELINE, MEMORY_PARTS } from '../data/economy.js';
+import { DEEP_PIPELINE, MEMORY_PARTS } from '../data/economy.js';
 import { programByName } from '../data/programs.js';
 import { songFor } from '../data/songs.js';
 import { DEFAULT_DIFFICULTY, DIFFICULTIES, isDifficulty } from '../rhythm/tempo.js';
-import { cacheShape } from '../sim/memory.js';
+import { cachesBelow, cacheShape } from '../sim/memory.js';
 import { cacheOf, deepActive, lowerCachesOf, ratedMhzFor } from '../sim/progress.js';
 import { THERMAL } from '../sim/thermal.js';
 import { ROWS, SINGLE_CYCLE_ROWS } from './layout.js';
@@ -28,10 +28,10 @@ export function songSetup(start, progress, params) {
     const clock = Number(params.get('clock')) / 100;
     const asked = params.get('difficulty');
     const difficulty = start.difficulty ?? (isDifficulty(asked) ? asked : DEFAULT_DIFFICULTY);
-    // ?cache fits the L1 cache; ?cache=lines,ways,blocks with those upgrades, and l2 or l3 with the caches below it.
+    // ?cache fits the L1 cache; ?cache=l2 or l3 with the caches below it, and ?sizes=2,1,0 with those size steps.
     // A lesson that names its L1 runs it alone unless it names the levels below too.
     const l1 = start.l1 ?? cacheOf(progress) ?? cacheParam(params);
-    const lowerCaches = !l1 ? 0 : (start.lowerCaches ?? (start.l1 !== undefined ? 0 : cacheOf(progress) ? lowerCachesOf(progress) : lowerParam(params)));
+    const lowerCaches = !l1 ? [] : (start.lowerCaches ?? (start.l1 !== undefined ? [] : cacheOf(progress) ? lowerCachesOf(progress) : lowerParam(params)));
     return {
         program,
         spec: programByName(program),
@@ -66,17 +66,21 @@ export function songSetup(start, progress, params) {
         rows: singleCycle ? SINGLE_CYCLE_ROWS : ROWS,
     };
 }
-/** The L1 the URL asks for: ?cache for the first one, ?cache=lines,ways with those upgrades (CACHE_UPGRADES' ids). */
+/** The size steps the URL asks for, each level's (?sizes=2,1,0: the L1 first), as Progress.cacheSizes keeps them. */
+function sizesParam(params) {
+    return (params.get('sizes') ?? '').split(',').map((steps) => Number(steps) || 0);
+}
+/** The L1 the URL asks for: ?cache for the first one, with ?sizes' steps. */
 function cacheParam(params) {
     if (!params.has('cache'))
         return false;
-    const asked = (params.get('cache') ?? '').split(',');
-    return cacheShape(CACHE_UPGRADES.filter((upgrade) => asked.includes(upgrade.id)).map((upgrade) => upgrade.id));
+    return cacheShape(0, sizesParam(params)[0] ?? 0);
 }
-/** The caches below the L1 the URL asks for: ?cache=l2 the L2, ?cache=l3 the L2 and L3 (MEMORY_PARTS' ids). */
+/** The caches below the L1 the URL asks for: ?cache=l2 the L2, ?cache=l3 the L2 and L3 (MEMORY_PARTS' ids), with ?sizes' steps. */
 function lowerParam(params) {
     const asked = (params.get('cache') ?? '').split(',');
-    return MEMORY_PARTS.reduce((levels, part, i) => (i > 0 && asked.includes(part.id) ? i : levels), 0);
+    const levels = MEMORY_PARTS.reduce((most, part, i) => (i > 0 && asked.includes(part.id) ? i : most), 0);
+    return cachesBelow(levels, sizesParam(params));
 }
 /** The hardware the simulator runs for this song, at a clock (MHz). */
 export function pipelineOptions(setup, mhz) {

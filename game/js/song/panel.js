@@ -1,7 +1,8 @@
+import { shortClient } from '../data/companies.js';
 import { GLOSSARY } from '../data/glossary.js';
 import { tokens } from '../sim/isa.js';
 import { itemAt, writeItem } from '../sim/cpu.js';
-import { addressSplit, setsOf, SHOWN_BYTES } from '../sim/memory.js';
+import { SHOWN_BYTES } from '../sim/memory.js';
 import { STAGES } from '../sim/pipeline.js';
 import { cssColor } from '../ui/eras.js';
 import { panel } from '../ui/widgets.js';
@@ -9,7 +10,7 @@ import { hintColor } from '../visual/branchHint.js';
 import { codeLine } from '../visual/codeLine.js';
 import { PACE } from '../data/motions.js';
 import { motionOf } from '../visual/motion.js';
-import { bin, BOX_W, BOX_X, hex, LINE, LISTING_LINE, LISTING_ROWS, LISTING_TOP, MEMORY_ROWS, MEMORY_W_CACHED, PANEL_X, REGISTER_COUNT } from './layout.js';
+import { BOX_W, BOX_X, hex, LINE, LISTING_LINE, LISTING_ROWS, LISTING_TOP, MEMORY_ROWS, MEMORY_W_CACHED, PANEL_X, REGISTER_COUNT } from './layout.js';
 import { Part } from './view.js';
 /** How wide each number is drawn in the memory box, by the data's width: a row is always 8 bytes. */
 const CELL_CHARS = { 16: 5, 32: 9, 64: 13 };
@@ -48,7 +49,7 @@ export class Panel extends Part {
         this.listing = listingOf(program);
         const mode = setup.watching ? '   REPLAY' : '';
         // A contract's client goes on top; the program's own name labels its listing.
-        this.text(PANEL_X, 4, `${words.tierTitle()}   ${spec.client ?? spec.name}${mode}`, 14).setAlpha(0.7);
+        this.text(PANEL_X, 4, `${words.tierTitle()}   ${shortClient(spec.client) ?? spec.name}${mode}`, 14).setAlpha(0.7);
         const listingTitle = spec.client ? `PROGRAM: ${spec.name}` : 'PROGRAM';
         clickable(panel(this.scene, this.era, BOX_X, LISTING_TOP - 10, BOX_W, LISTING_ROWS * LISTING_LINE + 16, listingTitle), () => GLOSSARY.PROGRAM);
         this.listingLayer = this.scene.add.container(0, 0);
@@ -71,7 +72,7 @@ export class Panel extends Part {
             this.regTexts.push(clickable(row, () => words.register(r)));
         }
         y += 4 * LINE + 18;
-        // Memory, 8 bytes (two cache blocks) per row; the L1 cache sits beside it once it's bought.
+        // Memory, 8 bytes per row (two of the first L1's blocks); the L1 cache sits beside it once it's bought.
         const memoryW = setup.l1 ? MEMORY_W_CACHED : BOX_W;
         const memoryArea = { x: BOX_X, y, w: memoryW, h: MEMORY_ROWS * LINE + 20 };
         const cacheArea = { x: BOX_X + memoryW + 6, y, w: BOX_W - memoryW - 6, h: MEMORY_ROWS * LINE + 20 };
@@ -81,13 +82,9 @@ export class Panel extends Part {
             const cacheX = BOX_X + memoryW + 6;
             const cacheW = BOX_W - memoryW - 6;
             clickable(panel(this.scene, this.era, cacheX, y, cacheW, MEMORY_ROWS * LINE + 20, words.cacheTitle()), () => words.cache());
-            // A line a row while they fit; 8 lines take two columns (a set a row, if they're 2-way).
-            const columns = Math.ceil(cache.lines / MEMORY_ROWS);
-            // A 2-way set's longer tag makes its rows a character longer than the first L1's: a size smaller keeps them in the box.
-            const size = addressSplit(cache).tag > 4 ? 12 : 13;
-            for (let line = 0; line < cache.lines; line++) {
-                const [row, column] = cachePlace(line, cache.ways, columns);
-                const text = this.text(cacheX + 8 + (column * (cacheW - 16)) / columns, y + 12 + row * LINE, '', size).setAlpha(0.8);
+            // A line a row: the L1 always has as many lines as the memory box has rows (its size steps grow its blocks).
+            for (let line = 0; line < Math.min(cache.lines, MEMORY_ROWS); line++) {
+                const text = this.text(cacheX + 8, y + 12 + line * LINE, '', 13).setAlpha(0.8);
                 this.cacheTexts.push(clickable(text, () => words.cacheLine(line)));
             }
         }
@@ -183,33 +180,6 @@ export class Panel extends Part {
         }
         return { text: head + numbers.join(' '.repeat(gap)), cells };
     }
-    /**
-     * A cache line as its box shows it: its set (or line) number, its tag, and
-     * while a line a row fits, its block: the bytes, or for 8-byte blocks which
-     * bytes they are. Write-through keeps a cached block the same as memory, so
-     * its bytes are memory's.
-     */
-    cacheEntry(line) {
-        const cache = this.view.setup.l1;
-        if (!cache)
-            return '';
-        const { valid, tag } = this.view.shown.lines[line];
-        const sets = setsOf(cache);
-        const set = Math.floor(line / cache.ways);
-        const tagBits = addressSplit(cache).tag;
-        const tagText = valid ? bin(tag, tagBits) : '-'.repeat(tagBits);
-        const from = (tag * sets + set) * cache.blockBytes;
-        if (cache.lines > MEMORY_ROWS) {
-            // Two columns: a set's lines side by side under one number, or lines 0-3 then 4-7.
-            if (cache.ways > 1)
-                return line % cache.ways === 0 ? `${set} ${tagText}` : tagText;
-            return `${line} ${tagText}`;
-        }
-        const block = cache.blockBytes > 4
-            ? valid ? `${from}-${from + cache.blockBytes - 1}` : '--'
-            : valid ? Array.from(this.view.shown.memory.subarray(from, from + cache.blockBytes), hex).join(' ') : '-- -- -- --';
-        return `${cache.ways > 1 ? set : line} ${tagText} ${block}`;
-    }
     // ---- the count-in ----
     get countingIn() {
         return this.countIn !== undefined;
@@ -266,7 +236,7 @@ export class Panel extends Part {
         if (!cache || access.kind !== 'load' || access.hit)
             return;
         for (const { block, line } of access.fills ?? []) {
-            this.view.shown.lines[line] = { valid: true, tag: Math.floor(block / setsOf(cache)) };
+            this.view.shown.lines[line] = { valid: true, block };
             this.flashCacheLine(line);
         }
     }
@@ -292,7 +262,7 @@ export class Panel extends Part {
                 .setAlpha(where || tag ? 1 : 0.8);
         });
         this.memTexts.forEach((row, i) => row.setText(this.memoryRow(this.memStart + i).text));
-        this.cacheTexts.forEach((text, line) => text.setText(this.cacheEntry(line)));
+        this.cacheTexts.forEach((text, line) => text.setText(this.view.words.cacheRow(line)));
         // A superscalar CPU can finish two a cycle, so its bar is full at 2.
         const filled = Math.min(8, Math.round((run.throughput / (this.view.setup.superscalar ? 2 : 1)) * 8));
         this.throughputText.setText(`THROUGHPUT [${'#'.repeat(filled)}${'.'.repeat(8 - filled)}] ${run.throughput.toFixed(2)}`);
@@ -400,21 +370,23 @@ export class Panel extends Part {
     }
     /**
      * Outlines bytes `from` to `to` (not included) in the MEMORY box, fading
-     * out over `ms`: the bytes, or the numbers they're part of. Bytes past the
-     * row (a 64-bit number in 4-byte blocks spans one) are outlined up to its end.
+     * out over `ms`: the bytes, or the numbers they're part of, on every row
+     * they cover (a 16-byte block spans two).
      */
     markBytes(from, to, ms) {
-        const text = this.memRow(from);
-        const { cells } = this.memoryRow(Math.floor(from / 8));
-        const touched = cells.filter((cell) => cell.from < to && cell.to > from);
-        if (touched.length === 0 || !text.text)
-            return;
-        const charW = text.width / text.text.length;
-        const start = touched[0].at * charW - 3;
-        const end = (touched[touched.length - 1].at + touched[touched.length - 1].len) * charW + 3;
-        const mark = this.scene.add.rectangle(text.x + start, text.y + text.height / 2, end - start, text.height + 2).setOrigin(0, 0.5);
-        mark.setStrokeStyle(1, this.era.fg).setDepth(690);
-        motionOf(this.scene).play('mark-fade', mark, { remove: true, duration: ms });
+        for (let row = Math.floor(from / 8); row <= Math.floor((to - 1) / 8); row++) {
+            const text = this.memRow(row * 8);
+            const { cells } = this.memoryRow(row);
+            const touched = cells.filter((cell) => cell.from < to && cell.to > from);
+            if (touched.length === 0 || !text.text)
+                continue;
+            const charW = text.width / text.text.length;
+            const start = touched[0].at * charW - 3;
+            const end = (touched[touched.length - 1].at + touched[touched.length - 1].len) * charW + 3;
+            const mark = this.scene.add.rectangle(text.x + start, text.y + text.height / 2, end - start, text.height + 2).setOrigin(0, 0.5);
+            mark.setStrokeStyle(1, this.era.fg).setDepth(690);
+            motionOf(this.scene).play('mark-fade', mark, { remove: true, duration: ms });
+        }
     }
     highlight(text) {
         if (!text)
@@ -427,17 +399,6 @@ export class Panel extends Part {
         if (!keyRow)
             motion.play('value-settle', text);
     }
-}
-/**
- * Where a cache line goes in its box: its row and column. A line a row in
- * one column; in two, a set's lines side by side (2-way), or lines 0-3 then 4-7.
- */
-function cachePlace(line, ways, columns) {
-    if (columns === 1)
-        return [line, 0];
-    if (ways === columns)
-        return [Math.floor(line / ways), line % ways];
-    return [line % MEMORY_ROWS, Math.floor(line / MEMORY_ROWS)];
 }
 /** The program as the listing shows it: each label on its own line before its instruction. */
 function listingOf(program) {
