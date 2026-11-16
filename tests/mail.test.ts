@@ -4,7 +4,7 @@ import { COMPANIES } from '../game/src/data/companies.ts';
 import { REPUTATION } from '../game/src/data/economy.ts';
 import { EMAILS } from '../game/src/data/emails.ts';
 import { NEW_GAME, newCampaign, type Progress } from '../game/src/sim/progress.ts';
-import { deliverMail, readMail, unreadCount } from '../game/src/sim/mail.ts';
+import { deliverMail, markUnread, readMail, unreadCount } from '../game/src/sim/mail.ts';
 
 // The inbox (sim/mail.ts): emails are data (data/emails.ts), each with a rule
 // for when it arrives; delivering adds what's due, once.
@@ -99,4 +99,13 @@ test("a company's thanks never claims the work was on time: late jobs count towa
   for (const email of EMAILS.filter((each) => each.when.kind === 'jobs')) {
     for (const text of email.body) assert.doesNotMatch(text, /on time|beat the clock|right on time|tidy/i, `${email.id}: "${text}"`);
   }
+});
+
+test('an opened email can be marked unread again; an unknown or unread one changes nothing', () => {
+  const read = readMail(newCampaign(), 'welcome');
+  const again = markUnread(read, 'welcome');
+  assert.deepEqual(again.mail.map((each) => each.read), [false, false]);
+  assert.equal(unreadCount(again), 2);
+  assert.equal(markUnread(again, 'welcome'), again);
+  assert.equal(markUnread(again, 'nothing'), again);
 });

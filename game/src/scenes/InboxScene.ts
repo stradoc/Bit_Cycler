@@ -1,116 +1,183 @@
-import { COMPANIES, SMALLWARE } from '../data/companies.ts';
+import { shortClient, SMALLWARE } from '../data/companies.ts';
 import { formatMoney } from '../format.ts';
 import { getProgress, updateProgress } from '../save.ts';
-import { emailById, readMail, type Received } from '../sim/mail.ts';
+import { emailById, markUnread, readMail, unreadCount, type Received } from '../sim/mail.ts';
 import { levelOf, statusLine } from '../sim/reputation.ts';
-import { shortDate } from '../sim/workday.ts';
+import { shortDate, weekday } from '../sim/workday.ts';
 import { cssColor } from '../ui/eras.ts';
 import { ListMenu, type MenuRow } from '../ui/list.ts';
 import type { PauseItem } from '../ui/pauseMenu.ts';
 import { Screen } from '../ui/screen.ts';
 import { ALPHA, LAYOUT, TEXT } from '../ui/theme.ts';
-import { panel } from '../ui/widgets.ts';
 import { RankBadge } from '../visual/badge3d.ts';
 
-/** Smallware's profile above the list: its door, its status badge turning beside it, and its status in words. */
-const LOGO = { x: 40, y: 96 } as const;
-const BADGE = { x: 210, y: 150 } as const;
-const STATUS = { x: 290, y: 150 } as const;
-const LIST_X = 48;
-const LIST_W = 470;
-const LIST_TOP = 226;
+/** The mail program's width: a column of text from the left edge to the right. */
+const LEFT = 60;
+const RIGHT = 900;
+/** The inbox: Smallware's profile at the top (its door, the mail's count, its status and badge), then the list under its column headings. */
+const TOP = 92;
+const BADGE = { x: 850, y: 138 } as const;
+const RULE_Y = 198;
+const HEADINGS_Y = 212;
+const LIST_TOP = 240;
 const ROW_H = 26;
-/** The chosen email in full, beside the list. */
-const READ_X = 540;
-const READ_Y = 92;
-const READ_W = LAYOUT.right - READ_X;
-const READ_H = 362;
+/** How wide the sender's column is (characters): the longest short name, and a space. */
+const FROM_CHARS = 10;
+/** What a row starts with while unread or read: an unopened envelope, or an empty box. */
+const UNREAD_MARK = '[*]';
+const READ_MARK = '[ ]';
+
+/** Which view: the list, or one email opened (by its id), and the list's row to come back to. */
+type InboxData = { readonly open?: string; readonly selected?: number };
 
 /**
- * The inbox, a tab like the calendar (`E` from the board): the mail that has
- * arrived (sim/mail.ts), newest first, unread marked with `*`; the chosen
- * email in full beside it. Looking at an email marks it read. The computer is
- * one of Smallware's, so its profile heads the list: its door, and its status
- * (reputation's level, by name only) with a 3D badge that grows with it.
+ * Smallware's mail program, a tab like the calendar (`E` from the board).
+ * The inbox lists the mail that has arrived (sim/mail.ts), newest first, in
+ * columns: an envelope for unread mail ([*], bright) or read ([ ], dim), who
+ * it's from, the subject and the day. Enter opens one full-screen, which
+ * marks it read; U marks it unread again. The top of the inbox is the
+ * company's profile: its door, how much mail is unread, and its status (by
+ * name only) with a 3D badge that grows with it. Each view is the scene
+ * started again with its data (InboxData).
  */
 export class InboxScene extends Screen {
-  private menu!: ListMenu;
+  private menu: ListMenu | undefined;
+  /** The mail, newest first, as the list shows it. */
   private mail: readonly Received[] = [];
-  private reader!: Phaser.GameObjects.Container;
-  private badge!: RankBadge;
+  private badge: RankBadge | undefined;
+  /** The email open now, and its row in the list. */
+  private open: string | undefined;
+  private selected = 0;
 
   constructor() {
     super('inbox');
   }
 
-  create(): void {
+  /** Opening the inbox again reuses this scene: start clean. */
+  init(): void {
+    this.menu = undefined;
+    this.badge = undefined;
+    this.open = undefined;
+    this.selected = 0;
+  }
+
+  create(data?: InboxData): void {
     this.setUp();
     const progress = getProgress();
-    this.header('INBOX', `${SMALLWARE.name} MAIL`);
-    this.corner(formatMoney(progress.money));
-    // The door, drawn a character at a time (any letter spacing does) so no font joins its strokes.
-    this.textAt(LOGO.x, LOGO.y, SMALLWARE.logo.join('\n'), TEXT.small).setLineSpacing(0).setLetterSpacing(0.01).setPadding({ bottom: 4 }).setColor(cssColor(this.era.accent));
-    // The company's status: a badge that gains a part at each rank, and its name (the rates stay hidden).
-    this.badge = new RankBadge(this, this.era, BADGE.x, BADGE.y, levelOf(progress.reputation).index);
-    this.textAt(STATUS.x, STATUS.y, statusLine(progress.reputation), TEXT.body).setOrigin(0, 0.5).setFontStyle('bold');
     this.mail = [...progress.mail].reverse();
-    this.menu = new ListMenu(this, this.era, { x: LIST_X, top: LIST_TOP, width: LIST_W, rowHeight: ROW_H, size: 14, bottom: LAYOUT.about - 30 });
-    // The oldest unread email first (the welcome before the orientation), else the newest.
-    const oldestUnread = this.mail.map((each) => each.read).lastIndexOf(false);
-    this.menu.setRows(this.rows(), Math.max(0, oldestUnread));
-    panel(this, this.era, READ_X, READ_Y, READ_W, READ_H, 'MESSAGE');
-    this.reader = this.add.container(0, 0);
-    this.hints('[UP/DOWN] CHOOSE', '[B] CONTRACT BOARD', '[Q] MENU');
-    this.open();
+    this.header(`${SMALLWARE.name} MAIL`);
+    this.corner(formatMoney(progress.money));
+    if (data?.open && emailById(data.open)) this.showEmail(data.open, data.selected ?? 0);
+    else this.showList(data?.selected);
   }
 
   update(time: number, delta: number): void {
     super.update(time, delta);
-    this.badge.update(performance.now());
+    this.badge?.update(performance.now());
   }
 
   protected pauseItems(): PauseItem[] {
     return this.places();
   }
 
-  /** Each email a row: unread mark, who it's from (a company's short name), the subject, the day it came. */
+  /** A rule across the mail program, from its left edge to its right in any era's font. */
+  private rule(y: number): void {
+    const line = this.textAt(LEFT, y, '-'.repeat(84), TEXT.small).setAlpha(0.35);
+    line.setScale((RIGHT - LEFT) / line.width, 1);
+  }
+
+  // ---- the inbox ----
+
+  private showList(selected?: number): void {
+    const progress = getProgress();
+    // The profile: the door, the count, and the status with its badge.
+    this.textAt(LEFT, TOP, SMALLWARE.logo.join('\n'), TEXT.small).setLineSpacing(0).setLetterSpacing(0.01).setPadding({ bottom: 4 }).setColor(cssColor(this.era.accent));
+    const unread = unreadCount(progress);
+    this.textAt(LEFT + 120, TOP + 20, 'INBOX', TEXT.title - 4).setFontStyle('bold');
+    this.textAt(LEFT + 120, TOP + 56, `${unread} UNREAD, ${this.mail.length} MESSAGE${this.mail.length === 1 ? '' : 'S'}`, TEXT.body).setAlpha(unread > 0 ? 1 : ALPHA.subtitle);
+    this.textAt(BADGE.x - 70, BADGE.y, statusLine(progress.reputation), TEXT.body).setOrigin(1, 0.5).setFontStyle('bold');
+    this.badge = new RankBadge(this, this.era, BADGE.x, BADGE.y, levelOf(progress.reputation).index);
+    this.rule(RULE_Y);
+    // The column headings, lined up with the rows' text (after the list's two-character cursor and the envelope).
+    const lead = ' '.repeat(2 + UNREAD_MARK.length + 1);
+    this.textAt(LEFT, HEADINGS_Y, `${lead}${'FROM'.padEnd(FROM_CHARS + 1)}SUBJECT`, 14).setAlpha(ALPHA.subtitle);
+    this.textAt(RIGHT, HEADINGS_Y, 'DATE', 14).setOrigin(1, 0).setAlpha(ALPHA.subtitle);
+    if (this.mail.length === 0) {
+      this.textAt(LEFT, LIST_TOP, '  NO MAIL YET.', 14).setAlpha(ALPHA.subtitle);
+    } else {
+      this.menu = new ListMenu(this, this.era, { x: LEFT, top: LIST_TOP, width: RIGHT - LEFT, rowHeight: ROW_H, size: 14, bottom: LAYOUT.about - 6 });
+      // Back where the list was, else on the oldest unread email (the welcome before the orientation), else the newest.
+      const oldestUnread = this.mail.map((each) => each.read).lastIndexOf(false);
+      this.menu.setRows(this.rows(), Math.min(this.mail.length - 1, selected ?? Math.max(0, oldestUnread)));
+    }
+    this.hints('[UP/DOWN] CHOOSE', '[ENTER] OPEN', '[U] READ / UNREAD', '[B] CONTRACT BOARD', '[Q] MENU');
+  }
+
+  /** Each email a row: its envelope, who it's from, the subject, the day it came. Unread mail bright, read mail dim. */
   private rows(): MenuRow[] {
     return this.mail.map((each) => {
       const email = emailById(each.id);
-      const from = COMPANIES.find((company) => company.name === email?.from)?.short ?? email?.from ?? '';
-      return { label: `${each.read ? ' ' : '*'} ${from.padEnd(9)} ${email?.subject ?? ''}`, value: shortDate(each.day), alpha: each.read ? 0.75 : 1 };
+      const from = (shortClient(email?.from) ?? '').padEnd(FROM_CHARS);
+      return { label: `${each.read ? READ_MARK : UNREAD_MARK} ${from} ${email?.subject ?? ''}`, value: shortDate(each.day), alpha: each.read ? 0.6 : 1 };
     });
   }
 
-  /** Shows the chosen email in full, and marks it read. */
-  private open(): void {
-    this.reader.removeAll(true);
-    const chosen = this.mail[this.menu.selected];
-    const email = chosen && emailById(chosen.id);
-    const x = READ_X + 16;
-    const width = READ_W - 32;
-    if (!email) {
-      this.reader.add(this.textAt(x, READ_Y + 20, 'NO MAIL YET.', TEXT.small).setAlpha(ALPHA.subtitle));
-      return;
-    }
-    const head = this.textAt(x, READ_Y + 18, `FROM:    ${email.from}\nSUBJECT: ${email.subject}\nDATE:    ${shortDate(chosen.day)}`, TEXT.small).setLineSpacing(2);
-    head.setColor(cssColor(this.era.accent));
-    const body = this.textAt(x, head.y + head.height + 14, email.body.join('\n'), TEXT.small).setWordWrapWidth(width).setLineSpacing(2);
-    this.reader.add([head, body]);
-    if (!chosen.read) {
-      const progress = updateProgress((p) => readMail(p, chosen.id));
-      this.mail = [...progress.mail].reverse();
-      this.menu.setRows(this.rows());
-    }
+  // ---- an email, opened ----
+
+  /** One email full-screen: its header, then its words; opening it marks it read. */
+  private showEmail(id: string, selected: number): void {
+    const email = emailById(id);
+    const received = this.mail.find((each) => each.id === id);
+    if (!email || !received) return;
+    this.open = id;
+    this.selected = selected;
+    updateProgress((p) => readMail(p, id));
+    this.rule(TOP);
+    const field = (name: string, value: string) => `${name.padEnd(9)} ${value}`;
+    const head = [field('FROM:', email.from), field('TO:', `you@${SMALLWARE.host}`), field('DATE:', `${weekday(received.day)}, ${shortDate(received.day)}`), field('SUBJECT:', email.subject)];
+    const header = this.textAt(LEFT, TOP + 18, head.join('\n'), TEXT.body).setLineSpacing(4).setColor(cssColor(this.era.accent));
+    this.rule(header.y + header.height + 8);
+    this.textAt(LEFT, header.y + header.height + 30, email.body.join('\n'), TEXT.body).setWordWrapWidth(RIGHT - LEFT).setLineSpacing(4);
+    this.rule(LAYOUT.about - 4);
+    this.hints('[B] BACK TO INBOX', '[UP/DOWN] PREVIOUS / NEXT', '[U] MARK UNREAD', '[Q] MENU');
   }
 
   protected onKey(key: string): boolean | void {
-    if (this.menu.busy) return true;
+    if (this.menu?.busy) return true;
+    if (this.open !== undefined) return this.emailKey(key);
+    const chosen = this.menu ? this.mail[this.menu.selected] : undefined;
     if (key === 'ArrowUp' || key === 'ArrowDown') {
-      this.menu.move(key === 'ArrowUp' ? -1 : 1);
-      this.open();
+      this.menu?.move(key === 'ArrowUp' ? -1 : 1);
+    } else if (key === 'Enter' && chosen && this.menu) {
+      this.cue('confirm');
+      this.scene.restart({ open: chosen.id, selected: this.menu.selected } satisfies InboxData);
+    } else if (key === 'U' && chosen && this.menu) {
+      this.cue('move');
+      updateProgress((p) => (chosen.read ? markUnread(p, chosen.id) : readMail(p, chosen.id)));
+      // The count at the top changes too: draw the inbox again where it was.
+      this.scene.restart({ selected: this.menu.selected } satisfies InboxData);
     } else if (key === 'B') {
       this.back('board');
+    } else return false;
+    return true;
+  }
+
+  /** The keys while an email is open: back to the inbox, the one before or after it, or mark it unread and go back. */
+  private emailKey(key: string): boolean | void {
+    const id = this.open;
+    if (key === 'B') {
+      this.cue('back');
+      this.scene.restart({ selected: this.selected } satisfies InboxData);
+    } else if (key === 'ArrowUp' || key === 'ArrowDown') {
+      const next = this.selected + (key === 'ArrowUp' ? -1 : 1);
+      const email = this.mail[next];
+      if (!email) return true;
+      this.cue('move');
+      this.scene.restart({ open: email.id, selected: next } satisfies InboxData);
+    } else if (key === 'U' && id) {
+      this.cue('move');
+      updateProgress((p) => markUnread(p, id));
+      this.scene.restart({ selected: this.selected } satisfies InboxData);
     } else return false;
     return true;
   }

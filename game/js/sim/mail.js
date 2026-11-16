@@ -33,6 +33,12 @@ export function readMail(progress, id) {
         return progress;
     return { ...progress, mail: progress.mail.map((each) => (each.id === id ? { ...each, read: true } : each)) };
 }
+/** Marks an opened email unread again (the inbox's U); one not in the inbox, or already unread, changes nothing. */
+export function markUnread(progress, id) {
+    if (!progress.mail.some((each) => each.id === id && each.read))
+        return progress;
+    return { ...progress, mail: progress.mail.map((each) => (each.id === id ? { ...each, read: false } : each)) };
+}
 /** How many emails are still unopened. */
 export function unreadCount(progress) {
     return progress.mail.filter((each) => !each.read).length;
