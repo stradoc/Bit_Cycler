@@ -35,7 +35,7 @@ export type TourStep<Target extends string> = {
 export type MenuTarget = 'menu' | 'new' | 'briefs' | 'readme' | 'settings';
 
 /** The contract board's parts the guide can point at (scenes/BoardScene.ts). */
-export type BoardTarget = 'list' | 'job' | 'loop' | 'notes' | 'memory' | 'time' | 'calendar' | 'workday' | 'card' | 'reputation';
+export type BoardTarget = 'list' | 'job' | 'loop' | 'notes' | 'memory' | 'time' | 'calendar' | 'workday' | 'card' | 'reputation' | 'badge';
 
 /** The calendar screen's parts the guide can point at (scenes/CalendarScene.ts). */
 export type CalendarTarget = 'month' | 'today' | 'day';
@@ -119,6 +119,7 @@ export const FIRST_DAY_TOUR: readonly TourStep<BoardTarget>[] = [
   { say: "Each job is due a few hours after you take it, and only stays on the board for a day or two, so don't wait too long.", point: 'time' },
   { say: 'Work comes from five COMPANIES. Each has its own logo on the job sheet.', point: 'job' },
   { say: "Smallware's STATUS: jobs done on time build its name, and a bigger name pays better. Late jobs hurt it.", point: 'reputation' },
+  { say: 'This badge shows your status too. Each time the name grows, it gains a new part.', point: 'badge' },
   { say: "When you've done enough, press L to log off. The day's timecard comes up, then a new morning with new jobs.", point: 'calendar' },
   { say: 'Press C any time to see your calendar: every day so far, and what\'s coming. Have a good first day!', mood: 'happy' },
 ];

@@ -2,19 +2,19 @@ import { shortClient, SMALLWARE } from '../data/companies.js';
 import { formatMoney } from '../format.js';
 import { getProgress, updateProgress } from '../save.js';
 import { emailById, markUnread, readMail, unreadCount } from '../sim/mail.js';
-import { levelOf, statusLine } from '../sim/reputation.js';
+import { statusLine } from '../sim/reputation.js';
 import { shortDate, weekday } from '../sim/workday.js';
 import { cssColor } from '../ui/eras.js';
 import { ListMenu } from '../ui/list.js';
 import { Screen } from '../ui/screen.js';
 import { ALPHA, LAYOUT, TEXT } from '../ui/theme.js';
-import { RankBadge } from '../visual/badge3d.js';
 /** The mail program's width: a column of text from the left edge to the right. */
 const LEFT = 60;
 const RIGHT = 900;
-/** The inbox: Smallware's profile at the top (its door, the mail's count, its status and badge), then the list under its column headings. */
+/** The inbox: Smallware's profile at the top (its door, the mail's count, its status), then the list under its column headings. */
 const TOP = 92;
-const BADGE = { x: 850, y: 138 };
+/** Where the status line sits: right-aligned, level with the door's middle. */
+const STATUS_Y = 138;
 const RULE_Y = 198;
 const HEADINGS_Y = 212;
 const LIST_TOP = 240;
@@ -31,14 +31,13 @@ const READ_MARK = '[ ]';
  * it's from, the subject and the day. Enter opens one full-screen, which
  * marks it read; U marks it unread again. The top of the inbox is the
  * company's profile: its door, how much mail is unread, and its status (by
- * name only) with a 3D badge that grows with it. Each view is the scene
+ * name only; its 3D badge is on the board). Each view is the scene
  * started again with its data (InboxData).
  */
 export class InboxScene extends Screen {
     menu;
     /** The mail, newest first, as the list shows it. */
     mail = [];
-    badge;
     /** The email open now, and its row in the list. */
     open;
     selected = 0;
@@ -48,7 +47,6 @@ export class InboxScene extends Screen {
     /** Opening the inbox again reuses this scene: start clean. */
     init() {
         this.menu = undefined;
-        this.badge = undefined;
         this.open = undefined;
         this.selected = 0;
     }
@@ -63,10 +61,6 @@ export class InboxScene extends Screen {
         else
             this.showList(data?.selected);
     }
-    update(time, delta) {
-        super.update(time, delta);
-        this.badge?.update(performance.now());
-    }
     pauseItems() {
         return this.places();
     }
@@ -78,13 +72,12 @@ export class InboxScene extends Screen {
     // ---- the inbox ----
     showList(selected) {
         const progress = getProgress();
-        // The profile: the door, the count, and the status with its badge.
+        // The profile: the door, the count, and the status.
         this.textAt(LEFT, TOP, SMALLWARE.logo.join('\n'), TEXT.small).setLineSpacing(0).setLetterSpacing(0.01).setPadding({ bottom: 4 }).setColor(cssColor(this.era.accent));
         const unread = unreadCount(progress);
         this.textAt(LEFT + 120, TOP + 20, 'INBOX', TEXT.title - 4).setFontStyle('bold');
         this.textAt(LEFT + 120, TOP + 56, `${unread} UNREAD, ${this.mail.length} MESSAGE${this.mail.length === 1 ? '' : 'S'}`, TEXT.body).setAlpha(unread > 0 ? 1 : ALPHA.subtitle);
-        this.textAt(BADGE.x - 70, BADGE.y, statusLine(progress.reputation), TEXT.body).setOrigin(1, 0.5).setFontStyle('bold');
-        this.badge = new RankBadge(this, this.era, BADGE.x, BADGE.y, levelOf(progress.reputation).index);
+        this.textAt(RIGHT, STATUS_Y, statusLine(progress.reputation), TEXT.body).setOrigin(1, 0.5).setFontStyle('bold');
         this.rule(RULE_Y);
         // The column headings, lined up with the rows' text (after the list's two-character cursor and the envelope).
         const lead = ' '.repeat(2 + UNREAD_MARK.length + 1);

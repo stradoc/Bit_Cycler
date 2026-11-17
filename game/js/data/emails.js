@@ -55,7 +55,7 @@ const LEVEL_NOTES = {
     LOCAL: ['PEOPLE KNOW OUR NAME', 'The companies are starting to talk about us. Our status is LOCAL now, and the work pays better for it.'],
     TRUSTED: ['WE ARE TRUSTED', 'Five companies trust us with their deadlines. Our status is TRUSTED, and the pay shows it.'],
     RESPECTED: ['RESPECTED', "I keep hearing our name in other people's meetings. Our status is RESPECTED: bigger names pay more."],
-    FAMOUS: ['FAMOUS!', 'I never thought I would type this: Smallware is FAMOUS. Look at the badge in your inbox!'],
+    FAMOUS: ['FAMOUS!', 'I never thought I would type this: Smallware is FAMOUS. Look at the badge on your board!'],
 };
 export const EMAILS = [
     {

@@ -1,5 +1,4 @@
 import { GRADES } from '../data/economy.ts';
-import { banner } from '../data/menuFiles.ts';
 import { companyOf, shortClient } from '../data/companies.ts';
 import { programByName } from '../data/programs.ts';
 import { playContract } from '../flow.ts';
@@ -12,7 +11,7 @@ import { jobSheet } from '../sim/jobSheet.ts';
 import { showcaseLine } from '../sim/showcase.ts';
 import { contractSeconds, cpiFor, cpuLine, hasSeen, isLocked, isTight, isTutorial, jobItems, payFor, ratedMhz, withSeen, type Contract } from '../sim/progress.ts';
 import { unreadCount } from '../sim/mail.ts';
-import { statusLine } from '../sim/reputation.ts';
+import { levelOf, statusLine } from '../sim/reputation.ts';
 import { THERMAL } from '../sim/thermal.ts';
 import { clockSeconds, DAY_END, DAY_SECONDS, DAY_START, dayOver, endDay, fitsToday, gradeName, shortDate, timeLeft, weekday } from '../sim/workday.ts';
 import { cssColor } from '../ui/eras.ts';
@@ -23,6 +22,7 @@ import { Screen } from '../ui/screen.ts';
 import { ALPHA, LAYOUT, TEXT } from '../ui/theme.ts';
 import { Box, panel } from '../ui/widgets.ts';
 import { bar, calendarPage, deadlineBar, stackedBar, timecard } from '../visual/asciiChart.ts';
+import { BADGE_SIZE, RankBadge } from '../visual/badge3d.ts';
 import { WIDTH } from '../visual/display.ts';
 
 const LIST_X = 48;
@@ -98,8 +98,9 @@ const STANDING: Readonly<Record<Standing, { value: string; open: boolean }>> = {
  * stretch, listed by client and pay, with the chosen one's job sheet beside
  * them: the job, the loop that does it, the notes it plays, the memory it
  * uses, and how long your CPU would take for all of it (instructions x CPI x
- * clock period). Under the list, the calendar: the day, the clock, and the
- * workday's hours (sim/workday.ts). Jobs your CPU couldn't finish by their
+ * clock period). Under the list, the calendar: the day and the clock on a
+ * tear-off page, Smallware's status badge beside it, and the workday's hours
+ * (sim/workday.ts). Jobs your CPU couldn't finish by their
  * deadline are locked until it's faster, and those it couldn't finish
  * before 5:00 until tomorrow. LOG OFF ends the day with its timecard.
  */
@@ -115,6 +116,9 @@ export class BoardScene extends Screen {
   private reputation!: Phaser.GameObjects.Text;
   /** Where the calendar starts, under the list (for TICK to point at). */
   private calendarTop = 0;
+  /** Smallware's status badge beside the calendar page, turning (visual/badge3d.ts), and where it is (for TICK to point at). */
+  private badge: RankBadge | undefined;
+  private badgeArea: Rect = { x: 0, y: 0, w: 0, h: 0 };
   /** Where the job sheet's two detail columns start, and how wide they are (they're centered together, so it depends on the job). */
   private columns = { left: 0, leftW: 0, right: 0, rightW: 0 };
   /** The timecard over the board, while it's up (the day ending). */
@@ -127,6 +131,7 @@ export class BoardScene extends Screen {
   /** A restart (clocking out) reuses this scene: nothing from the last day carries over. */
   init(): void {
     this.card = undefined;
+    this.badge = undefined;
   }
 
   /** `tour`: a tour to play even if it's been seen (BRIEFS on the main menu): the board's, or the first day's. */
@@ -193,20 +198,19 @@ export class BoardScene extends Screen {
   }
 
   /**
-   * The calendar under the list: a tear-off page with the day, the time in
-   * block digits, and the workday's hours as a bar along the bottom.
+   * The calendar under the list: a tear-off page with the day and the time,
+   * Smallware's status badge beside it, and the workday's hours as a bar
+   * along the bottom.
    */
   private drawCalendar(): void {
     const progress = getProgress();
     const top = this.menu.rowY(Math.max(0, this.contracts.length - 1)) + ROW_H + 34;
     this.calendarTop = top;
-    this.textAt(LIST_X, top, calendarPage(weekday(progress.day), shortDate(progress.day)).join('\n'), TEXT.small).setLineSpacing(0);
-    const [time, half] = formatClock(clockSeconds(progress)).split(' ');
-    // Block digits close up (no line spacing), so their half blocks join; some fonts draw them wider, so they shrink to fit beside the sheet.
-    const clock = this.textAt(LIST_X + 150, top + 4, banner(time).join('\n'), TEXT.small).setLineSpacing(0).setColor(cssColor(this.era.accent));
-    const room = SHEET_X - 28 - clock.x;
-    if (clock.width > room) clock.setScale(room / clock.width);
-    this.textAt(LIST_X + 150, top + 8 + clock.displayHeight, half, TEXT.small).setAlpha(ALPHA.subtitle);
+    const page = this.textAt(LIST_X, top, calendarPage(weekday(progress.day), shortDate(progress.day), formatClock(clockSeconds(progress))).join('\n'), TEXT.small).setLineSpacing(0);
+    // The badge stands in the room between the page and the job sheet, level with the page.
+    const x = (page.x + page.width + SHEET_X) / 2;
+    this.badgeArea = { x: x - BADGE_SIZE.w / 2, y: top + page.height / 2 - BADGE_SIZE.h / 2, w: BADGE_SIZE.w, h: BADGE_SIZE.h };
+    this.badge = new RankBadge(this, this.era, x, top + page.height / 2, levelOf(progress.reputation).index);
     this.dayBar = this.text(WIDTH / 2, LAYOUT.about, '', TEXT.small).setAlpha(ALPHA.about);
   }
 
@@ -271,6 +275,7 @@ export class BoardScene extends Screen {
 
   update(): void {
     super.update();
+    this.badge?.update(performance.now());
     this.guide.update(performance.now());
   }
 
@@ -295,6 +300,7 @@ export class BoardScene extends Screen {
       workday: { x: this.dayBar.x - this.dayBar.width / 2 - 8, y: LAYOUT.about - 13, w: this.dayBar.width + 16, h: 26 },
       card: { x: WIDTH / 2 - CARD.w / 2 - 6, y: CARD.y - CARD.h / 2 - 6, w: CARD.w + 12, h: CARD.h + 12 },
       reputation: { x: this.reputation.x - this.reputation.width - 8, y: LAYOUT.subtitle - 12, w: this.reputation.width + 16, h: 24 },
+      badge: this.badgeArea,
     };
     return areas[target];
   }

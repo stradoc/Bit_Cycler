@@ -98,9 +98,14 @@ test('the clock and the date read as a day at work', () => {
   assert.equal(dateLine({ ...NEW_GAME, day: 2, worked: 4.5 * 3600 }), 'TUESDAY NOV 2, 1:30 PM');
 });
 
-test('the calendar page, the timecard and the block-digit clock are drawn in even rows of characters', () => {
+test('the calendar page, the timecard and block digits are drawn in even rows of characters', () => {
   const even = (lines: string[]) => assert.equal(new Set(lines.map((line) => line.length)).size, 1, lines.join('\n'));
   even(calendarPage('WEDNESDAY', 'NOV 12'));
+  // With the time under the date: the board's page, now that the status badge stands where the big clock was.
+  const page = calendarPage('WEDNESDAY', 'NOV 12', '10:31 AM');
+  even(page);
+  assert.ok(page.some((line) => line.includes('10:31 AM')));
+  assert.equal(page.length, calendarPage('WEDNESDAY', 'NOV 12').length + 1);
   const card = timecard({ date: 'NOV 3', in: '9:00 AM', out: '5:00 PM', jobs: 3, late: 1, earned: '$410' });
   even(card);
   assert.ok(card.some((line) => /ON TIME +2/.test(line)));

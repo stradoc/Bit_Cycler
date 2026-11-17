@@ -4,7 +4,7 @@
 // time takes one off, and so does ending a day), so a rough patch costs for a
 // while but never undoes what you built. In the first week pay never drops
 // below normal. The player sees only the level's name, as a STATUS (and the
-// inbox's badge); the rates and the marks stay hidden. The numbers are REPUTATION (data/economy.ts); this module is
+// board's badge); the rates and the marks stay hidden. The numbers are REPUTATION (data/economy.ts); this module is
 // the only place that works out a level, a multiplier or reputation's words.
 // Later rewards (special jobs, cosmetics, sketchier clients) read `good` and
 // `bad` through it, so BAD stays its own count.

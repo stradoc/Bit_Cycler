@@ -2,21 +2,21 @@ import { shortClient, SMALLWARE } from '../data/companies.ts';
 import { formatMoney } from '../format.ts';
 import { getProgress, updateProgress } from '../save.ts';
 import { emailById, markUnread, readMail, unreadCount, type Received } from '../sim/mail.ts';
-import { levelOf, statusLine } from '../sim/reputation.ts';
+import { statusLine } from '../sim/reputation.ts';
 import { shortDate, weekday } from '../sim/workday.ts';
 import { cssColor } from '../ui/eras.ts';
 import { ListMenu, type MenuRow } from '../ui/list.ts';
 import type { PauseItem } from '../ui/pauseMenu.ts';
 import { Screen } from '../ui/screen.ts';
 import { ALPHA, LAYOUT, TEXT } from '../ui/theme.ts';
-import { RankBadge } from '../visual/badge3d.ts';
 
 /** The mail program's width: a column of text from the left edge to the right. */
 const LEFT = 60;
 const RIGHT = 900;
-/** The inbox: Smallware's profile at the top (its door, the mail's count, its status and badge), then the list under its column headings. */
+/** The inbox: Smallware's profile at the top (its door, the mail's count, its status), then the list under its column headings. */
 const TOP = 92;
-const BADGE = { x: 850, y: 138 } as const;
+/** Where the status line sits: right-aligned, level with the door's middle. */
+const STATUS_Y = 138;
 const RULE_Y = 198;
 const HEADINGS_Y = 212;
 const LIST_TOP = 240;
@@ -37,14 +37,13 @@ type InboxData = { readonly open?: string; readonly selected?: number };
  * it's from, the subject and the day. Enter opens one full-screen, which
  * marks it read; U marks it unread again. The top of the inbox is the
  * company's profile: its door, how much mail is unread, and its status (by
- * name only) with a 3D badge that grows with it. Each view is the scene
+ * name only; its 3D badge is on the board). Each view is the scene
  * started again with its data (InboxData).
  */
 export class InboxScene extends Screen {
   private menu: ListMenu | undefined;
   /** The mail, newest first, as the list shows it. */
   private mail: readonly Received[] = [];
-  private badge: RankBadge | undefined;
   /** The email open now, and its row in the list. */
   private open: string | undefined;
   private selected = 0;
@@ -56,7 +55,6 @@ export class InboxScene extends Screen {
   /** Opening the inbox again reuses this scene: start clean. */
   init(): void {
     this.menu = undefined;
-    this.badge = undefined;
     this.open = undefined;
     this.selected = 0;
   }
@@ -69,11 +67,6 @@ export class InboxScene extends Screen {
     this.corner(formatMoney(progress.money));
     if (data?.open && emailById(data.open)) this.showEmail(data.open, data.selected ?? 0);
     else this.showList(data?.selected);
-  }
-
-  update(time: number, delta: number): void {
-    super.update(time, delta);
-    this.badge?.update(performance.now());
   }
 
   protected pauseItems(): PauseItem[] {
@@ -90,13 +83,12 @@ export class InboxScene extends Screen {
 
   private showList(selected?: number): void {
     const progress = getProgress();
-    // The profile: the door, the count, and the status with its badge.
+    // The profile: the door, the count, and the status.
     this.textAt(LEFT, TOP, SMALLWARE.logo.join('\n'), TEXT.small).setLineSpacing(0).setLetterSpacing(0.01).setPadding({ bottom: 4 }).setColor(cssColor(this.era.accent));
     const unread = unreadCount(progress);
     this.textAt(LEFT + 120, TOP + 20, 'INBOX', TEXT.title - 4).setFontStyle('bold');
     this.textAt(LEFT + 120, TOP + 56, `${unread} UNREAD, ${this.mail.length} MESSAGE${this.mail.length === 1 ? '' : 'S'}`, TEXT.body).setAlpha(unread > 0 ? 1 : ALPHA.subtitle);
-    this.textAt(BADGE.x - 70, BADGE.y, statusLine(progress.reputation), TEXT.body).setOrigin(1, 0.5).setFontStyle('bold');
-    this.badge = new RankBadge(this, this.era, BADGE.x, BADGE.y, levelOf(progress.reputation).index);
+    this.textAt(RIGHT, STATUS_Y, statusLine(progress.reputation), TEXT.body).setOrigin(1, 0.5).setFontStyle('bold');
     this.rule(RULE_Y);
     // The column headings, lined up with the rows' text (after the list's two-character cursor and the envelope).
     const lead = ' '.repeat(2 + UNREAD_MARK.length + 1);

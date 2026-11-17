@@ -1,7 +1,7 @@
 import type { Era } from '../ui/eras.ts';
 import { box, ModelView, norm, type Look, type Part } from './model3d.ts';
 
-// Smallware's status badge (the inbox's company profile): a small trophy in
+// Smallware's status badge (on the board, beside the calendar page): a small trophy in
 // 3D, drawn by our own renderer in each era's style, that gains a part at each
 // reputation rank: a plinth, then a column, a medal plate, wings, and at the
 // top rank a crown and a gem. It turns slowly. Boxes never overlap (touching
@@ -9,18 +9,25 @@ import { box, ModelView, norm, type Look, type Part } from './model3d.ts';
 
 type Material = 'base' | 'medal' | 'trim';
 
+/** Half the full badge's height (model units): every box is built this far down, so the badge turns about its middle and fits its area at every rank. */
+const MIDDLE = 24;
+
+/** A box from one corner to the other, with its heights measured from the plinth's bottom. */
+const at = (min: readonly [number, number, number], max: readonly [number, number, number], material: Material) =>
+  box([min[0], min[1] - MIDDLE, min[2]], [max[0], max[1] - MIDDLE, max[2]], material);
+
 /** The badge for a rank (0: the first, REPUTATION.levels' index): each rank's parts added to the ones before. */
 export function buildBadge(rank: number): Part<Material>[] {
-  const parts: Part<Material>[] = [box([-14, 0, -14], [14, 6, 14], 'base')];
-  if (rank >= 1) parts.push(box([-5, 6, -5], [5, 20, 5], 'base'));
-  if (rank >= 2) parts.push(box([-11, 20, -3], [11, 40, 3], 'medal'));
-  if (rank >= 3) parts.push(box([-19, 26, -2], [-11, 34, 2], 'medal'), box([11, 26, -2], [19, 34, 2], 'medal'));
+  const parts: Part<Material>[] = [at([-14, 0, -14], [14, 6, 14], 'base')];
+  if (rank >= 1) parts.push(at([-5, 6, -5], [5, 20, 5], 'base'));
+  if (rank >= 2) parts.push(at([-11, 20, -3], [11, 40, 3], 'medal'));
+  if (rank >= 3) parts.push(at([-19, 26, -2], [-11, 34, 2], 'medal'), at([11, 26, -2], [19, 34, 2], 'medal'));
   if (rank >= 4) {
     parts.push(
-      box([-10, 40, -2], [-6, 46, 2], 'trim'),
-      box([-2, 40, -2], [2, 49, 2], 'trim'),
-      box([6, 40, -2], [10, 46, 2], 'trim'),
-      box([-3, 27, -5], [3, 33, -3], 'trim'),
+      at([-10, 40, -2], [-6, 46, 2], 'trim'),
+      at([-2, 40, -2], [2, 49, 2], 'trim'),
+      at([6, 40, -2], [10, 46, 2], 'trim'),
+      at([-3, 27, -5], [3, 33, -3], 'trim'),
     );
   }
   return parts;
@@ -36,14 +43,17 @@ const BADGE_LOOK: Look<Material> = {
 };
 
 /** The camera: how far away, and looking down a little (radians). */
-export const BADGE_CAMERA = { distance: 300, tilt: -0.3 } as const;
+export const BADGE_CAMERA = { distance: 300, tilt: -0.3, unitPx: 1.3 } as const;
+
+/** The area the badge is drawn in, around its middle (px). */
+export const BADGE_SIZE = { w: 110, h: 84 } as const;
 
 /** The status badge, turning slowly. Call update() every frame. */
 export class RankBadge {
   private readonly view: ModelView<Material>;
 
   constructor(scene: Phaser.Scene, era: Era, x: number, y: number, rank: number) {
-    this.view = new ModelView(scene, era, x, y, BADGE_LOOK, { w: 120, h: 110, distance: BADGE_CAMERA.distance, unitPx: 1.6 });
+    this.view = new ModelView(scene, era, x, y, BADGE_LOOK, { ...BADGE_SIZE, distance: BADGE_CAMERA.distance, unitPx: BADGE_CAMERA.unitPx });
     this.view.setParts(buildBadge(rank));
   }
 

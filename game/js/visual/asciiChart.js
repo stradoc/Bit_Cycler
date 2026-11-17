@@ -116,10 +116,10 @@ export function frame(rows, round = false, glyphs = ASCII) {
         `${bottomLeft}${across}${bottomRight}`,
     ];
 }
-/** A tear-off calendar page: the weekday, a rule, the date ("NOV 3"). */
-export function calendarPage(weekday, date) {
+/** A tear-off calendar page: the weekday, a rule, the date ("NOV 3"), and the time under it when given ("10:31 AM"). */
+export function calendarPage(weekday, date, time) {
     const width = 11;
-    return frame([center(weekday, width), null, center(date, width)], true);
+    return frame([center(weekday, width), null, center(date, width), ...(time === undefined ? [] : [center(time, width)])], true);
 }
 /** A day's timecard: its date, when it started and ended, then its jobs and earnings. */
 export function timecard(card) {

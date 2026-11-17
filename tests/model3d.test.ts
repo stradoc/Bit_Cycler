@@ -4,7 +4,7 @@ import { buildChip } from '../game/src/visual/chip3d.ts';
 import { behind, drawOrder, overlaps, screenOutline, type Part, type Shape } from '../game/src/visual/model3d.ts';
 import { blockPixels } from '../game/src/data/menuFiles.ts';
 import { buildTitle, pixelBlocks } from '../game/src/visual/title3d.ts';
-import { BADGE_CAMERA, buildBadge } from '../game/src/visual/badge3d.ts';
+import { BADGE_CAMERA, BADGE_SIZE, buildBadge } from '../game/src/visual/badge3d.ts';
 import { REPUTATION } from '../game/src/data/economy.ts';
 import { NEW_GAME, withEverything } from '../game/src/sim/progress.ts';
 
@@ -136,6 +136,14 @@ test('as the title turns toward the pointer, every block is drawn after every bl
         }
       }
     }
+  }
+});
+
+test('the status badge stands around its middle and fits its area at every rank, with room for perspective', () => {
+  // Parts nearer the camera draw bigger; a fifth more is plenty at this distance.
+  const room = BADGE_SIZE.h / 2 / (BADGE_CAMERA.unitPx * 1.2);
+  for (let rank = 0; rank < REPUTATION.levels.length; rank++) {
+    for (const part of buildBadge(rank)) assert.ok(part.bottom >= -room && part.top <= room, `rank ${rank}: ${part.bottom}..${part.top} past ${room}`);
   }
 });
 
